@@ -1,0 +1,235 @@
+version: "3.8"
+
+services:
+  # ============================================
+  # PostgreSQL Database with pgvector extension
+  # ============================================
+  postgres:
+    image: ankane/pgvector:v0.5.1
+    container_name: saramedico_postgres
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-saramedico_dev}
+      POSTGRES_USER: ${DATABASE_USER:-saramedico_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/01-init.sh
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DATABASE_USER:-saramedico_user} -d ${DATABASE_NAME:-saramedico_dev}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # Redis Cache & Session Store
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: saramedico_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass} --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}",
+          "ping",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # MinIO (S3-Compatible Local Object Storage)
+  # ============================================
+  minio:
+    image: minio/minio:latest
+    container_name: saramedico_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-saramedico_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-SaraMed1c0_Min10_2024!SecurePass}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # MinIO Client (Bucket Setup)
+  # ============================================
+  minio-setup:
+    image: minio/mc:latest
+    container_name: saramedico_minio_setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set saramedico http://minio:9000 ${MINIO_ROOT_USER:-saramedico_minio_admin} ${MINIO_ROOT_PASSWORD:-SaraMed1c0_Min10_2024!SecurePass};
+      /usr/bin/mc mb --ignore-existing saramedico/saramedico-uploads;
+      /usr/bin/mc mb --ignore-existing saramedico/saramedico-documents;
+      /usr/bin/mc mb --ignore-existing saramedico/saramedico-audio;
+      /usr/bin/mc mb --ignore-existing saramedico/saramedico-avatars;
+      echo 'Buckets created successfully';
+      exit 0;
+      "
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # MailHog (Email Testing Server)
+  # ============================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: saramedico_mailhog
+    ports:
+      - "1026:1025" # SMTP
+      - "8026:8025" # Web UI
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8025",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # Backend API (FastAPI)
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saramedico_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mailhog:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # Celery Worker (Background Tasks)
+  # ============================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saramedico_celery_worker
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # Celery Beat (Scheduled Tasks)
+  # ============================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saramedico_celery_beat
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+      - celery_worker
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+# ============================================
+# Persistent Volumes
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# ============================================
+# Network Configuration
+# ============================================
+networks:
+  saramedico_network:
+    driver: bridge
