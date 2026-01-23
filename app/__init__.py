@@ -1,1 +1,0 @@
-# Healthcare OCR Backend Package
