@@ -29,7 +29,10 @@ class Document(Base):
     storage_path = Column(String(1000), nullable=False, unique=True)
     
     # Categorization
-    category = Column(String(100), nullable=True)  # 'lab-result', 'prescription', 'imaging', 'other'
+    category = Column(
+        String(100), 
+        nullable=True
+    )  # 'LAB_REPORT', 'PAST_PRESCRIPTION', 'IMAGING', 'OTHER'
     title = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
     

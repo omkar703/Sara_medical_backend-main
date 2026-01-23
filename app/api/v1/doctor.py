@@ -14,6 +14,7 @@ from app.models.patient import Patient
 from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.schemas.appointment import AppointmentResponse
+from app.schemas.doctor import DoctorProfileUpdate
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/doctor", tags=["Doctor Dashboard"])
@@ -193,3 +194,26 @@ async def get_activity_feed(
             "extra_data": log.extra_data,
         })
     return activity_list
+
+
+@router.patch("/profile", response_model=Dict)
+async def update_doctor_profile(
+    profile_in: DoctorProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update the doctor's profile (specialty, license)."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if profile_in.specialty is not None:
+        current_user.specialty = profile_in.specialty
+    
+    if profile_in.license_number is not None:
+        from app.core.security import pii_encryption
+        current_user.license_number = pii_encryption.encrypt(profile_in.license_number)
+
+    await db.commit()
+    await db.refresh(current_user)
+    
+    return {"message": "Profile updated successfully", "specialty": current_user.specialty}

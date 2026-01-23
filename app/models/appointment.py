@@ -20,6 +20,12 @@ class Appointment(Base):
     
     status = Column(Enum("pending", "accepted", "declined", "completed", "cancelled", name="appointment_status"), default="pending", nullable=False)
     
+    # Zoom Integration Fields
+    meeting_id = Column(String(50), nullable=True)
+    join_url = Column(Text, nullable=True)
+    start_url = Column(Text, nullable=True)
+    meeting_password = Column(String(50), nullable=True)
+    
     doctor_notes = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)

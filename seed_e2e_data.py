@@ -18,7 +18,7 @@ from app.config import settings
 
 # Override DATABASE_URL for host access (docker maps 5433 to 5432)
 # Using the default credentials from .env but pointing to localhost:5433
-DB_URL = "postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@localhost:5433/saramedico_dev"
+DB_URL = "postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@localhost:5432/saramedico_dev"
 
 engine = create_async_engine(DB_URL, echo=False)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

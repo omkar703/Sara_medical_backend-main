@@ -10,7 +10,7 @@ class AppointmentBase(BaseModel):
     reason: Optional[str] = None
 
 class AppointmentCreate(AppointmentBase):
-    pass
+    grant_access_to_history: Optional[bool] = Field(False, description="Grant doctor access to medical records")
 
 class AppointmentUpdate(BaseModel):
     status: Optional[str] = Field(None, pattern="^(pending|accepted|declined|completed|cancelled)$")
@@ -21,11 +21,22 @@ class AppointmentResponse(AppointmentBase):
     patient_id: UUID
     status: str
     doctor_notes: Optional[str] = None
+    
+    # Zoom Implementation
+    meeting_id: Optional[str] = None
+    join_url: Optional[str] = None
+    start_url: Optional[str] = None
+    meeting_password: Optional[str] = None
+    
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+class AppointmentApproval(BaseModel):
+    appointment_time: datetime = Field(..., description="Confirmed time for the appointment")
+    doctor_notes: Optional[str] = None
 
 class AppointmentStatusUpdate(BaseModel):
     status: str = Field(..., pattern="^(accepted|declined)$")
