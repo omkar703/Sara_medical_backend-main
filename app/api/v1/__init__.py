@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth, consultations, documents, organizations, patients, websockets, 
     audit, tasks, doctor, appointments, team, doctors, medical_history, 
-    doctor_records, ai
+    doctor_records, ai, admin
 )
 
 api_router = APIRouter()
@@ -27,3 +27,4 @@ api_router.include_router(team.router)
 api_router.include_router(medical_history.router)
 api_router.include_router(doctor_records.router)
 api_router.include_router(ai.router)
+api_router.include_router(admin.router)

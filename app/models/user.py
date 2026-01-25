@@ -158,3 +158,4 @@ class Invitation(Base):
     
     def __repr__(self):
         return f"<Invitation {self.email} to Org {self.organization_id}>"
+
