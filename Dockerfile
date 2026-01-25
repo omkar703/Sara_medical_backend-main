@@ -10,6 +10,10 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
     postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
