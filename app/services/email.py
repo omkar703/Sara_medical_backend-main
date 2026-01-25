@@ -174,3 +174,32 @@ async def send_password_reset_email(to_email: str, reset_token: str, user_name: 
         html_content=html_content,
         text_content=f"Reset your password by visiting: {reset_url}"
     )
+
+async def send_invitation_email(email: str, token: str, role: str, org_name: str, FRONTEND_URL=""):
+    """
+    Composes the invitation email and sends it.
+    """
+    invite_link = f"{FRONTEND_URL}/join?token={token}"
+    
+    subject = f"You've been invited to join {org_name} on SaraMedico"
+    
+    html_content = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+                <h2 style="color: #007bff;">Welcome to SaraMedico</h2>
+                <p>Hello,</p>
+                <p>You have been invited to join the organization <strong>{org_name}</strong> as a <strong>{role}</strong>.</p>
+                <p>Click the button below to set up your account and get started:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{invite_link}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Accept Invitation</a>
+                </div>
+                <p style="font-size: 0.9em; color: #666;">This link will expire in 48 hours.</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 0.8em; color: #999;">If you didn't expect this invitation, you can safely ignore this email.</p>
+            </div>
+        </body>
+    </html>
+    """
+    
+    return await send_email(email, subject, html_content)
