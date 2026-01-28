@@ -1,7 +1,7 @@
 import httpx
 import json
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 def test_api():
     # 1. Login

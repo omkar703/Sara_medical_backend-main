@@ -119,6 +119,41 @@ async def register(
     await db.commit()
     await db.refresh(user)
     
+    # Decrypt name for response
+    decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    name_parts = decrypted_full_name.split(" ", 1)
+    
+    # Auto-create Patient Profile if role is patient
+    # Normalize role to string for comparison
+    user_role_str = str(user.role).split('.')[-1] if hasattr(user.role, 'value') else str(user.role)
+    
+    if user_role_str == "patient":
+        from app.services.patient_service import PatientService
+        patient_service = PatientService(db)
+        
+        # Prepare patient data
+        # Use RAW values from user_data to avoid double encryption
+        full_name_raw = f"{user_data.first_name} {user_data.last_name}"
+        p_data = {
+            "full_name": full_name_raw,
+            "email": user_data.email,
+            "phone_number": user_data.phone_number or user_data.phone,
+            "date_of_birth": user_data.date_of_birth,
+            "address": {},
+            "emergency_contact": {},
+            "medical_history": "",
+            "allergies": [],
+            "medications": []
+        }
+        
+        await patient_service.create_patient(
+            patient_data=p_data,
+            organization_id=user.organization_id,
+            created_by=user.id,
+            patient_id=user.id
+        )
+        await db.commit()
+
     # Send verification email (async task in production)
     # decrypted_first_name = pii_encryption.decrypt(user.first_name)
     # await send_verification_email(
@@ -127,8 +162,6 @@ async def register(
     #     user_name=decrypted_first_name
     # )
     
-    decrypted_full_name = pii_encryption.decrypt(user.full_name)
-    name_parts = decrypted_full_name.split(" ", 1)
     first_name = name_parts[0]
     last_name = name_parts[1] if len(name_parts) > 1 else ""
 
@@ -394,7 +427,7 @@ async def setup_mfa(
     # Generate QR code
     pii_encryption = PIIEncryption()
     decrypted_email = current_user.email
-    qr_code = generate_qr_code(secret, decrypted_email, "Saramedico")
+    qr_code = generate_qr_code(secret, decrypted_email)
     
     # Generate backup codes
     backup_codes = generate_backup_codes()

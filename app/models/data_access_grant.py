@@ -29,6 +29,8 @@ class DataAccessGrant(Base):
     
     # Grant metadata
     grant_reason = Column(String(255), nullable=True)
+    ai_access_permission = Column(Boolean, default=False, nullable=False)
+    access_level = Column(String(50), default="read_only", nullable=False) # 'read_only', 'read_analyze'
     granted_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     

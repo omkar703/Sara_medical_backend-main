@@ -11,6 +11,7 @@ class AuditLogResponse(BaseModel):
     """Schema for displaying audit log entries"""
     id: UUID
     user_id: Optional[UUID] = None
+    organization_id: Optional[UUID] = None
     action: str
     resource_type: str
     resource_id: Optional[UUID] = None

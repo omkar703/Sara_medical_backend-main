@@ -37,7 +37,7 @@ class EmergencyContactSchema(BaseModel):
 class PatientBase(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=100, alias="fullName")
     date_of_birth: date = Field(..., alias="dateOfBirth")
-    gender: str = Field(..., pattern="^(male|female|other|prefer_not_to_say)$")
+    gender: Optional[str] = Field(None, pattern="^(male|female|other|prefer_not_to_say)$")
     phone_number: Optional[str] = Field(None, alias="phoneNumber")
     email: Optional[EmailStr] = None
     address: Optional[AddressSchema] = None
@@ -99,7 +99,7 @@ class PatientListItem(BaseModel):
     mrn: str
     full_name: str = Field(..., alias="fullName")
     date_of_birth: date = Field(..., alias="dateOfBirth")
-    gender: str
+    gender: Optional[str] = None
     phone_number: Optional[str] = Field(None, alias="phoneNumber")
     email: Optional[str]
     created_at: datetime

@@ -62,3 +62,5 @@ celerybeat.pid
 
 # Backup files
 *.bak
+
+/_documents

@@ -52,6 +52,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Custom Validation Middleware
+from app.middleware.validation import ValidationMiddleware
+app.add_middleware(ValidationMiddleware)
+
 # Include API routers
 from app.api.v1 import api_router
 app.include_router(api_router, prefix="/api/v1")
@@ -70,7 +74,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @app.get("/health/database", tags=["Health"])
-async def health_check_database() -> Dict[str, str]:
+async def health_check_database() -> Dict[str, Any]:
     """Database connectivity check"""
     from app.utils.health import check_database
     
@@ -78,7 +82,7 @@ async def health_check_database() -> Dict[str, str]:
 
 
 @app.get("/health/redis", tags=["Health"])
-async def health_check_redis() -> Dict[str, str]:
+async def health_check_redis() -> Dict[str, Any]:
     """Redis connectivity check"""
     from app.utils.health import check_redis
     
@@ -86,7 +90,7 @@ async def health_check_redis() -> Dict[str, str]:
 
 
 @app.get("/health/minio", tags=["Health"])
-async def health_check_minio() -> Dict[str, str]:
+async def health_check_minio() -> Dict[str, Any]:
     """MinIO connectivity check"""
     from app.utils.health import check_minio
     

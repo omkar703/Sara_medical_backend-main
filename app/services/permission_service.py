@@ -1,6 +1,6 @@
 """Permission Service - HIPAA-compliant access control for medical records"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -35,6 +35,7 @@ class PermissionService:
         Returns:
             True if access is granted, False otherwise
         """
+        now = datetime.now(timezone.utc)
         
         # Check for active DataAccessGrant
         grant_query = select(DataAccessGrant).where(
@@ -44,7 +45,7 @@ class PermissionService:
                 DataAccessGrant.is_active == True,
                 or_(
                     DataAccessGrant.expires_at.is_(None),
-                    DataAccessGrant.expires_at > datetime.utcnow()
+                    DataAccessGrant.expires_at > now
                 )
             )
         )
@@ -61,7 +62,7 @@ class PermissionService:
                 Appointment.doctor_id == doctor_id,
                 Appointment.patient_id == patient_id,
                 Appointment.status.in_(["pending", "accepted"]),
-                Appointment.requested_date > datetime.utcnow()  # Future appointment
+                Appointment.requested_date > now  # Future appointment
             )
         )
         

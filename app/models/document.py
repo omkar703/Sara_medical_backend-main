@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, BigInteger, DateTime, ForeignKey, String, Text, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Column, BigInteger, Integer, DateTime, ForeignKey, String, Text, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -43,6 +43,10 @@ class Document(Base):
     # Security
     virus_scanned = Column(Boolean, default=False, nullable=False)
     virus_scan_result = Column(String(50), nullable=True)  # 'clean', 'infected', 'error'
+    
+    # AI Processing
+    processing_details = Column(JSONB, nullable=True) # Tracks status of each tier
+    total_chunks = Column(Integer, default=0, nullable=False)
     
     # Soft delete
     deleted_at = Column(DateTime(timezone=True), nullable=True)

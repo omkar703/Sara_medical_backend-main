@@ -179,3 +179,35 @@ async def get_compliance_stats(
         "phi_access_count": phi_count,
         "users_active_count": users_count
     }
+
+
+class AuditService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def log_event(
+        self,
+        user_id: UUID | None,
+        action: str,
+        resource_type: str,
+        resource_id: UUID | None,
+        organization_id: UUID | None,
+        metadata: dict | None = None,
+        request: Request | None = None
+    ) -> AuditLog:
+        return await log_action(
+            db=self.db,
+            user_id=user_id,
+            organization_id=organization_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            request=request,
+            metadata=metadata
+        )
+
+    async def get_logs(self, *args, **kwargs):
+        return await get_audit_logs(self.db, *args, **kwargs)
+
+    async def get_stats(self, *args, **kwargs):
+        return await get_compliance_stats(self.db, *args, **kwargs)

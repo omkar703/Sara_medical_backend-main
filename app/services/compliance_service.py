@@ -31,15 +31,25 @@ class ComplianceService:
         if not user:
             return {}
             
-        # Decrypt PII
+        # Decrypt PII with safety
+        def safe_decrypt(ciphertext, field_name):
+            if not ciphertext:
+                return None
+            try:
+                return pii_encryption.decrypt(ciphertext)
+            except Exception as e:
+                print(f"ERROR: Decryption failed for {field_name}: {e}")
+                print(f"TEXT: {ciphertext[:10]}...")
+                return f"[DECRYPTION_ERROR: {field_name}]"
+
         user_data = {
-            "full_name": pii_encryption.decrypt(user.full_name) if user.full_name else None,
+            "full_name": safe_decrypt(user.full_name, "full_name"),
             "email": user.email,
-            "role": user.role,
-            "phone_number": pii_encryption.decrypt(user.phone_number) if user.phone_number else None,
+            "role": str(user.role).split('.')[-1] if hasattr(user.role, 'value') else str(user.role),
+            "phone_number": safe_decrypt(user.phone_number, "phone_number"),
             "specialty": user.specialty,
-            "license_number": pii_encryption.decrypt(user.license_number) if user.license_number else None,
-            "created_at": user.created_at.isoformat(),
+            "license_number": safe_decrypt(user.license_number, "license_number"),
+            "created_at": user.created_at.isoformat() if user.created_at else datetime.utcnow().isoformat(),
         }
         
         # 2. Activity (Consultations) - if Doctor

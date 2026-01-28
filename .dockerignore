@@ -1,0 +1,88 @@
+# Ignore git files
+.git
+.gitignore
+.gitattributes
+
+# Ignore Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ignore virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Ignore test and coverage files
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore documentation
+*.md
+!README.md
+docs/
+
+# Ignore logs
+*.log
+logs/
+backend.log
+
+# Ignore test files (not needed in production)
+tests/
+test_*.py
+*_test.py
+
+# Ignore development files
+.env.example
+docker-compose.override.yml
+Dockerfile.dev
+
+# Ignore temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Ignore build artifacts
+dist/
+build/
+*.egg-info/
+
+# Ignore celery beat schedule
+celerybeat-schedule
+celerybeat.pid
+
+# Ignore alembic versions (will be created in container)
+# alembic/versions/*.py
+
+# Ignore data directories
+data/
+_documents/
+
+# Ignore audit and report files
+audit_*.txt
+report_*.txt
+output.txt
+verification_*.txt
+
+# Ignore scripts that are not needed in container
+scripts/local_*.sh
+scripts/dev_*.sh
+
+# Ignore backup files
+*.bak
+*.backup
+backup_*.sql

@@ -175,31 +175,58 @@ async def send_password_reset_email(to_email: str, reset_token: str, user_name: 
         text_content=f"Reset your password by visiting: {reset_url}"
     )
 
-async def send_invitation_email(email: str, token: str, role: str, org_name: str, FRONTEND_URL=""):
+
+async def send_invitation_email(email: str, token: str, role: str, org_name: str) -> bool:
     """
-    Composes the invitation email and sends it.
+    Send team invitation email
     """
-    invite_link = f"{FRONTEND_URL}/join?token={token}"
+    invite_url = f"http://localhost:3000/auth/invite?token={token}"
     
-    subject = f"You've been invited to join {org_name} on SaraMedico"
-    
-    html_content = f"""
+    html_template = """
+    <!DOCTYPE html>
     <html>
-        <body style="font-family: Arial, sans-serif; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-                <h2 style="color: #007bff;">Welcome to SaraMedico</h2>
-                <p>Hello,</p>
-                <p>You have been invited to join the organization <strong>{org_name}</strong> as a <strong>{role}</strong>.</p>
-                <p>Click the button below to set up your account and get started:</p>
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="{invite_link}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Accept Invitation</a>
-                </div>
-                <p style="font-size: 0.9em; color: #666;">This link will expire in 48 hours.</p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 0.8em; color: #999;">If you didn't expect this invitation, you can safely ignore this email.</p>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #10B981; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9fafb; }
+            .button { display: inline-block; padding: 12px 24px; background-color: #10B981; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+            .footer { padding: 20px; text-align: center; font-size: 12px; color: #6b7280; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Team Invitation</h1>
             </div>
-        </body>
+            <div class="content">
+                <h2>Hello,</h2>
+                <p>You have been invited to join the <strong>{{ org_name }}</strong> team on Saramedico as a <strong>{{ role }}</strong>.</p>
+                <p>Click the button below to accept the invitation and set up your account.</p>
+                <p><a href="{{ invite_url }}" class="button">Accept Invitation</a></p>
+                <p>Or copy and paste this link into your browser:</p>
+                <p>{{ invite_url }}</p>
+                <p>This invitation will expire in 48 hours.</p>
+            </div>
+            <div class="footer">
+                <p>&copy; 2026 Saramedico. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
     </html>
     """
     
-    return await send_email(email, subject, html_content)
+    template = Template(html_template)
+    html_content = template.render(
+        org_name=org_name,
+        role=role,
+        invite_url=invite_url
+    )
+    
+    return await send_email(
+        to_email=email,
+        subject=f"Invitation to join {org_name} on Saramedico",
+        html_content=html_content,
+        text_content=f"You have been invited to join {org_name}. Accept here: {invite_url}"
+    )

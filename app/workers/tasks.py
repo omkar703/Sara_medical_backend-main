@@ -42,3 +42,37 @@ def generate_soap_note(consultation_id: str) -> str:
     3. Update consultation.soap_note
     """
     return f"Consultation {consultation_id} SOAP note generated."
+
+
+# === AI Processing Tasks ===
+
+import asyncio
+from uuid import UUID
+from app.database import AsyncSessionLocal
+from app.services.document_processor import DocumentProcessor
+
+def run_async(coro):
+    """Helper to run async code in a sync Celery task"""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    if loop.is_running():
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result()
+    else:
+        return loop.run_until_complete(coro)
+
+@celery_app.task(name="app.workers.tasks.process_document")
+def process_document_task(document_id_str: str):
+    """Celery task to process a document"""
+    document_id = UUID(document_id_str)
+    
+    async def _process():
+        async with AsyncSessionLocal() as db:
+            processor = DocumentProcessor(db)
+            await processor.process_document(document_id)
+            
+    return run_async(_process())

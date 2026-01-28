@@ -3,7 +3,9 @@
 # Simple wrapper to start backend with newgrp
 # Run this in a terminal: bash start_with_docker.sh
 
-cd /home/op/Videos/saramedico/backend
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 echo "====================================="
 echo "Starting Saramedico Backend Services"
@@ -12,7 +14,7 @@ echo ""
 
 # Try to use newgrp to switch to docker group and run docker compose
 bash -c "newgrp docker << 'DOCKERCMD'
-cd /home/op/Videos/saramedico/backend
+cd $SCRIPT_DIR
 echo 'Checking current Docker status...'
 docker compose ps -a
 echo ''
@@ -31,3 +33,4 @@ echo ''
 echo 'To view logs: docker compose logs -f'
 DOCKERCMD
 "
+

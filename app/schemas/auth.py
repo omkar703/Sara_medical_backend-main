@@ -1,6 +1,6 @@
 """Pydantic schemas for authentication"""
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from uuid import UUID
 
@@ -22,6 +22,7 @@ class UserCreate(BaseModel):
     phone_number: Optional[str] = None
     role: str = Field(..., pattern="^(patient|doctor|admin|hospital)$")
     organization_name: Optional[str] = "Default Org"
+    date_of_birth: Optional[date] = None
     
     @validator('confirm_password')
     def passwords_match(cls, v, values):

@@ -26,15 +26,17 @@ class PatientService:
         # Get count of patients for this org to determine sequence
         # Note: This is a simple implementation. In high concurrency, 
         # use a dedicated sequence or Redis counter.
-        stmt = select(func.count()).select_from(Patient).where(
-            Patient.organization_id == organization_id
-        )
+        # Get global count to satisfy unique constraint on mrn column
+        stmt = select(func.count()).select_from(Patient)
         count = await self.db.scalar(stmt)
         sequence = (count or 0) + 1
         year = datetime.now().year
         
-        # In a real app, you might want a custom prefix per org
-        return f"ORG-{year}-{sequence:06d}"
+        # In a real app, you might want a custom prefix per org.
+        # Added random suffix to prevent collisions with deleted records or multiple orgs
+        import random
+        random_suffix = "".join(random.choices("0123456789", k=4))
+        return f"ORG-{year}-{sequence:06d}-{random_suffix}"
 
     def encrypt_patient_data(self, data: Dict) -> Dict:
         """Encrypt PII fields in patient data dictionary"""
@@ -169,7 +171,7 @@ class PatientService:
         return data
 
     async def create_patient(
-        self, patient_data: Dict, organization_id: UUID, created_by: UUID
+        self, patient_data: Dict, organization_id: UUID, created_by: UUID, patient_id: Optional[UUID] = None
     ) -> Dict:
         """Create new patient"""
         mrn = await self.generate_mrn(organization_id)
@@ -178,6 +180,7 @@ class PatientService:
         encrypted_data = self.encrypt_patient_data(patient_data)
         
         patient = Patient(
+            id=patient_id, # explicit ID if provided (linking to User)
             mrn=mrn,
             organization_id=organization_id,
             created_by=created_by,

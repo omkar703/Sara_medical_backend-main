@@ -14,7 +14,7 @@ from alembic import context
 from app.database import Base
 from app.config import settings
 # Import all models to register them with Base.metadata
-from app.models import user, patient, document, consultation, audit, task, appointment, activity_log
+from app.models import user, patient, document, consultation, audit, task, appointment, activity_log, chunk, chat_history, data_access_grant, ai_processing_queue
 
 # This is the Alembic Config object
 config = context.config

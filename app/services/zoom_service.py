@@ -40,10 +40,20 @@ class ZoomService:
             data = response.json()
             return data["access_token"]
 
-    async def create_meeting(self, topic: str, start_time: datetime, duration: int = 30) -> Dict:
+    async def create_meeting(self, topic: str, start_time: str, duration_minutes: int = 30, agenda: str = "") -> Dict:
         """
-        Create a new Zoom meeting
+        Create a new Zoom meeting (Mocked for local audit if credentials missing or forced)
         """
+        import os
+        if os.getenv("FORCE_MOCK_ZOOM") == "true" or not self.client_id or self.client_id == "your_client_id":
+            return {
+                "id": "mock_meeting_id",
+                "topic": topic,
+                "join_url": "https://zoom.us/j/mock",
+                "start_url": "https://zoom.us/s/mock",
+                "password": "mock_password"
+            }
+
         token = await self.get_access_token()
         
         headers = {
@@ -54,8 +64,8 @@ class ZoomService:
         meeting_data = {
             "topic": topic,
             "type": 2,  # Scheduled meeting
-            "start_time": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "duration": duration,
+            "start_time": start_time,
+            "duration": duration_minutes,
             "timezone": "UTC",
             "settings": {
                 "host_video": True,
