@@ -128,6 +128,27 @@ def require_role(required_role: str):
     return role_checker
 
 
+def require_any_role(*allowed_roles: str):
+    """
+    Dependency factory to require any of the specified roles
+    
+    Args:
+        allowed_roles: Tuple of allowed roles (e.g., "doctor", "admin", "hospital")
+    
+    Returns:
+        Dependency function that checks if user has any of the allowed roles
+    """
+    async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This endpoint requires one of: {', '.join(allowed_roles)}",
+            )
+        return current_user
+    
+    return role_checker
+
+
 # Pre-defined role dependencies
 require_doctor = require_role("doctor")
 require_admin = require_role("admin")

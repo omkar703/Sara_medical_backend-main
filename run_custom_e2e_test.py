@@ -173,14 +173,15 @@ def run_custom_e2e_test():
         print(f"Onboarding Patient {user['full_name']} via {registered_users[doctor_key]['name']}...")
         try:
             headers = {"Authorization": f"Bearer {doctor_token}"}
-            resp = httpx.post(f"{BASE_URL}/doctor/onboard-patient", json=onboard_payload, headers=headers, timeout=30.0)
-            log_api_call("POST", "/doctor/onboard-patient", onboard_payload, resp.status_code, resp.json() if resp.status_code < 500 else resp.text)
+            resp = httpx.post(f"{BASE_URL}/patients", json=onboard_payload, headers=headers, timeout=30.0)
+            log_api_call("POST", "/patients", onboard_payload, resp.status_code, resp.json() if resp.status_code < 500 else resp.text)
             
-            if resp.status_code != 200:
+            if resp.status_code != 201:
                 print(f"  ✗ Onboarding Failed: {resp.text}")
                 continue
             
-            patient_id = resp.json()["patient_id"]
+            patient_response = resp.json()
+            patient_id = patient_response["id"]
             
             # Now Login as Patient
             login_payload = {"email": user["email"], "password": user["password"]}

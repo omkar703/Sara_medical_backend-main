@@ -12,6 +12,7 @@ from app.models.user import User
 from app.schemas.patient import (
     PatientCreate,
     PatientListResponse,
+    PatientOnboard,
     PatientResponse,
     PatientUpdate,
 )
@@ -65,25 +66,64 @@ async def list_patients(
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
 async def create_patient(
-    patient_in: PatientCreate,
-    current_user: User = Depends(require_role("doctor")), # Or admin
+    patient_in: PatientOnboard,
+    current_user: User = Depends(require_role("doctor")), # Or admin/hospital
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
     """
-    Create a new patient record.
-    Requires 'doctor' or 'admin' role.
-    """
-    service = PatientService(db)
+    Onboard a new patient by creating both User account and Patient profile.
+    Requires 'doctor', 'admin', or 'hospital' role.
     
-    # Convert Pydantic model to dict
-    patient_data = patient_in.model_dump(exclude_unset=True)
+    This is the primary patient onboarding endpoint that:
+    1. Creates a User account with encrypted credentials
+    2. Creates a Patient profile with encrypted PII
+    3. Links the two records
+    4. Returns patient details
+    
+    The patient can then log in using the email and password provided.
+    """
+    from app.core.security import hash_password, PIIEncryption
+    from app.models.user import User as UserModel
+    from sqlalchemy import select
+    
+    # Check if user with email already exists
+    email_check = await db.execute(
+        select(UserModel).where(UserModel.email == patient_in.email.lower())
+    )
+    if email_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User with this email already exists"
+        )
+    
+    # Create User account
+    pii_encryption = PIIEncryption()
+    encrypted_name = pii_encryption.encrypt(patient_in.full_name)
+    encrypted_phone = pii_encryption.encrypt(patient_in.phone_number) if patient_in.phone_number else None
+    
+    new_user = UserModel(
+        email=patient_in.email.lower(),
+        password_hash=hash_password(patient_in.password),
+        full_name=encrypted_name,
+        phone_number=encrypted_phone,
+        role="patient",
+        organization_id=organization_id,
+        email_verified=True  # Auto-verify onboarded patients
+    )
+    db.add(new_user)
+    await db.flush()  # Get user ID
+    
+    # Create Patient profile
+    service = PatientService(db)
+    patient_data = patient_in.model_dump(exclude={"password"})
     
     patient = await service.create_patient(
         patient_data=patient_data,
         organization_id=organization_id,
-        created_by=current_user.id
+        created_by=current_user.id,
+        patient_id=new_user.id  # Link to User account
     )
     
     await db.commit()
@@ -93,13 +133,13 @@ async def create_patient(
         db=db,
         user_id=current_user.id,
         organization_id=organization_id,
-        action="create",
+        action="onboard",
         resource_type="patient",
         resource_id=patient["id"],
         request=request,
-        metadata={"mrn": patient["mrn"]}
+        metadata={"mrn": patient["mrn"], "email": patient_in.email}
     )
-    await db.commit() # Commit audit log
+    await db.commit()
     
     return patient
 
