@@ -1,6 +1,6 @@
 # E2E Test Report
 
-Generated: 2026-01-29T11:28:00.992751
+Generated: 2026-01-29T17:19:21.206648
 
 ## Summary
 - Users Created: 10
@@ -12,407 +12,372 @@ Generated: 2026-01-29T11:28:00.992751
 ```json
 [
   {
-    "timestamp": "2026-01-29T11:22:26.657994",
+    "timestamp": "2026-01-29T17:13:44.510319",
     "method": "POST",
     "endpoint": "/auth/register",
     "payload": {
-      "email": "custom_patient1_1769646146@test.com",
-      "password": "SecurePass123!",
-      "full_name": "Patient 1 Test",
-      "role": "patient",
-      "date_of_birth": "1980-01-01",
-      "phone_number": "+15550000001"
-    },
-    "status": 201,
-    "response": {
-      "id": "6157cecd-b8c0-4a04-8e14-6dfac123232c",
-      "name": "Patient 1 Test",
-      "email": "custom_patient1_1769646146@test.com",
-      "first_name": "Patient",
-      "last_name": "1 Test",
-      "phone_number": "+15550000001",
-      "role": "patient",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
-      "mfa_enabled": false,
-      "email_verified": true,
-      "created_at": "2026-01-29T05:52:26.634290Z",
-      "updated_at": "2026-01-29T05:52:26.634292Z"
-    }
-  },
-  {
-    "timestamp": "2026-01-29T11:22:26.893513",
-    "method": "POST",
-    "endpoint": "/auth/login",
-    "payload": {
-      "email": "custom_patient1_1769646146@test.com",
-      "password": "SecurePass123!"
-    },
-    "status": 200,
-    "response": "HIDDEN_TOKEN_RESPONSE"
-  },
-  {
-    "timestamp": "2026-01-29T11:22:27.132416",
-    "method": "POST",
-    "endpoint": "/auth/register",
-    "payload": {
-      "email": "custom_patient2_1769646146@test.com",
-      "password": "SecurePass123!",
-      "full_name": "Patient 2 Test",
-      "role": "patient",
-      "date_of_birth": "1980-01-01",
-      "phone_number": "+15550000002"
-    },
-    "status": 201,
-    "response": {
-      "id": "a7a96efb-82e7-4f91-8fe8-e65f530946ae",
-      "name": "Patient 2 Test",
-      "email": "custom_patient2_1769646146@test.com",
-      "first_name": "Patient",
-      "last_name": "2 Test",
-      "phone_number": "+15550000002",
-      "role": "patient",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
-      "mfa_enabled": false,
-      "email_verified": true,
-      "created_at": "2026-01-29T05:52:27.122858Z",
-      "updated_at": "2026-01-29T05:52:27.122859Z"
-    }
-  },
-  {
-    "timestamp": "2026-01-29T11:22:27.370505",
-    "method": "POST",
-    "endpoint": "/auth/login",
-    "payload": {
-      "email": "custom_patient2_1769646146@test.com",
-      "password": "SecurePass123!"
-    },
-    "status": 200,
-    "response": "HIDDEN_TOKEN_RESPONSE"
-  },
-  {
-    "timestamp": "2026-01-29T11:22:27.608507",
-    "method": "POST",
-    "endpoint": "/auth/register",
-    "payload": {
-      "email": "custom_patient3_1769646146@test.com",
-      "password": "SecurePass123!",
-      "full_name": "Patient 3 Test",
-      "role": "patient",
-      "date_of_birth": "1980-01-01",
-      "phone_number": "+15550000003"
-    },
-    "status": 201,
-    "response": {
-      "id": "4a5eebc8-fff6-4549-9483-0ff7303803d1",
-      "name": "Patient 3 Test",
-      "email": "custom_patient3_1769646146@test.com",
-      "first_name": "Patient",
-      "last_name": "3 Test",
-      "phone_number": "+15550000003",
-      "role": "patient",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
-      "mfa_enabled": false,
-      "email_verified": true,
-      "created_at": "2026-01-29T05:52:27.599958Z",
-      "updated_at": "2026-01-29T05:52:27.599959Z"
-    }
-  },
-  {
-    "timestamp": "2026-01-29T11:22:27.838789",
-    "method": "POST",
-    "endpoint": "/auth/login",
-    "payload": {
-      "email": "custom_patient3_1769646146@test.com",
-      "password": "SecurePass123!"
-    },
-    "status": 200,
-    "response": "HIDDEN_TOKEN_RESPONSE"
-  },
-  {
-    "timestamp": "2026-01-29T11:22:28.080581",
-    "method": "POST",
-    "endpoint": "/auth/register",
-    "payload": {
-      "email": "custom_patient4_1769646146@test.com",
-      "password": "SecurePass123!",
-      "full_name": "Patient 4 Test",
-      "role": "patient",
-      "date_of_birth": "1980-01-01",
-      "phone_number": "+15550000004"
-    },
-    "status": 201,
-    "response": {
-      "id": "a9821820-cf9a-43f0-aa1e-69d9a9cb1bdc",
-      "name": "Patient 4 Test",
-      "email": "custom_patient4_1769646146@test.com",
-      "first_name": "Patient",
-      "last_name": "4 Test",
-      "phone_number": "+15550000004",
-      "role": "patient",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
-      "mfa_enabled": false,
-      "email_verified": true,
-      "created_at": "2026-01-29T05:52:28.067874Z",
-      "updated_at": "2026-01-29T05:52:28.067875Z"
-    }
-  },
-  {
-    "timestamp": "2026-01-29T11:22:28.311547",
-    "method": "POST",
-    "endpoint": "/auth/login",
-    "payload": {
-      "email": "custom_patient4_1769646146@test.com",
-      "password": "SecurePass123!"
-    },
-    "status": 200,
-    "response": "HIDDEN_TOKEN_RESPONSE"
-  },
-  {
-    "timestamp": "2026-01-29T11:22:28.550235",
-    "method": "POST",
-    "endpoint": "/auth/register",
-    "payload": {
-      "email": "custom_patient5_1769646146@test.com",
-      "password": "SecurePass123!",
-      "full_name": "Patient 5 Test",
-      "role": "patient",
-      "date_of_birth": "1980-01-01",
-      "phone_number": "+15550000005"
-    },
-    "status": 201,
-    "response": {
-      "id": "e68d689f-ccee-4447-a4fb-4b9e2352cd08",
-      "name": "Patient 5 Test",
-      "email": "custom_patient5_1769646146@test.com",
-      "first_name": "Patient",
-      "last_name": "5 Test",
-      "phone_number": "+15550000005",
-      "role": "patient",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
-      "mfa_enabled": false,
-      "email_verified": true,
-      "created_at": "2026-01-29T05:52:28.541082Z",
-      "updated_at": "2026-01-29T05:52:28.541083Z"
-    }
-  },
-  {
-    "timestamp": "2026-01-29T11:22:28.783065",
-    "method": "POST",
-    "endpoint": "/auth/login",
-    "payload": {
-      "email": "custom_patient5_1769646146@test.com",
-      "password": "SecurePass123!"
-    },
-    "status": 200,
-    "response": "HIDDEN_TOKEN_RESPONSE"
-  },
-  {
-    "timestamp": "2026-01-29T11:22:29.018902",
-    "method": "POST",
-    "endpoint": "/auth/register",
-    "payload": {
-      "email": "custom_doctor1_1769646146@test.com",
+      "email": "custom_doctor1_1769667223@test.com",
       "password": "SecurePass123!",
       "full_name": "Dr. 1 Test",
       "role": "doctor",
       "date_of_birth": "1975-01-01",
       "phone_number": "+15551110001",
+      "organization_name": "Test Hospital",
       "specialty": "Cardiology",
-      "license_number": "LIC-1-1769646146"
+      "license_number": "LIC-1-1769667223"
     },
     "status": 201,
     "response": {
-      "id": "f30140b7-4441-40b9-bbde-1e44dbfe1cee",
+      "id": "59badcd8-c6d7-4880-ae92-82c219a589e4",
       "name": "Dr. 1 Test",
-      "email": "custom_doctor1_1769646146@test.com",
+      "email": "custom_doctor1_1769667223@test.com",
       "first_name": "Dr.",
       "last_name": "1 Test",
       "phone_number": "+15551110001",
       "role": "doctor",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
+      "organization_id": "97d20f27-b550-4aae-b976-44e8b6f277b6",
       "mfa_enabled": false,
       "email_verified": true,
-      "created_at": "2026-01-29T05:52:29.009446Z",
-      "updated_at": "2026-01-29T05:52:29.009447Z"
+      "created_at": "2026-01-29T11:43:44.488472Z",
+      "updated_at": "2026-01-29T11:43:44.488474Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:29.251173",
+    "timestamp": "2026-01-29T17:13:44.903634",
     "method": "POST",
     "endpoint": "/auth/login",
     "payload": {
-      "email": "custom_doctor1_1769646146@test.com",
+      "email": "custom_doctor1_1769667223@test.com",
       "password": "SecurePass123!"
     },
     "status": 200,
     "response": "HIDDEN_TOKEN_RESPONSE"
   },
   {
-    "timestamp": "2026-01-29T11:22:29.485465",
+    "timestamp": "2026-01-29T17:13:45.292342",
     "method": "POST",
     "endpoint": "/auth/register",
     "payload": {
-      "email": "custom_doctor2_1769646146@test.com",
+      "email": "custom_doctor2_1769667223@test.com",
       "password": "SecurePass123!",
       "full_name": "Dr. 2 Test",
       "role": "doctor",
       "date_of_birth": "1975-01-01",
       "phone_number": "+15551110002",
+      "organization_name": "Test Hospital",
       "specialty": "Dermatology",
-      "license_number": "LIC-2-1769646146"
+      "license_number": "LIC-2-1769667223"
     },
     "status": 201,
     "response": {
-      "id": "0666f9d7-eb08-4d1f-9a03-5aaeb4f0f1eb",
+      "id": "f2cb85e8-2999-4138-9eba-935ffc84a006",
       "name": "Dr. 2 Test",
-      "email": "custom_doctor2_1769646146@test.com",
+      "email": "custom_doctor2_1769667223@test.com",
       "first_name": "Dr.",
       "last_name": "2 Test",
       "phone_number": "+15551110002",
       "role": "doctor",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
+      "organization_id": "97d20f27-b550-4aae-b976-44e8b6f277b6",
       "mfa_enabled": false,
       "email_verified": true,
-      "created_at": "2026-01-29T05:52:29.476895Z",
-      "updated_at": "2026-01-29T05:52:29.476896Z"
+      "created_at": "2026-01-29T11:43:45.280413Z",
+      "updated_at": "2026-01-29T11:43:45.280415Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:29.715900",
+    "timestamp": "2026-01-29T17:13:45.674314",
     "method": "POST",
     "endpoint": "/auth/login",
     "payload": {
-      "email": "custom_doctor2_1769646146@test.com",
+      "email": "custom_doctor2_1769667223@test.com",
       "password": "SecurePass123!"
     },
     "status": 200,
     "response": "HIDDEN_TOKEN_RESPONSE"
   },
   {
-    "timestamp": "2026-01-29T11:22:29.952737",
+    "timestamp": "2026-01-29T17:13:46.091691",
     "method": "POST",
     "endpoint": "/auth/register",
     "payload": {
-      "email": "custom_doctor3_1769646146@test.com",
+      "email": "custom_doctor3_1769667223@test.com",
       "password": "SecurePass123!",
       "full_name": "Dr. 3 Test",
       "role": "doctor",
       "date_of_birth": "1975-01-01",
       "phone_number": "+15551110003",
+      "organization_name": "Test Hospital",
       "specialty": "Pediatrics",
-      "license_number": "LIC-3-1769646146"
+      "license_number": "LIC-3-1769667223"
     },
     "status": 201,
     "response": {
-      "id": "66d72768-fbd7-4ece-a76d-e03a2cad8542",
+      "id": "ed9aa3d4-3c79-476e-bcb4-1353ef464a5d",
       "name": "Dr. 3 Test",
-      "email": "custom_doctor3_1769646146@test.com",
+      "email": "custom_doctor3_1769667223@test.com",
       "first_name": "Dr.",
       "last_name": "3 Test",
       "phone_number": "+15551110003",
       "role": "doctor",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
+      "organization_id": "97d20f27-b550-4aae-b976-44e8b6f277b6",
       "mfa_enabled": false,
       "email_verified": true,
-      "created_at": "2026-01-29T05:52:29.942001Z",
-      "updated_at": "2026-01-29T05:52:29.942002Z"
+      "created_at": "2026-01-29T11:43:46.072100Z",
+      "updated_at": "2026-01-29T11:43:46.072104Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:30.180385",
+    "timestamp": "2026-01-29T17:13:46.473463",
     "method": "POST",
     "endpoint": "/auth/login",
     "payload": {
-      "email": "custom_doctor3_1769646146@test.com",
+      "email": "custom_doctor3_1769667223@test.com",
       "password": "SecurePass123!"
     },
     "status": 200,
     "response": "HIDDEN_TOKEN_RESPONSE"
   },
   {
-    "timestamp": "2026-01-29T11:22:30.417026",
+    "timestamp": "2026-01-29T17:13:46.860542",
     "method": "POST",
     "endpoint": "/auth/register",
     "payload": {
-      "email": "custom_doctor4_1769646146@test.com",
+      "email": "custom_doctor4_1769667223@test.com",
       "password": "SecurePass123!",
       "full_name": "Dr. 4 Test",
       "role": "doctor",
       "date_of_birth": "1975-01-01",
       "phone_number": "+15551110004",
+      "organization_name": "Test Hospital",
       "specialty": "Neurology",
-      "license_number": "LIC-4-1769646146"
+      "license_number": "LIC-4-1769667223"
     },
     "status": 201,
     "response": {
-      "id": "7abe87d3-4cc8-4f54-9f45-2711a437adba",
+      "id": "86abac17-8bc3-4404-b421-a825c5b5287d",
       "name": "Dr. 4 Test",
-      "email": "custom_doctor4_1769646146@test.com",
+      "email": "custom_doctor4_1769667223@test.com",
       "first_name": "Dr.",
       "last_name": "4 Test",
       "phone_number": "+15551110004",
       "role": "doctor",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
+      "organization_id": "97d20f27-b550-4aae-b976-44e8b6f277b6",
       "mfa_enabled": false,
       "email_verified": true,
-      "created_at": "2026-01-29T05:52:30.406781Z",
-      "updated_at": "2026-01-29T05:52:30.406782Z"
+      "created_at": "2026-01-29T11:43:46.848439Z",
+      "updated_at": "2026-01-29T11:43:46.848441Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:30.645666",
+    "timestamp": "2026-01-29T17:13:47.174989",
     "method": "POST",
     "endpoint": "/auth/login",
     "payload": {
-      "email": "custom_doctor4_1769646146@test.com",
+      "email": "custom_doctor4_1769667223@test.com",
       "password": "SecurePass123!"
     },
     "status": 200,
     "response": "HIDDEN_TOKEN_RESPONSE"
   },
   {
-    "timestamp": "2026-01-29T11:22:30.896403",
+    "timestamp": "2026-01-29T17:13:47.417678",
     "method": "POST",
     "endpoint": "/auth/register",
     "payload": {
-      "email": "custom_doctor5_1769646146@test.com",
+      "email": "custom_doctor5_1769667223@test.com",
       "password": "SecurePass123!",
       "full_name": "Dr. 5 Test",
       "role": "doctor",
       "date_of_birth": "1975-01-01",
       "phone_number": "+15551110005",
+      "organization_name": "Test Hospital",
       "specialty": "Orthopedics",
-      "license_number": "LIC-5-1769646146"
+      "license_number": "LIC-5-1769667223"
     },
     "status": 201,
     "response": {
-      "id": "ae3794f9-e9e1-4e7a-932d-80ee3e193a73",
+      "id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
       "name": "Dr. 5 Test",
-      "email": "custom_doctor5_1769646146@test.com",
+      "email": "custom_doctor5_1769667223@test.com",
       "first_name": "Dr.",
       "last_name": "5 Test",
       "phone_number": "+15551110005",
       "role": "doctor",
-      "organization_id": "1f3484ee-9f41-42b0-bce7-10d1b5fce31c",
+      "organization_id": "97d20f27-b550-4aae-b976-44e8b6f277b6",
       "mfa_enabled": false,
       "email_verified": true,
-      "created_at": "2026-01-29T05:52:30.885747Z",
-      "updated_at": "2026-01-29T05:52:30.885749Z"
+      "created_at": "2026-01-29T11:43:47.404125Z",
+      "updated_at": "2026-01-29T11:43:47.404137Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:31.279477",
+    "timestamp": "2026-01-29T17:13:47.649091",
     "method": "POST",
     "endpoint": "/auth/login",
     "payload": {
-      "email": "custom_doctor5_1769646146@test.com",
+      "email": "custom_doctor5_1769667223@test.com",
       "password": "SecurePass123!"
     },
     "status": 200,
     "response": "HIDDEN_TOKEN_RESPONSE"
   },
   {
-    "timestamp": "2026-01-29T11:22:31.808482",
+    "timestamp": "2026-01-29T17:13:47.893144",
+    "method": "POST",
+    "endpoint": "/doctor/onboard-patient",
+    "payload": {
+      "fullName": "Patient 1 Test",
+      "dateOfBirth": "1980-01-01",
+      "phoneNumber": "+15550000001",
+      "email": "custom_patient1_1769667223@test.com",
+      "password": "SecurePass123!",
+      "gender": "male"
+    },
+    "status": 200,
+    "response": {
+      "message": "Patient onboarded successfully",
+      "patient_id": "e85909dc-fd87-4f56-a2d1-439ebd47ce5a",
+      "email": "custom_patient1_1769667223@test.com",
+      "temporary_password": "SecurePass123!"
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:48.124931",
+    "method": "POST",
+    "endpoint": "/auth/login",
+    "payload": {
+      "email": "custom_patient1_1769667223@test.com",
+      "password": "SecurePass123!"
+    },
+    "status": 200,
+    "response": "HIDDEN_TOKEN_RESPONSE"
+  },
+  {
+    "timestamp": "2026-01-29T17:13:48.363597",
+    "method": "POST",
+    "endpoint": "/doctor/onboard-patient",
+    "payload": {
+      "fullName": "Patient 2 Test",
+      "dateOfBirth": "1980-01-01",
+      "phoneNumber": "+15550000002",
+      "email": "custom_patient2_1769667223@test.com",
+      "password": "SecurePass123!",
+      "gender": "male"
+    },
+    "status": 200,
+    "response": {
+      "message": "Patient onboarded successfully",
+      "patient_id": "ad856d81-283a-4ed7-adb1-0b2367261a09",
+      "email": "custom_patient2_1769667223@test.com",
+      "temporary_password": "SecurePass123!"
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:48.597841",
+    "method": "POST",
+    "endpoint": "/auth/login",
+    "payload": {
+      "email": "custom_patient2_1769667223@test.com",
+      "password": "SecurePass123!"
+    },
+    "status": 200,
+    "response": "HIDDEN_TOKEN_RESPONSE"
+  },
+  {
+    "timestamp": "2026-01-29T17:13:48.832258",
+    "method": "POST",
+    "endpoint": "/doctor/onboard-patient",
+    "payload": {
+      "fullName": "Patient 3 Test",
+      "dateOfBirth": "1980-01-01",
+      "phoneNumber": "+15550000003",
+      "email": "custom_patient3_1769667223@test.com",
+      "password": "SecurePass123!",
+      "gender": "male"
+    },
+    "status": 200,
+    "response": {
+      "message": "Patient onboarded successfully",
+      "patient_id": "af55e1d7-9472-4cda-abd4-ba2a19858246",
+      "email": "custom_patient3_1769667223@test.com",
+      "temporary_password": "SecurePass123!"
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:49.066883",
+    "method": "POST",
+    "endpoint": "/auth/login",
+    "payload": {
+      "email": "custom_patient3_1769667223@test.com",
+      "password": "SecurePass123!"
+    },
+    "status": 200,
+    "response": "HIDDEN_TOKEN_RESPONSE"
+  },
+  {
+    "timestamp": "2026-01-29T17:13:49.309895",
+    "method": "POST",
+    "endpoint": "/doctor/onboard-patient",
+    "payload": {
+      "fullName": "Patient 4 Test",
+      "dateOfBirth": "1980-01-01",
+      "phoneNumber": "+15550000004",
+      "email": "custom_patient4_1769667223@test.com",
+      "password": "SecurePass123!",
+      "gender": "male"
+    },
+    "status": 200,
+    "response": {
+      "message": "Patient onboarded successfully",
+      "patient_id": "1a08c527-478b-418c-a699-0f88d13c751d",
+      "email": "custom_patient4_1769667223@test.com",
+      "temporary_password": "SecurePass123!"
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:49.539831",
+    "method": "POST",
+    "endpoint": "/auth/login",
+    "payload": {
+      "email": "custom_patient4_1769667223@test.com",
+      "password": "SecurePass123!"
+    },
+    "status": 200,
+    "response": "HIDDEN_TOKEN_RESPONSE"
+  },
+  {
+    "timestamp": "2026-01-29T17:13:49.794272",
+    "method": "POST",
+    "endpoint": "/doctor/onboard-patient",
+    "payload": {
+      "fullName": "Patient 5 Test",
+      "dateOfBirth": "1980-01-01",
+      "phoneNumber": "+15550000005",
+      "email": "custom_patient5_1769667223@test.com",
+      "password": "SecurePass123!",
+      "gender": "male"
+    },
+    "status": 200,
+    "response": {
+      "message": "Patient onboarded successfully",
+      "patient_id": "c451c917-277e-4479-aaac-16924d168410",
+      "email": "custom_patient5_1769667223@test.com",
+      "temporary_password": "SecurePass123!"
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.028507",
+    "method": "POST",
+    "endpoint": "/auth/login",
+    "payload": {
+      "email": "custom_patient5_1769667223@test.com",
+      "password": "SecurePass123!"
+    },
+    "status": 200,
+    "response": "HIDDEN_TOKEN_RESPONSE"
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.230921",
     "method": "POST",
     "endpoint": "/patient/medical-history",
     "payload": {
@@ -422,18 +387,18 @@ Generated: 2026-01-29T11:28:00.992751
     },
     "status": 201,
     "response": {
-      "id": "92bed5a1-7bf1-424c-9d4b-0b0aade1f079",
+      "id": "0a47a064-22d2-469c-a4be-5023c5123d5c",
       "file_name": "CamScanner 1-11-26 13.41.pdf",
       "category": "LAB_REPORT",
       "title": "Uploaded: CamScanner 1-11-26 13.41.pdf",
       "notes": "Test upload of CamScanner 1-11-26 13.41.pdf",
       "file_size": 7971926,
-      "uploaded_at": "2026-01-29T05:52:31.781657Z",
-      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/1f3484ee-9f41-42b0-bce7-10d1b5fce31c/6157cecd-b8c0-4a04-8e14-6dfac123232c/0e993a80-e94a-40c1-a3eb-6f8cc19613ad.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T055231Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=8f9e4c8aa77611dbb910c05b75a4db4405e4b74c6ba708b5c5a6421ce9e2348d"
+      "uploaded_at": "2026-01-29T11:43:50.212205Z",
+      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/97d20f27-b550-4aae-b976-44e8b6f277b6/e85909dc-fd87-4f56-a2d1-439ebd47ce5a/7d0cdec4-ecff-4300-829e-2b0cfd219bb2.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T114350Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=8d12b2ae9e2e201d74d3adcc6918d375456a2bbb2fbcb7f4d89609796d79798b"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:31.862738",
+    "timestamp": "2026-01-29T17:13:50.261766",
     "method": "POST",
     "endpoint": "/patient/medical-history",
     "payload": {
@@ -443,18 +408,18 @@ Generated: 2026-01-29T11:28:00.992751
     },
     "status": 201,
     "response": {
-      "id": "e7477df9-06b2-4de6-b979-a1dba7388cf5",
+      "id": "2d57995b-d91e-4baa-a5ff-e8f1d8046ba4",
       "file_name": "K_V_VENKATARAMAN__report.pdf",
       "category": "LAB_REPORT",
       "title": "Uploaded: K_V_VENKATARAMAN__report.pdf",
       "notes": "Test upload of K_V_VENKATARAMAN__report.pdf",
       "file_size": 180811,
-      "uploaded_at": "2026-01-29T05:52:31.843472Z",
-      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/1f3484ee-9f41-42b0-bce7-10d1b5fce31c/a7a96efb-82e7-4f91-8fe8-e65f530946ae/e06dc471-e297-410a-b112-2dcb744b978e.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T055231Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=74834e5051482b796d2becff5b860f64f81a237a751262170b69022a2609c4da"
+      "uploaded_at": "2026-01-29T11:43:50.252839Z",
+      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/97d20f27-b550-4aae-b976-44e8b6f277b6/ad856d81-283a-4ed7-adb1-0b2367261a09/46ac056a-d8da-4704-94c2-74211d64d27b.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T114350Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=a6ffb5f854cf0ec8d5a63b2e3be762d3faea740afe5192443edf84576c3de311"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:31.907222",
+    "timestamp": "2026-01-29T17:13:50.288605",
     "method": "POST",
     "endpoint": "/patient/medical-history",
     "payload": {
@@ -464,18 +429,18 @@ Generated: 2026-01-29T11:28:00.992751
     },
     "status": 201,
     "response": {
-      "id": "07cea1a8-b82f-4b53-a564-f77dee6c90e0",
+      "id": "c411d0a4-c51e-4c6a-be6e-541d5b8053ed",
       "file_name": "Synthetic_Patient_02_es.pdf",
       "category": "LAB_REPORT",
       "title": "Uploaded: Synthetic_Patient_02_es.pdf",
       "notes": "Test upload of Synthetic_Patient_02_es.pdf",
       "file_size": 41238,
-      "uploaded_at": "2026-01-29T05:52:31.893886Z",
-      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/1f3484ee-9f41-42b0-bce7-10d1b5fce31c/4a5eebc8-fff6-4549-9483-0ff7303803d1/06f6d59f-75f0-4d36-9633-02175396f6a3.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T055231Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=a8ba8689a1b5ee488dc1eb85da5ea930971cadc3ef2ef57bf025645a91ae4f59"
+      "uploaded_at": "2026-01-29T11:43:50.279982Z",
+      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/97d20f27-b550-4aae-b976-44e8b6f277b6/af55e1d7-9472-4cda-abd4-ba2a19858246/55a626a1-994d-4c96-85a8-d81df6c0b219.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T114350Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=14479049d5db8f80ed782dada9864b4aeb158c9a8f3cd7bbaee8215e95b93298"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:31.950362",
+    "timestamp": "2026-01-29T17:13:50.314336",
     "method": "POST",
     "endpoint": "/patient/medical-history",
     "payload": {
@@ -485,18 +450,18 @@ Generated: 2026-01-29T11:28:00.992751
     },
     "status": 201,
     "response": {
-      "id": "8b0ec267-cfe1-40e9-a96f-d80ae8059c37",
+      "id": "02f70b5b-0bc9-48ba-9dbd-973af81f1ffa",
       "file_name": "Synthetic_Patient_04_ar.pdf",
       "category": "LAB_REPORT",
       "title": "Uploaded: Synthetic_Patient_04_ar.pdf",
       "notes": "Test upload of Synthetic_Patient_04_ar.pdf",
       "file_size": 61797,
-      "uploaded_at": "2026-01-29T05:52:31.934117Z",
-      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/1f3484ee-9f41-42b0-bce7-10d1b5fce31c/a9821820-cf9a-43f0-aa1e-69d9a9cb1bdc/88019f2a-f31a-4dd2-afe2-1136cde4c45c.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T055231Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=bb6527b2613702ab2cb721a66354ce3a74da59b7fa6191c92c337c56721234e1"
+      "uploaded_at": "2026-01-29T11:43:50.304956Z",
+      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/97d20f27-b550-4aae-b976-44e8b6f277b6/1a08c527-478b-418c-a699-0f88d13c751d/d34a8c4b-6781-493e-8e50-34d4e938cfdc.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T114350Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=5ed43103d806415fef0dbe9d09f503b3aff4427a5c3fb8f3bf7c7d0b2c1633d0"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:31.987022",
+    "timestamp": "2026-01-29T17:13:50.341296",
     "method": "POST",
     "endpoint": "/patient/medical-history",
     "payload": {
@@ -506,18 +471,35 @@ Generated: 2026-01-29T11:28:00.992751
     },
     "status": 201,
     "response": {
-      "id": "0b0bb4f9-7496-4c3b-8398-25893c6d2ae3",
+      "id": "da1f18ed-3bf8-445f-8d09-756e1f7478c9",
       "file_name": "Synthetic_Patient_06_hi-1.pdf",
       "category": "LAB_REPORT",
       "title": "Uploaded: Synthetic_Patient_06_hi-1.pdf",
       "notes": "Test upload of Synthetic_Patient_06_hi-1.pdf",
       "file_size": 54818,
-      "uploaded_at": "2026-01-29T05:52:31.973611Z",
-      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/1f3484ee-9f41-42b0-bce7-10d1b5fce31c/e68d689f-ccee-4447-a4fb-4b9e2352cd08/f8d46039-9210-41c3-afbe-3761e37fda2b.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T055231Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=497d10d00803485b8a6319a2fa6f1e61f12519f733ef461cf3ea6f4de9c43162"
+      "uploaded_at": "2026-01-29T11:43:50.331921Z",
+      "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/97d20f27-b550-4aae-b976-44e8b6f277b6/c451c917-277e-4479-aaac-16924d168410/f14f3e80-db8d-41cb-b617-40cc68d71cd7.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T114350Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=3014993216960cbe5ea8251fb61759cae672d2edbe09143fe27ce3b2cb3a9f74"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.022572",
+    "timestamp": "2026-01-29T17:13:50.359585",
+    "method": "GET",
+    "endpoint": "/doctors/search",
+    "payload": {},
+    "status": 200,
+    "response": {
+      "results": [
+        {
+          "id": "59badcd8-c6d7-4880-ae92-82c219a589e4",
+          "name": "Dr. 1 Test",
+          "specialty": null,
+          "photo_url": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.373834",
     "method": "GET",
     "endpoint": "/doctors/search",
     "payload": {
@@ -527,13 +509,7 @@ Generated: 2026-01-29T11:28:00.992751
     "response": {
       "results": [
         {
-          "id": "18c79a7e-75a2-4c35-97b0-f3e5158dfd71",
-          "name": "Dr. 1 Test",
-          "specialty": null,
-          "photo_url": null
-        },
-        {
-          "id": "f30140b7-4441-40b9-bbde-1e44dbfe1cee",
+          "id": "59badcd8-c6d7-4880-ae92-82c219a589e4",
           "name": "Dr. 1 Test",
           "specialty": null,
           "photo_url": null
@@ -542,34 +518,51 @@ Generated: 2026-01-29T11:28:00.992751
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.065136",
+    "timestamp": "2026-01-29T17:13:50.405598",
     "method": "POST",
     "endpoint": "/appointments/request",
     "payload": {
-      "doctor_id": "f30140b7-4441-40b9-bbde-1e44dbfe1cee",
-      "requested_date": "2026-01-30T05:52:32.022660",
+      "doctor_id": "59badcd8-c6d7-4880-ae92-82c219a589e4",
+      "requested_date": "2026-01-30T11:43:50.373951",
       "reason": "Consultation request from Patient 1 Test",
       "grant_access_to_history": true
     },
     "status": 201,
     "response": {
-      "doctor_id": "f30140b7-4441-40b9-bbde-1e44dbfe1cee",
-      "requested_date": "2026-01-30T05:52:32.022660Z",
+      "doctor_id": "59badcd8-c6d7-4880-ae92-82c219a589e4",
+      "requested_date": "2026-01-30T11:43:50.373951Z",
       "reason": "Consultation request from Patient 1 Test",
-      "id": "38641d3a-6044-43e7-98ea-898556afabf4",
-      "patient_id": "6157cecd-b8c0-4a04-8e14-6dfac123232c",
+      "id": "1b793443-1f65-4dbe-9071-5bb26f7067be",
+      "patient_id": "e85909dc-fd87-4f56-a2d1-439ebd47ce5a",
       "status": "pending",
       "doctor_notes": null,
       "meeting_id": null,
       "join_url": null,
       "start_url": null,
       "meeting_password": null,
-      "created_at": "2026-01-29T05:52:32.039210Z",
-      "updated_at": "2026-01-29T05:52:32.039213Z"
+      "created_at": "2026-01-29T11:43:50.384392Z",
+      "updated_at": "2026-01-29T11:43:50.384393Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.095488",
+    "timestamp": "2026-01-29T17:13:50.419914",
+    "method": "GET",
+    "endpoint": "/doctors/search",
+    "payload": {},
+    "status": 200,
+    "response": {
+      "results": [
+        {
+          "id": "f2cb85e8-2999-4138-9eba-935ffc84a006",
+          "name": "Dr. 2 Test",
+          "specialty": null,
+          "photo_url": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.434107",
     "method": "GET",
     "endpoint": "/doctors/search",
     "payload": {
@@ -579,13 +572,7 @@ Generated: 2026-01-29T11:28:00.992751
     "response": {
       "results": [
         {
-          "id": "7defcacf-ef8d-4b6c-bf16-916121dc0db7",
-          "name": "Dr. 2 Test",
-          "specialty": null,
-          "photo_url": null
-        },
-        {
-          "id": "0666f9d7-eb08-4d1f-9a03-5aaeb4f0f1eb",
+          "id": "f2cb85e8-2999-4138-9eba-935ffc84a006",
           "name": "Dr. 2 Test",
           "specialty": null,
           "photo_url": null
@@ -594,34 +581,51 @@ Generated: 2026-01-29T11:28:00.992751
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.121170",
+    "timestamp": "2026-01-29T17:13:50.450455",
     "method": "POST",
     "endpoint": "/appointments/request",
     "payload": {
-      "doctor_id": "0666f9d7-eb08-4d1f-9a03-5aaeb4f0f1eb",
-      "requested_date": "2026-01-31T05:52:32.095540",
+      "doctor_id": "f2cb85e8-2999-4138-9eba-935ffc84a006",
+      "requested_date": "2026-01-31T11:43:50.434142",
       "reason": "Consultation request from Patient 2 Test",
       "grant_access_to_history": true
     },
     "status": 201,
     "response": {
-      "doctor_id": "0666f9d7-eb08-4d1f-9a03-5aaeb4f0f1eb",
-      "requested_date": "2026-01-31T05:52:32.095540Z",
+      "doctor_id": "f2cb85e8-2999-4138-9eba-935ffc84a006",
+      "requested_date": "2026-01-31T11:43:50.434142Z",
       "reason": "Consultation request from Patient 2 Test",
-      "id": "737d11ff-a86a-421e-b640-91a4012ae3c6",
-      "patient_id": "a7a96efb-82e7-4f91-8fe8-e65f530946ae",
+      "id": "5a80056a-fb2a-40f8-830f-459e65501c7c",
+      "patient_id": "ad856d81-283a-4ed7-adb1-0b2367261a09",
       "status": "pending",
       "doctor_notes": null,
       "meeting_id": null,
       "join_url": null,
       "start_url": null,
       "meeting_password": null,
-      "created_at": "2026-01-29T05:52:32.109196Z",
-      "updated_at": "2026-01-29T05:52:32.109198Z"
+      "created_at": "2026-01-29T11:43:50.444359Z",
+      "updated_at": "2026-01-29T11:43:50.444360Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.152671",
+    "timestamp": "2026-01-29T17:13:50.465002",
+    "method": "GET",
+    "endpoint": "/doctors/search",
+    "payload": {},
+    "status": 200,
+    "response": {
+      "results": [
+        {
+          "id": "ed9aa3d4-3c79-476e-bcb4-1353ef464a5d",
+          "name": "Dr. 3 Test",
+          "specialty": null,
+          "photo_url": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.481155",
     "method": "GET",
     "endpoint": "/doctors/search",
     "payload": {
@@ -631,13 +635,7 @@ Generated: 2026-01-29T11:28:00.992751
     "response": {
       "results": [
         {
-          "id": "7190c3b7-6d4a-4e0a-8f69-7a1d403130b5",
-          "name": "Dr. 3 Test",
-          "specialty": null,
-          "photo_url": null
-        },
-        {
-          "id": "66d72768-fbd7-4ece-a76d-e03a2cad8542",
+          "id": "ed9aa3d4-3c79-476e-bcb4-1353ef464a5d",
           "name": "Dr. 3 Test",
           "specialty": null,
           "photo_url": null
@@ -646,34 +644,51 @@ Generated: 2026-01-29T11:28:00.992751
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.182680",
+    "timestamp": "2026-01-29T17:13:50.500772",
     "method": "POST",
     "endpoint": "/appointments/request",
     "payload": {
-      "doctor_id": "66d72768-fbd7-4ece-a76d-e03a2cad8542",
-      "requested_date": "2026-02-01T05:52:32.152704",
+      "doctor_id": "ed9aa3d4-3c79-476e-bcb4-1353ef464a5d",
+      "requested_date": "2026-02-01T11:43:50.481190",
       "reason": "Consultation request from Patient 3 Test",
       "grant_access_to_history": true
     },
     "status": 201,
     "response": {
-      "doctor_id": "66d72768-fbd7-4ece-a76d-e03a2cad8542",
-      "requested_date": "2026-02-01T05:52:32.152704Z",
+      "doctor_id": "ed9aa3d4-3c79-476e-bcb4-1353ef464a5d",
+      "requested_date": "2026-02-01T11:43:50.481190Z",
       "reason": "Consultation request from Patient 3 Test",
-      "id": "46517a25-a846-494b-9fe2-afe82573486d",
-      "patient_id": "4a5eebc8-fff6-4549-9483-0ff7303803d1",
+      "id": "8def18b9-b8ce-460a-95cc-7b968e8d68f6",
+      "patient_id": "af55e1d7-9472-4cda-abd4-ba2a19858246",
       "status": "pending",
       "doctor_notes": null,
       "meeting_id": null,
       "join_url": null,
       "start_url": null,
       "meeting_password": null,
-      "created_at": "2026-01-29T05:52:32.167714Z",
-      "updated_at": "2026-01-29T05:52:32.167718Z"
+      "created_at": "2026-01-29T11:43:50.491062Z",
+      "updated_at": "2026-01-29T11:43:50.491063Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.212433",
+    "timestamp": "2026-01-29T17:13:50.516344",
+    "method": "GET",
+    "endpoint": "/doctors/search",
+    "payload": {},
+    "status": 200,
+    "response": {
+      "results": [
+        {
+          "id": "86abac17-8bc3-4404-b421-a825c5b5287d",
+          "name": "Dr. 4 Test",
+          "specialty": null,
+          "photo_url": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.531721",
     "method": "GET",
     "endpoint": "/doctors/search",
     "payload": {
@@ -683,13 +698,7 @@ Generated: 2026-01-29T11:28:00.992751
     "response": {
       "results": [
         {
-          "id": "9295aa5c-c773-4cd9-b909-d4a018413347",
-          "name": "Dr. 4 Test",
-          "specialty": null,
-          "photo_url": null
-        },
-        {
-          "id": "7abe87d3-4cc8-4f54-9f45-2711a437adba",
+          "id": "86abac17-8bc3-4404-b421-a825c5b5287d",
           "name": "Dr. 4 Test",
           "specialty": null,
           "photo_url": null
@@ -698,34 +707,51 @@ Generated: 2026-01-29T11:28:00.992751
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.238972",
+    "timestamp": "2026-01-29T17:13:50.551844",
     "method": "POST",
     "endpoint": "/appointments/request",
     "payload": {
-      "doctor_id": "7abe87d3-4cc8-4f54-9f45-2711a437adba",
-      "requested_date": "2026-02-02T05:52:32.212474",
+      "doctor_id": "86abac17-8bc3-4404-b421-a825c5b5287d",
+      "requested_date": "2026-02-02T11:43:50.531766",
       "reason": "Consultation request from Patient 4 Test",
       "grant_access_to_history": true
     },
     "status": 201,
     "response": {
-      "doctor_id": "7abe87d3-4cc8-4f54-9f45-2711a437adba",
-      "requested_date": "2026-02-02T05:52:32.212474Z",
+      "doctor_id": "86abac17-8bc3-4404-b421-a825c5b5287d",
+      "requested_date": "2026-02-02T11:43:50.531766Z",
       "reason": "Consultation request from Patient 4 Test",
-      "id": "110df84d-f0e9-4ebc-bd6c-6213f24c8350",
-      "patient_id": "a9821820-cf9a-43f0-aa1e-69d9a9cb1bdc",
+      "id": "f73e4a54-6af8-4254-b8a9-7c39fb4624bc",
+      "patient_id": "1a08c527-478b-418c-a699-0f88d13c751d",
       "status": "pending",
       "doctor_notes": null,
       "meeting_id": null,
       "join_url": null,
       "start_url": null,
       "meeting_password": null,
-      "created_at": "2026-01-29T05:52:32.228007Z",
-      "updated_at": "2026-01-29T05:52:32.228008Z"
+      "created_at": "2026-01-29T11:43:50.542988Z",
+      "updated_at": "2026-01-29T11:43:50.542989Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.270211",
+    "timestamp": "2026-01-29T17:13:50.565271",
+    "method": "GET",
+    "endpoint": "/doctors/search",
+    "payload": {},
+    "status": 200,
+    "response": {
+      "results": [
+        {
+          "id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
+          "name": "Dr. 5 Test",
+          "specialty": null,
+          "photo_url": null
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-01-29T17:13:50.581538",
     "method": "GET",
     "endpoint": "/doctors/search",
     "payload": {
@@ -735,13 +761,7 @@ Generated: 2026-01-29T11:28:00.992751
     "response": {
       "results": [
         {
-          "id": "76bb6844-5358-41b9-b86c-5e3849ecc46d",
-          "name": "Dr. 5 Test",
-          "specialty": null,
-          "photo_url": null
-        },
-        {
-          "id": "ae3794f9-e9e1-4e7a-932d-80ee3e193a73",
+          "id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
           "name": "Dr. 5 Test",
           "specialty": null,
           "photo_url": null
@@ -750,238 +770,238 @@ Generated: 2026-01-29T11:28:00.992751
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:32.297418",
+    "timestamp": "2026-01-29T17:13:50.599392",
     "method": "POST",
     "endpoint": "/appointments/request",
     "payload": {
-      "doctor_id": "ae3794f9-e9e1-4e7a-932d-80ee3e193a73",
-      "requested_date": "2026-02-03T05:52:32.270248",
+      "doctor_id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
+      "requested_date": "2026-02-03T11:43:50.581569",
       "reason": "Consultation request from Patient 5 Test",
       "grant_access_to_history": true
     },
     "status": 201,
     "response": {
-      "doctor_id": "ae3794f9-e9e1-4e7a-932d-80ee3e193a73",
-      "requested_date": "2026-02-03T05:52:32.270248Z",
+      "doctor_id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
+      "requested_date": "2026-02-03T11:43:50.581569Z",
       "reason": "Consultation request from Patient 5 Test",
-      "id": "f68c272f-1c8d-4184-bb30-894d42d0e1d3",
-      "patient_id": "e68d689f-ccee-4447-a4fb-4b9e2352cd08",
+      "id": "c6839bf1-c8cd-4985-a410-7c1ed0daf712",
+      "patient_id": "c451c917-277e-4479-aaac-16924d168410",
       "status": "pending",
       "doctor_notes": null,
       "meeting_id": null,
       "join_url": null,
       "start_url": null,
       "meeting_password": null,
-      "created_at": "2026-01-29T05:52:32.284248Z",
-      "updated_at": "2026-01-29T05:52:32.284251Z"
+      "created_at": "2026-01-29T11:43:50.591828Z",
+      "updated_at": "2026-01-29T11:43:50.591831Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:35.220621",
+    "timestamp": "2026-01-29T17:13:52.694570",
     "method": "POST",
-    "endpoint": "/appointments/38641d3a-6044-43e7-98ea-898556afabf4/approve",
+    "endpoint": "/appointments/1b793443-1f65-4dbe-9071-5bb26f7067be/approve",
     "payload": {
-      "appointment_time": "2026-02-03T05:52:32.297585",
+      "appointment_time": "2026-02-03T11:43:50.599538",
       "doctor_notes": "See you then."
     },
     "status": 200,
     "response": {
-      "doctor_id": "f30140b7-4441-40b9-bbde-1e44dbfe1cee",
-      "requested_date": "2026-02-03T05:52:32.297585Z",
+      "doctor_id": "59badcd8-c6d7-4880-ae92-82c219a589e4",
+      "requested_date": "2026-02-03T11:43:50.599538Z",
       "reason": "Consultation request from Patient 1 Test",
-      "id": "38641d3a-6044-43e7-98ea-898556afabf4",
-      "patient_id": "6157cecd-b8c0-4a04-8e14-6dfac123232c",
+      "id": "1b793443-1f65-4dbe-9071-5bb26f7067be",
+      "patient_id": "e85909dc-fd87-4f56-a2d1-439ebd47ce5a",
       "status": "accepted",
       "doctor_notes": "See you then.",
-      "meeting_id": "98930526983",
-      "join_url": "https://zoom.us/j/98930526983?pwd=knqbyCLrcLZW1enYW0W21fdNqa6vSB.1",
-      "start_url": "https://zoom.us/s/98930526983?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5ODkzMDUyNjk4MyIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6IjJhMzU4YmFiZWZkNDRjMjdiNTIwYzIyZDY3YTFkOTc5Iiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2NzMxNTQsImlhdCI6MTc2OTY2NTk1NCwiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.MGvBzcJLNBu_Y8PgJs-LxzcSZ70WVZ3C2aWVnAqH8lo",
-      "meeting_password": "MnaS6C",
-      "created_at": "2026-01-29T05:52:32.039210Z",
-      "updated_at": "2026-01-29T05:52:35.196741Z"
+      "meeting_id": "92523402076",
+      "join_url": "https://zoom.us/j/92523402076?pwd=4H3e5KF10EQxekXLRNbGLHehSYmBTU.1",
+      "start_url": "https://zoom.us/s/92523402076?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5MjUyMzQwMjA3NiIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6ImU2NDBjMmNjOTk4ZDQ4MDZiNzhmY2U0MGJmMzA3M2ZlIiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2OTQyMzIsImlhdCI6MTc2OTY4NzAzMiwiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.eVfw_H0OsQ5GBGNUjaMiQzk4d-0OdZeWKwywrknlaOM",
+      "meeting_password": "eUCt5X",
+      "created_at": "2026-01-29T11:43:50.384392Z",
+      "updated_at": "2026-01-29T11:43:52.681336Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:35.256578",
+    "timestamp": "2026-01-29T17:13:52.715579",
     "method": "PATCH",
-    "endpoint": "/appointments/737d11ff-a86a-421e-b640-91a4012ae3c6/status",
+    "endpoint": "/appointments/5a80056a-fb2a-40f8-830f-459e65501c7c/status",
     "payload": {
       "status": "declined",
       "doctor_notes": "Cannot make it."
     },
     "status": 200,
     "response": {
-      "doctor_id": "0666f9d7-eb08-4d1f-9a03-5aaeb4f0f1eb",
-      "requested_date": "2026-01-31T05:52:32.095540Z",
+      "doctor_id": "f2cb85e8-2999-4138-9eba-935ffc84a006",
+      "requested_date": "2026-01-31T11:43:50.434142Z",
       "reason": "Consultation request from Patient 2 Test",
-      "id": "737d11ff-a86a-421e-b640-91a4012ae3c6",
-      "patient_id": "a7a96efb-82e7-4f91-8fe8-e65f530946ae",
+      "id": "5a80056a-fb2a-40f8-830f-459e65501c7c",
+      "patient_id": "ad856d81-283a-4ed7-adb1-0b2367261a09",
       "status": "declined",
       "doctor_notes": "Cannot make it.",
       "meeting_id": null,
       "join_url": null,
       "start_url": null,
       "meeting_password": null,
-      "created_at": "2026-01-29T05:52:32.109196Z",
-      "updated_at": "2026-01-29T05:52:35.239295Z"
+      "created_at": "2026-01-29T11:43:50.444359Z",
+      "updated_at": "2026-01-29T11:43:52.706385Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:37.051741",
+    "timestamp": "2026-01-29T17:13:53.854487",
     "method": "POST",
-    "endpoint": "/appointments/46517a25-a846-494b-9fe2-afe82573486d/approve",
+    "endpoint": "/appointments/8def18b9-b8ce-460a-95cc-7b968e8d68f6/approve",
     "payload": {
-      "appointment_time": "2026-02-03T05:52:35.256642",
+      "appointment_time": "2026-02-03T11:43:52.715647",
       "doctor_notes": "See you then."
     },
     "status": 200,
     "response": {
-      "doctor_id": "66d72768-fbd7-4ece-a76d-e03a2cad8542",
-      "requested_date": "2026-02-03T05:52:35.256642Z",
+      "doctor_id": "ed9aa3d4-3c79-476e-bcb4-1353ef464a5d",
+      "requested_date": "2026-02-03T11:43:52.715647Z",
       "reason": "Consultation request from Patient 3 Test",
-      "id": "46517a25-a846-494b-9fe2-afe82573486d",
-      "patient_id": "4a5eebc8-fff6-4549-9483-0ff7303803d1",
+      "id": "8def18b9-b8ce-460a-95cc-7b968e8d68f6",
+      "patient_id": "af55e1d7-9472-4cda-abd4-ba2a19858246",
       "status": "accepted",
       "doctor_notes": "See you then.",
-      "meeting_id": "99356544455",
-      "join_url": "https://zoom.us/j/99356544455?pwd=LyyrlfExuOFMHOmpZWYxTmzzlBstKC.1",
-      "start_url": "https://zoom.us/s/99356544455?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5OTM1NjU0NDQ1NSIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6ImRlNzhjZmU0YjgxMzQzZjRhMWFkYWFkYTI0ZWM2ZTRlIiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2NzMxNTYsImlhdCI6MTc2OTY2NTk1NiwiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.kTeFBu87ADjq6zrilQy7Dr-2_4I6b6qZTO5vubBXiWE",
-      "meeting_password": "ns29ZV",
-      "created_at": "2026-01-29T05:52:32.167714Z",
-      "updated_at": "2026-01-29T05:52:37.040371Z"
+      "meeting_id": "94074418865",
+      "join_url": "https://zoom.us/j/94074418865?pwd=4dYx0K02VR8um5AtJ6ISNaQ2QAhwLA.1",
+      "start_url": "https://zoom.us/s/94074418865?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5NDA3NDQxODg2NSIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6IjI0Mzk1ZDJjNjY3ODQ3ZDc4NjA4OTBkOWE1Yzg4MTYwIiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2OTQyMzMsImlhdCI6MTc2OTY4NzAzMywiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.83KxkB93hIjfFN1yfymYmZVGkxe03I71HLvq_x6OEJY",
+      "meeting_password": "tutz3i",
+      "created_at": "2026-01-29T11:43:50.491062Z",
+      "updated_at": "2026-01-29T11:43:53.837874Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:38.940995",
+    "timestamp": "2026-01-29T17:13:55.469868",
     "method": "POST",
-    "endpoint": "/appointments/110df84d-f0e9-4ebc-bd6c-6213f24c8350/approve",
+    "endpoint": "/appointments/f73e4a54-6af8-4254-b8a9-7c39fb4624bc/approve",
     "payload": {
-      "appointment_time": "2026-02-03T05:52:37.051827",
+      "appointment_time": "2026-02-03T11:43:53.854575",
       "doctor_notes": "See you then."
     },
     "status": 200,
     "response": {
-      "doctor_id": "7abe87d3-4cc8-4f54-9f45-2711a437adba",
-      "requested_date": "2026-02-03T05:52:37.051827Z",
+      "doctor_id": "86abac17-8bc3-4404-b421-a825c5b5287d",
+      "requested_date": "2026-02-03T11:43:53.854575Z",
       "reason": "Consultation request from Patient 4 Test",
-      "id": "110df84d-f0e9-4ebc-bd6c-6213f24c8350",
-      "patient_id": "a9821820-cf9a-43f0-aa1e-69d9a9cb1bdc",
+      "id": "f73e4a54-6af8-4254-b8a9-7c39fb4624bc",
+      "patient_id": "1a08c527-478b-418c-a699-0f88d13c751d",
       "status": "accepted",
       "doctor_notes": "See you then.",
-      "meeting_id": "96554368752",
-      "join_url": "https://zoom.us/j/96554368752?pwd=ib2aEU6PGTxJ0bbaAUjga5jd4SPRb9.1",
-      "start_url": "https://zoom.us/s/96554368752?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5NjU1NDM2ODc1MiIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6ImQ3OTM0ZWM4MmEzZjQ5NjM4ZWY0YzhiYzNjMjA2MzA5Iiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2NzMxNTgsImlhdCI6MTc2OTY2NTk1OCwiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.XcBNLDU1VXZWVSy7MVn6iG9PkeJM0GnZyVoiPRbsdgE",
-      "meeting_password": "9nMXrN",
-      "created_at": "2026-01-29T05:52:32.228007Z",
-      "updated_at": "2026-01-29T05:52:38.926190Z"
+      "meeting_id": "94389047908",
+      "join_url": "https://zoom.us/j/94389047908?pwd=cFqbtlauLfio8pevoFZGvJz9ho43lS.1",
+      "start_url": "https://zoom.us/s/94389047908?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5NDM4OTA0NzkwOCIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6IjMwNmQ5MmNlMjM2MDQzNDFiNTc5MDg1ZDIyOWIxNDY4Iiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2OTQyMzUsImlhdCI6MTc2OTY4NzAzNSwiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.hx08BsyKI0-SWBBohTdYuaJM-MAieFQaun6K2v4Yuhc",
+      "meeting_password": "d58icV",
+      "created_at": "2026-01-29T11:43:50.542988Z",
+      "updated_at": "2026-01-29T11:43:55.456923Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:41.375934",
+    "timestamp": "2026-01-29T17:13:57.926844",
     "method": "POST",
-    "endpoint": "/appointments/f68c272f-1c8d-4184-bb30-894d42d0e1d3/approve",
+    "endpoint": "/appointments/c6839bf1-c8cd-4985-a410-7c1ed0daf712/approve",
     "payload": {
-      "appointment_time": "2026-02-03T05:52:38.941262",
+      "appointment_time": "2026-02-03T11:43:55.469924",
       "doctor_notes": "See you then."
     },
     "status": 200,
     "response": {
-      "doctor_id": "ae3794f9-e9e1-4e7a-932d-80ee3e193a73",
-      "requested_date": "2026-02-03T05:52:38.941262Z",
+      "doctor_id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
+      "requested_date": "2026-02-03T11:43:55.469924Z",
       "reason": "Consultation request from Patient 5 Test",
-      "id": "f68c272f-1c8d-4184-bb30-894d42d0e1d3",
-      "patient_id": "e68d689f-ccee-4447-a4fb-4b9e2352cd08",
+      "id": "c6839bf1-c8cd-4985-a410-7c1ed0daf712",
+      "patient_id": "c451c917-277e-4479-aaac-16924d168410",
       "status": "accepted",
       "doctor_notes": "See you then.",
-      "meeting_id": "95025787505",
-      "join_url": "https://zoom.us/j/95025787505?pwd=UB8L6ILN4EdmvSx9mGoT31NJxt22E9.1",
-      "start_url": "https://zoom.us/s/95025787505?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5NTAyNTc4NzUwNSIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6ImU0NGRiODY4ODA4MTQ5NWNiMGMwODdjNzY1OTU4Y2Q0Iiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2NzMxNjEsImlhdCI6MTc2OTY2NTk2MSwiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.PvIZFUEQV90beVHisYAwhwBgQdjtyi7GfbgWlwCIBvM",
-      "meeting_password": "1dbiMG",
-      "created_at": "2026-01-29T05:52:32.284248Z",
-      "updated_at": "2026-01-29T05:52:41.340703Z"
+      "meeting_id": "94291748160",
+      "join_url": "https://zoom.us/j/94291748160?pwd=GELSq66Ibgf24rOFwqItqAbJ0noZ8N.1",
+      "start_url": "https://zoom.us/s/94291748160?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI5NDI5MTc0ODE2MCIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6IjA0ZTkwM2MxYmI5NDQxOWNiYjUzNjA3OWYyYjUwMDYwIiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJhdzEiLCJleHAiOjE3Njk2OTQyMzcsImlhdCI6MTc2OTY4NzAzNywiYWlkIjoiWkp0ZE5CRTBSckNZSjRXQjJzeFRsdyIsImNpZCI6IiJ9.ik0vxG68N4C3tl-kL80x0cGF_VaakSeAM9_isfdUD0k",
+      "meeting_password": "xC1jQY",
+      "created_at": "2026-01-29T11:43:50.591828Z",
+      "updated_at": "2026-01-29T11:43:57.913406Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:41.411462",
+    "timestamp": "2026-01-29T17:13:57.963485",
     "method": "GET",
-    "endpoint": "/doctor/patients/6157cecd-b8c0-4a04-8e14-6dfac123232c/documents",
+    "endpoint": "/doctor/patients/e85909dc-fd87-4f56-a2d1-439ebd47ce5a/documents",
     "payload": {},
     "status": 200,
     "response": [
       {
-        "id": "92bed5a1-7bf1-424c-9d4b-0b0aade1f079",
+        "id": "0a47a064-22d2-469c-a4be-5023c5123d5c",
         "file_name": "CamScanner 1-11-26 13.41.pdf",
         "category": "LAB_REPORT",
         "title": "Uploaded: CamScanner 1-11-26 13.41.pdf",
         "notes": "Test upload of CamScanner 1-11-26 13.41.pdf",
         "file_size": 7971926,
-        "uploaded_at": "2026-01-29T05:52:31.781657Z",
-        "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/1f3484ee-9f41-42b0-bce7-10d1b5fce31c/6157cecd-b8c0-4a04-8e14-6dfac123232c/0e993a80-e94a-40c1-a3eb-6f8cc19613ad.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T055241Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=1df431d4b27c69b75014a7aabbc1a945c1df94e8f8bbc2012e7d30013b48959a"
+        "uploaded_at": "2026-01-29T11:43:50.212205Z",
+        "presigned_url": "http://minio:9000/saramedico-medical-records/medical-records/97d20f27-b550-4aae-b976-44e8b6f277b6/e85909dc-fd87-4f56-a2d1-439ebd47ce5a/7d0cdec4-ecff-4300-829e-2b0cfd219bb2.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260129%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260129T114357Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=4d9219f9a948011c6559e97be0b21f779df86a7af6d4a6e6f73aaa1008292ed5"
       }
     ]
   },
   {
-    "timestamp": "2026-01-29T11:22:41.475624",
+    "timestamp": "2026-01-29T17:13:57.998947",
     "method": "POST",
     "endpoint": "/doctor/tasks",
     "payload": {
       "title": "General Ward Round",
       "priority": "normal",
-      "due_date": "2026-01-30T05:52:41.411634"
+      "due_date": "2026-01-30T11:43:57.963616"
     },
     "status": 201,
     "response": {
       "title": "General Ward Round",
       "description": null,
-      "due_date": "2026-01-30T05:52:41.411634Z",
+      "due_date": "2026-01-30T11:43:57.963616Z",
       "priority": "normal",
       "status": "pending",
-      "id": "8590f290-f5e6-41b3-b2aa-fd106fcb48bf",
-      "doctor_id": "ae3794f9-e9e1-4e7a-932d-80ee3e193a73",
-      "created_at": "2026-01-29T05:52:41.443037Z",
-      "updated_at": "2026-01-29T05:52:41.443039Z"
+      "id": "2058b8b0-b67b-4b53-ba23-7ffcb77c0015",
+      "doctor_id": "d184f0b0-ce83-4528-aa23-13a7b6b78bf8",
+      "created_at": "2026-01-29T11:43:57.981825Z",
+      "updated_at": "2026-01-29T11:43:57.981828Z"
     }
   },
   {
-    "timestamp": "2026-01-29T11:22:41.742622",
+    "timestamp": "2026-01-29T17:13:58.251898",
     "method": "POST",
     "endpoint": "/doctor/ai/process-document",
     "payload": {
-      "patient_id": "6157cecd-b8c0-4a04-8e14-6dfac123232c",
-      "document_id": "92bed5a1-7bf1-424c-9d4b-0b0aade1f079",
+      "patient_id": "e85909dc-fd87-4f56-a2d1-439ebd47ce5a",
+      "document_id": "0a47a064-22d2-469c-a4be-5023c5123d5c",
       "processing_type": "comprehensive",
       "priority": "normal"
     },
     "status": 201,
     "response": {
-      "job_id": "eafadfc6-eb9f-4b3a-b58d-2d72b6658772",
+      "job_id": "969a4214-db69-4a18-86de-5577b9bee18f",
       "status": "pending",
-      "message": "Document queued for AI processing. Job ID: eafadfc6-eb9f-4b3a-b58d-2d72b6658772"
+      "message": "Document queued for AI processing. Job ID: 969a4214-db69-4a18-86de-5577b9bee18f"
     }
   },
   {
-    "timestamp": "2026-01-29T11:27:50.505578",
+    "timestamp": "2026-01-29T17:19:06.971682",
     "method": "POST",
     "endpoint": "/doctor/ai/chat/patient",
     "payload": {
-      "patient_id": "6157cecd-b8c0-4a04-8e14-6dfac123232c",
+      "patient_id": "e85909dc-fd87-4f56-a2d1-439ebd47ce5a",
       "query": "What does my report say about heart rate?",
-      "document_id": "92bed5a1-7bf1-424c-9d4b-0b0aade1f079"
+      "document_id": "0a47a064-22d2-469c-a4be-5023c5123d5c"
     },
     "status": 200,
-    "response": "Unfortunately, none of the provided medical record sources mention anything about heart rate or contain information related to assessing the patient's heart rate. The reports focus on laboratory test results for blood markers, proteins, electrolytes, inflammation, hematological indices, as well as some imaging findings from a chest X-ray and PET CT scan. However, there is no specific data pertaining to the patient's heart rate measurements.\n\nI do not have enough information from the given context to comment on the patient's heart rate. As an AI assistant without direct access to the patient's complete medical records and clinical context, I cannot provide any professional medical advice. Please consult a qualified healthcare provider for an accurate assessment and appropriate medical guidance regarding the patient's condition and test results interpretation."
+    "response": "Unfortunately, none of the medical reports and test results provided in the context mention anything about heart rate or heart-related findings. The reports cover blood tests, imaging scans like chest X-ray and PET CT, as well as laboratory analyses of proteins and immunoglobulins, but I could not find any specific information regarding the patient's heart rate.\n\nAs an AI assistant without direct access to the patient's full medical records, I cannot provide any professional medical advice. My response is based solely on the limited context provided. For any specific medical concerns or interpretation of test results, it's crucial to consult with a licensed healthcare professional who can review the complete medical history and provide appropriate guidance tailored to the individual's condition."
   },
   {
-    "timestamp": "2026-01-29T11:28:00.992580",
+    "timestamp": "2026-01-29T17:19:21.206559",
     "method": "POST",
     "endpoint": "/doctor/ai/chat/doctor",
     "payload": {
-      "patient_id": "6157cecd-b8c0-4a04-8e14-6dfac123232c",
+      "patient_id": "e85909dc-fd87-4f56-a2d1-439ebd47ce5a",
       "query": "Summarize this patient's condition.",
-      "document_id": "92bed5a1-7bf1-424c-9d4b-0b0aade1f079"
+      "document_id": "0a47a064-22d2-469c-a4be-5023c5123d5c"
     },
     "status": 200,
-    "response": "Based on the provided context from the medical records, here is a summary of the patient's condition:\n\nThe patient, Mr. K V VENKATARAMAN, was admitted to TriLife Hospital with severe back pain, inability to mobilize, radiating pain in the lower limbs, and inability to tolerate pain. He was found to have pathological fractures of the T7, T12, and L4 vertebrae, along with a diagnosis of multiple myeloma, which is a type of cancer affecting plasma cells in the bone marrow.\n\nInvestigations and procedures performed during the hospital stay included:\n\n1. Urine routine test showing pus cells, suggesting a urinary tract infection.\n2. Elevated creatinine levels (1.6 mg/dl) and low potassium levels (2.7 mEq/L).\n3. PET CT scan and oncologist consultation for suspected multiple myeloma.\n4. Bone marrow aspiration and biopsy, which confirmed morphological features consistent with plasma cell neoplasm (cancer).\n5. Nephrologist consultation due to increased creatinine levels.\n6. Sputum culture showing Klebsiella pneumoniae infection and gram stain revealing pus cells.\n7. Urine culture growing heavy Escherichia coli.\n8. Treatment with intravenous antibiotics, diuretics, and other supportive care.\n\nThe discharge summary mentions the patient was conscious, oriented, and vitals were stable at the time of discharge. Medications prescribed included antibiotics, steroids, nebulizers, and others. Follow-up appointments were advised with orthopedics, specific doctors, and for pending test reports and chest X-ray.\n\nDisclaimer: I am an AI assistant. This summary is based on the provided context and should not be considered professional medical advice. Always consult with qualified healthcare professionals for any medical concerns or treatment decisions."
+    "response": "Based on the context provided from the medical records, the patient Mr. K V VENKATARAMAN seems to be suffering from multiple myeloma, which is a type of plasma cell neoplasm or cancer of the plasma cells in the blood. The key findings that support this condition are:\n\n1. Bone marrow aspiration and biopsy showing morphological features indicative of plasma cell neoplasm, with increased plasma cells accounting for 35% of total nucleated cells in the aspirate and 60-65% cellularity in the trephine biopsy.\n\n2. Pathological fractures in multiple vertebrae (T7, T12, and L4) are mentioned, which can be associated with multiple myeloma.\n\n3. Blood tests show abnormal levels of proteins and immunoglobulins like elevated B-2 microglobulin, abnormal immunoglobulin levels (IgG, IgM, IgA), and the presence of paraproteins.\n\n4. Imaging findings like osteogenic skeletal changes and hypermetabolism in the PET-CT scan are suggestive of malignant bone involvement.\n\nAdditionally, the patient seems to have complications like a Klebsiella pneumoniae infection (based on positive sputum culture), pulmonary edema (vascular cuffing on chest X-ray), and renal involvement (increased creatinine levels, nephrologist consultation).\n\nHowever, please note that I am an AI assistant and this should not be considered professional medical advice. It is always recommended to consult with a qualified healthcare professional for accurate diagnosis and appropriate treatment."
   }
 ]
 ```

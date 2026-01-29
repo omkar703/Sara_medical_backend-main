@@ -23,18 +23,24 @@ async def search_doctors(
     Search for doctors by name or specialty.
     Available to all logged-in users.
     """
+    from app.models.patient import Patient
+
+    # If user is a patient, they can only search for the doctor who onboarded them
+    onboarding_doctor_id = None
+    if current_user.role == "patient":
+        # Find the patient record to see who created it
+        p_stmt = select(Patient).where(Patient.id == current_user.id)
+        p_result = await db.execute(p_stmt)
+        patient_record = p_result.scalar_one_or_none()
+        if patient_record:
+            onboarding_doctor_id = patient_record.created_by
+
     stmt = select(User).where(User.role == "doctor", User.deleted_at == None)
     
-    if specialty:
-        # Specialty is stored as unencrypted string for indexing/matching
-        stmt = stmt.where(User.specialty.iloc(f"%{specialty}%") if hasattr(User.specialty, "iloc") else User.specialty.ilike(f"%{specialty}%"))
-        # Using ilike for better matching
-        stmt = select(User).where(User.role == "doctor", User.deleted_at == None)
-        if specialty:
-            stmt = stmt.where(User.specialty.ilike(f"%{specialty}%"))
-    
-    # Redefining to avoid confusion with the messy logic above
-    stmt = select(User).where(User.role == "doctor", User.deleted_at == None)
+    # Apply onboarding doctor filter if applicable
+    if onboarding_doctor_id:
+        stmt = stmt.where(User.id == onboarding_doctor_id)
+
     if specialty:
         stmt = stmt.where(User.specialty.ilike(f"%{specialty}%"))
     
@@ -42,7 +48,6 @@ async def search_doctors(
     doctors = result.scalars().all()
     
     # Fuzzy name search (since names are encrypted, we decrypt and filter in memory for simplicity in this demo)
-    # In a prod environment, we would use blind indexing or a separate search index.
     filtered_doctors = []
     for d in doctors:
         try:

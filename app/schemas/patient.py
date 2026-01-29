@@ -60,6 +60,10 @@ class PatientCreate(PatientBase):
     pass
 
 
+class PatientOnboard(PatientBase):
+    password: str = Field(..., min_length=8, max_length=100)
+
+
 class PatientUpdate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=100, alias="fullName")
     date_of_birth: Optional[date] = Field(None, alias="dateOfBirth")

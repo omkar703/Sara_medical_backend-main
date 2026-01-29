@@ -97,27 +97,31 @@ def run_custom_e2e_test():
 
     # 2. Register & Login Users
     print_section("STEP 1: Registering and Logging in Users")
-    for user in users_config:
-        # Register
+    # 2. Register & Login Healthcare Providers First
+    print_section("STEP 1: Registering Healthcare Providers & Onboarding Patients")
+    
+    # 2a. Register Doctors
+    for user in [u for u in users_config if u["role"] != "patient"]:
         reg_payload = {
             "email": user["email"],
             "password": user["password"],
             "full_name": user["full_name"],
             "role": user["role"],
             "date_of_birth": user.get("date_of_birth"),
-            "phone_number": user.get("phone_number")
+            "phone_number": user.get("phone_number"),
+            "organization_name": "Test Hospital"
         }
         if user["role"] == "doctor":
             reg_payload["specialty"] = user["specialty"]
             reg_payload["license_number"] = user["license"]
 
-        print(f"Registering {user['full_name']}...")
+        print(f"Registering Provider {user['full_name']}...")
         try:
             resp = httpx.post(f"{BASE_URL}/auth/register", json=reg_payload, timeout=30.0)
             log_api_call("POST", "/auth/register", reg_payload, resp.status_code, resp.json() if resp.status_code < 500 else resp.text)
             
             if resp.status_code != 201:
-                print(f"  ✗ Registration Failed: {resp.text}")
+                print(f"  ✗ Provider Registration Failed: {resp.text}")
                 continue
                 
             user_id = resp.json()["id"]
@@ -131,7 +135,6 @@ def run_custom_e2e_test():
                 print(f"  ✓ Success: {user['full_name']}")
                 login_data = resp.json()
                 token = login_data["access_token"]
-                user_details = login_data.get("user", {"id": user_id, "organization_id": None})
                 
                 registered_users[user["email"]] = {
                     "id": user_id,
@@ -140,22 +143,10 @@ def run_custom_e2e_test():
                     "name": user["full_name"],
                     "email": user["email"]
                 }
-                
-                # Double map for key access (patient1, doctor1)
                 registered_users[user["type"]] = registered_users[user["email"]]
-                
                 test_data["users"].append({"email": user["email"], "id": user_id, "role": user["role"], "type": user["type"]})
-                
                 if user["role"] == "doctor":
                     doctor_tokens.append(token)
-                    
-                 # Queue for DB profile creation if patient
-                if user["role"] == "patient":
-                    patients_to_create_db_profile.append({
-                        "id": user_id,
-                        "organization_id": user_details.get("organization_id"), 
-                        "mrn": f"MRN-{user['email'].split('@')[0]}"
-                    })
 
             else:
                 print(f"  ✗ Login Failed: {resp.text}")
@@ -163,10 +154,72 @@ def run_custom_e2e_test():
         except Exception as e:
             print(f"  ✗ Exception: {str(e)}")
 
-    # 3. Create DB Profiles (Skipped - handled by API)
-    # if patients_to_create_db_profile:
-    #     print("\nCreating Patient DB Profiles (Direct DB Access)...")
-    #     asyncio.run(create_patient_profiles_batch(patients_to_create_db_profile))
+    # 2b. Doctors Onboard Patients
+    for i, user in enumerate([u for u in users_config if u["role"] == "patient"]):
+        # Vary the doctor: P1 by D1, P2 by D2, etc.
+        doctor_idx = (i % len(doctor_tokens)) + 1
+        doctor_key = f"doctor{doctor_idx}"
+        doctor_token = registered_users[doctor_key]["token"]
+        
+        onboard_payload = {
+            "fullName": user["full_name"],
+            "dateOfBirth": user["date_of_birth"],
+            "phoneNumber": user["phone_number"],
+            "email": user["email"],
+            "password": user["password"],
+            "gender": "male"
+        }
+
+        print(f"Onboarding Patient {user['full_name']} via {registered_users[doctor_key]['name']}...")
+        try:
+            headers = {"Authorization": f"Bearer {doctor_token}"}
+            resp = httpx.post(f"{BASE_URL}/doctor/onboard-patient", json=onboard_payload, headers=headers, timeout=30.0)
+            log_api_call("POST", "/doctor/onboard-patient", onboard_payload, resp.status_code, resp.json() if resp.status_code < 500 else resp.text)
+            
+            if resp.status_code != 200:
+                print(f"  ✗ Onboarding Failed: {resp.text}")
+                continue
+            
+            patient_id = resp.json()["patient_id"]
+            
+            # Now Login as Patient
+            login_payload = {"email": user["email"], "password": user["password"]}
+            resp = httpx.post(f"{BASE_URL}/auth/login", json=login_payload, timeout=10.0)
+            log_api_call("POST", "/auth/login", login_payload, resp.status_code, "HIDDEN_TOKEN_RESPONSE")
+
+            if resp.status_code == 200:
+                print(f"  ✓ Patient Logged In: {user['full_name']}")
+                login_data = resp.json()
+                token = login_data["access_token"]
+                
+                registered_users[user["email"]] = {
+                    "id": patient_id,
+                    "token": token,
+                    "role": "patient",
+                    "name": user["full_name"],
+                    "email": user["email"],
+                    "onboarded_by": registered_users[doctor_key]['id']
+                }
+                registered_users[user["type"]] = registered_users[user["email"]]
+                test_data["users"].append({"email": user["email"], "id": patient_id, "role": "patient", "type": user["type"]})
+        except Exception as e:
+            print(f"  ✗ Exception: {str(e)}")
+
+    # 2c. Verify that patients can't self-register
+    print("\nVerifying Self-Registration Restriction...")
+    fail_payload = {
+        "email": f"fail_patient_{timestamp}@test.com",
+        "password": "SecurePass123!",
+        "full_name": "Should Fail",
+        "role": "patient",
+        "date_of_birth": "1980-01-01",
+        "organization_name": "Test Hospital"
+    }
+    resp = httpx.post(f"{BASE_URL}/auth/register", json=fail_payload)
+    if resp.status_code == 403:
+        print("  ✓ Correct: Direct patient registration blocked.")
+    else:
+        print(f"  ✗ Error: Patient registration should have been blocked (Got {resp.status_code})")
 
     # 4. Upload Documents
     print_section("STEP 2: Uploading Documents from _documents Folder")
@@ -256,8 +309,22 @@ def run_custom_e2e_test():
         if patient and doctor:
             headers = {"Authorization": f"Bearer {patient['token']}"}
             
-            # Search
+            # Search (Verify that patient only sees their onboarding doctor)
             print(f"{patient['name']} searching for doctors...")
+            s_resp = httpx.get(f"{BASE_URL}/doctors/search", headers=headers) # Generic search without query
+            log_api_call("GET", "/doctors/search", {}, s_resp.status_code, s_resp.json() if s_resp.status_code == 200 else s_resp.text)
+            
+            if s_resp.status_code == 200:
+                results = s_resp.json().get("results", [])
+                print(f"  ✓ Found {len(results)} doctor(s).")
+                if len(results) != 1:
+                    print(f"  ⚠ Warning: Patient expected 1 doctor, got {len(results)}")
+                elif results[0]["id"] != doctor["id"]:
+                    print(f"  ⚠ Warning: Patient saw wrong doctor (Expected {doctor['id']}, got {results[0]['id']})")
+                else:
+                    print(f"  ✓ Correct: Only onboarding doctor visible.")
+            
+            # Specific search for the intended doctor (should work as before if it's the right doctor)
             s_resp = httpx.get(f"{BASE_URL}/doctors/search", params={"query": doctor["name"]}, headers=headers)
             log_api_call("GET", "/doctors/search", {"query": doctor["name"]}, s_resp.status_code, s_resp.json() if s_resp.status_code == 200 else s_resp.text)
             

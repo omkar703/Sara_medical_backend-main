@@ -62,6 +62,11 @@ async def register(
     4. Send verification email
     5. Return user data
     """
+    if user_data.role == "patient":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Patients cannot register themselves. Please contact your healthcare provider for onboarding."
+        )
     # Check if email already exists
     result = await db.execute(
         select(User).where(User.email == user_data.email.lower())
