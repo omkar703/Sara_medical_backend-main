@@ -29,6 +29,7 @@ async def create_appointment(
 ):
     """
     Patient creates an appointment request.
+    Optionally grants doctor access to medical history.
     """
     appointment = Appointment(
         doctor_id=appointment_in.doctor_id,
@@ -39,6 +40,19 @@ async def create_appointment(
     )
     
     db.add(appointment)
+    await db.flush()
+    
+    # Create permission grant if requested
+    if appointment_in.grant_access_to_history:
+        from app.services.permission_service import PermissionService
+        permission_service = PermissionService(db)
+        await permission_service.create_access_grant(
+            doctor_id=appointment_in.doctor_id,
+            patient_id=current_user.id,
+            appointment_id=appointment.id,
+            grant_reason="Patient granted access during appointment booking"
+        )
+    
     await db.commit()
     await db.refresh(appointment)
     
@@ -87,44 +101,6 @@ async def update_appointment_status(
     if status_update.doctor_notes:
         appointment.doctor_notes = status_update.doctor_notes
     appointment.updated_at = datetime.utcnow()
-    
-    await db.commit()
-    await db.refresh(appointment)
-    
-    return appointment
-
-
-@router.post("/request", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
-async def request_appointment(
-    appointment_in: AppointmentCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Patient specifically requests an appointment (Alternative path per spec).
-    Optionally grants doctor access to medical history.
-    """
-    appointment = Appointment(
-        doctor_id=appointment_in.doctor_id,
-        patient_id=current_user.id,
-        requested_date=appointment_in.requested_date,
-        reason=appointment_in.reason,
-        status="pending"
-    )
-    
-    db.add(appointment)
-    await db.flush()
-    
-    # Create permission grant if requested
-    if appointment_in.grant_access_to_history:
-        from app.services.permission_service import PermissionService
-        permission_service = PermissionService(db)
-        await permission_service.create_access_grant(
-            doctor_id=appointment_in.doctor_id,
-            patient_id=current_user.id,
-            appointment_id=appointment.id,
-            grant_reason="Patient granted access during appointment booking"
-        )
     
     await db.commit()
     await db.refresh(appointment)

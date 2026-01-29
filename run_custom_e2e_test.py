@@ -338,8 +338,8 @@ def run_custom_e2e_test():
             }
             
             print(f"{patient['name']} requesting appt with {doctor['name']}...")
-            resp = httpx.post(f"{BASE_URL}/appointments/request", json=appt_payload, headers=headers)
-            log_api_call("POST", "/appointments/request", appt_payload, resp.status_code, resp.json() if resp.status_code == 201 else resp.text)
+            resp = httpx.post(f"{BASE_URL}/appointments", json=appt_payload, headers=headers)
+            log_api_call("POST", "/appointments", appt_payload, resp.status_code, resp.json() if resp.status_code == 201 else resp.text)
             
             if resp.status_code == 201:
                 appt = resp.json()
