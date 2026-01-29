@@ -18,6 +18,7 @@ class UserCreate(BaseModel):
     confirm_password: Optional[str] = None
     first_name: Optional[str] = "Unknown"
     last_name: Optional[str] = "User"
+    full_name: Optional[str] = None
     phone: Optional[str] = None
     phone_number: Optional[str] = None
     role: str = Field(..., pattern="^(patient|doctor|admin|hospital)$")
@@ -30,6 +31,13 @@ class UserCreate(BaseModel):
             raise ValueError('Passwords do not match')
         return v
     
+    @validator('date_of_birth')
+    def dob_required_for_patients(cls, v, values):
+        """Ensure date of birth is provided for patients"""
+        if values.get('role') == 'patient' and not v:
+            raise ValueError('Date of birth is required for patients')
+        return v
+
     @validator('password')
     def password_strength(cls, v):
         """Validate password strength"""

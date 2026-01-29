@@ -96,7 +96,10 @@ async def register(
     
     # Encrypt PII fields
     pii_encryption = PIIEncryption()
-    full_name_str = f"{user_data.first_name} {user_data.last_name}"
+    if user_data.full_name:
+        full_name_str = user_data.full_name
+    else:
+        full_name_str = f"{user_data.first_name} {user_data.last_name}"
     encrypted_full_name = pii_encryption.encrypt(full_name_str)
     phone_input = user_data.phone_number or user_data.phone
     encrypted_phone = pii_encryption.encrypt(phone_input) if phone_input else None

@@ -3,6 +3,7 @@
 import boto3
 import json
 import os
+import base64
 from typing import List, Dict, Any, Optional
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
@@ -117,7 +118,7 @@ class AWSService:
                             "source": {
                                 "type": "base64",
                                 "media_type": "image/jpeg", # Assuming JPEG for simplicity
-                                "data": image_bytes.decode('utf-8') if isinstance(image_bytes, bytes) else image_bytes
+                                "data": base64.b64encode(image_bytes).decode('utf-8') if isinstance(image_bytes, bytes) else image_bytes
                             }
                         },
                         {

@@ -95,6 +95,19 @@ class MinIOService:
             print(f"Presigned URL generation failed: {e}")
             return None
     
+    def get_file_bytes(self, bucket_name: str, object_name: str) -> Optional[bytes]:
+        """Retrieve file content as bytes."""
+        try:
+            response = self.client.get_object(bucket_name, object_name)
+            return response.read()
+        except S3Error as e:
+            print(f"Download failed: {e}")
+            return None
+        finally:
+            if 'response' in locals():
+                response.close()
+                
+                
     def delete_file(self, bucket_name: str, object_name: str) -> bool:
         """Delete a file from MinIO"""
         try:

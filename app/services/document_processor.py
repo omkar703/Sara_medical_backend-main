@@ -15,6 +15,8 @@ from sqlalchemy import select
 from app.models.document import Document
 from app.models.chunk import Chunk
 from app.services.aws_service import aws_service
+from app.services.minio_service import minio_service
+from app.config import settings
 
 class DocumentProcessor:
     def __init__(self, db: AsyncSession):
@@ -49,16 +51,35 @@ class DocumentProcessor:
         # Checking Document model: storage_path = Column(String(1000), nullable=False)
         # We will assume it's a local path for now as per "upload" usually saving to temp.
         
+        # Assuming the medical records bucket is used. 
+        # In a robust system, the bucket might be stored in the Document model or derived.
+        # Based on medical_history.py, it is "saramedico-medical-records".
+        # bucket_name = "saramedico-medical-records" # Replaced by settings.MINIO_BUCKET_DOCUMENTS
+        
         try:
-            with open(document.storage_path, "rb") as f:
-                file_bytes = f.read()
+            # Step 1: Download from MinIO
+            print(f"DOWNLOADING from MinIO: {document.storage_path}")
+            file_bytes = minio_service.get_file_bytes(
+                "saramedico-medical-records", 
+                document.storage_path
+            )
+            
+            if not file_bytes:
+                print(f"FILE BYTES EMPTY for {document_id}")
+                return
 
+            print(f"DOWNLOADED {len(file_bytes)} bytes")
+            
             # --- TIER 1: Text Extraction ---
+            print("TIER 1 START")
             text_chunks = await self._process_tier_1_text(document, file_bytes)
+            print(f"TIER 1 COMPLETE: {len(text_chunks)} chunks")
             document.processing_details["tier_1_text"] = {"status": "completed", "chunks": len(text_chunks)}
             
             # --- TIER 2 & 3: Image Extraction & Vision ---
+            print("TIER 2/3 START")
             image_chunks = await self._process_tier_2_and_3_vision(document, file_bytes)
+            print(f"TIER 2/3 COMPLETE: {len(image_chunks)} chunks")
             document.processing_details["tier_2_images"] = {"status": "completed"}
             document.processing_details["tier_3_vision"] = {"status": "completed", "chunks": len(image_chunks)}
 
@@ -67,16 +88,22 @@ class DocumentProcessor:
             self.db.add_all(all_chunks)
             
             document.total_chunks = len(all_chunks)
-            document.status = "indexed" # or whatever status field existing doc has
+            # document.status = "indexed" - removed as column doesn't exist
             
             await self.db.commit()
             
         except Exception as e:
             await self.db.rollback()
-            print(f"Processing failed for {document_id}: {e}")
+            import traceback
+            print(f"CRITICAL ERROR Processing failed for {document_id}: {e}")
+            traceback.print_exc()
             # Update error status
-            # document.processing_details["error"] = str(e)
-            # await self.db.commit()
+            if document:
+                try:
+                    document.processing_details["error"] = str(e)
+                    await self.db.commit()
+                except:
+                    pass
 
     async def _process_tier_1_text(self, document: Document, file_bytes: bytes) -> List[Chunk]:
         """Technically Textract or PyPDF for text. Using PyPDF for speed/cost if Textract is not strictly required for partial text, but prompt says Textract."""

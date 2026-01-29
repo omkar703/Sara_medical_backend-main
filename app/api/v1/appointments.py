@@ -171,8 +171,8 @@ async def approve_appointment(
             
         zoom_meeting = await zoom_service.create_meeting(
             topic=topic,
-            start_time=approval_in.appointment_time,
-            duration=30
+            start_time=approval_in.appointment_time.isoformat(),
+            duration_minutes=30
         )
         
         appointment.meeting_id = str(zoom_meeting["id"])

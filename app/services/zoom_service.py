@@ -64,7 +64,7 @@ class ZoomService:
         meeting_data = {
             "topic": topic,
             "type": 2,  # Scheduled meeting
-            "start_time": start_time,
+            "start_time": str(start_time),
             "duration": duration_minutes,
             "timezone": "UTC",
             "settings": {

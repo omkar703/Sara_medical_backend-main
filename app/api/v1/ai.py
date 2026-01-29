@@ -89,9 +89,9 @@ async def process_document(
     await db.commit()
     await db.refresh(queue_entry)
     
-    # Trigger Background Task (Pseudo-code / Future Integration)
-    # from app.workers.ai_worker import process_ai_queue
-    # process_ai_queue.delay(queue_entry.id)
+    # Trigger Background Task
+    from app.workers.tasks import process_document_task
+    process_document_task.delay(str(request.document_id))
     
     return DocumentProcessResponse(
         job_id=queue_entry.id,
