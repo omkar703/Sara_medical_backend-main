@@ -142,6 +142,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - backend_logs:/app/logs
+      - medical_data:/app/medical-records
 
     ports:
       - "8000:8000"
@@ -149,6 +150,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
+      - TEST_DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/saramedico_test
       - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
     depends_on:
       postgres:
@@ -178,6 +180,7 @@ services:
     container_name: saramedico_celery_worker
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
     volumes:
+      - medical_data:/app/medical-records
       - backend_logs:/app/logs
 
     env_file:
@@ -204,6 +207,7 @@ services:
     command: celery -A app.workers.celery_app beat --loglevel=info
     volumes:
       - backend_logs:/app/logs
+      - medical_data:/app/medical-records
 
     env_file:
       - .env
@@ -227,6 +231,7 @@ volumes:
   redis_data:
     driver: local
   minio_data:
+  medical_data:
     driver: local
   backend_logs:
     driver: local

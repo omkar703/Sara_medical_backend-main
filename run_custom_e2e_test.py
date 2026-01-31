@@ -14,9 +14,9 @@ from sqlalchemy import select
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 load_dotenv("backend/.env")
 
-# Patch DATABASE_URL for local execution if needed
-if os.environ.get("DATABASE_URL"):
-    os.environ["DATABASE_URL"] = os.environ["DATABASE_URL"].replace("@postgres:", "@localhost:")
+# Patch DATABASE_URL for local execution (only if not in docker)
+# if os.environ.get("DATABASE_URL") and not os.path.exists("/.dockerenv"):
+#    os.environ["DATABASE_URL"] = os.environ["DATABASE_URL"].replace("@postgres:", "@localhost:")
 
 # Imports from app must happen after sys.path setup
 # from app.database import AsyncSessionLocal

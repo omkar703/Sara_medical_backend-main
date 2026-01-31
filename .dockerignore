@@ -40,10 +40,10 @@ docs/
 logs/
 backend.log
 
-# Ignore test files (not needed in production)
-tests/
-test_*.py
-*_test.py
+# Ignore test files (not needed in production, but needed for EC2 testing)
+# tests/
+# test_*.py
+# *_test.py
 
 # Ignore development files
 .env.example
@@ -70,7 +70,7 @@ celerybeat.pid
 
 # Ignore data directories
 data/
-_documents/
+# _documents/
 
 # Ignore audit and report files
 audit_*.txt

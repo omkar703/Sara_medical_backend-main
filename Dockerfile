@@ -55,8 +55,11 @@ RUN groupadd -r saramedico && \
     mkdir -p /app/logs && \
     chown -R saramedico:saramedico /app
 
-# Copy application code
+# Copy application code (including tests for now, so they are available in EC2)
 COPY --chown=saramedico:saramedico . .
+
+# Copy and set permissions for scripts
+RUN chmod +x scripts/*.sh
 
 # Switch to non-root user
 USER saramedico
