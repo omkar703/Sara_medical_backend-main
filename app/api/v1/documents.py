@@ -3,7 +3,8 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File, BackgroundTasks
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 import shutil
 import os
@@ -25,6 +26,7 @@ from app.services.document_service import DocumentService
 from app.services.storage_service import StorageService
 from app.services.document_processor import DocumentProcessor
 from app.models.document import Document
+from app.models.patient import Patient
 from sqlalchemy import select
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -34,18 +36,37 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    notes: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user), # Patient or Doctor
+    patient_id: UUID = Form(...),
+    notes: Optional[str] = Form(None),
+    current_user: User = Depends(require_role("doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Direct upload for AI processing (Patient/Doctor).
+    Direct upload for AI processing (Doctor only).
+    Only the doctor who onboarded the patient can upload documents.
     """
     # 1. Validate file (simple check)
     if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF, JPG, PNG supported.")
         
-    # 2. Save to temp storage (local for this implementation)
+    # 2. Verify Patient Ownership
+    stmt = select(Patient).where(
+        Patient.id == patient_id,
+        Patient.deleted_at.is_(None)
+    )
+    result = await db.execute(stmt)
+    patient = result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    if patient.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access Denied: Only the onboarding doctor can upload documents for this patient.")
+
+    if patient.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
+
+    # 3. Save to temp storage (local for this implementation)
     upload_dir = "/tmp/saramedico_uploads"
     os.makedirs(upload_dir, exist_ok=True)
     file_id = uuid4()
@@ -58,19 +79,14 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File save failed: {e}")
         
-    # 3. Create Document Record
-    # We might need organization_id. If patient, maybe they belong to one or we pick first?
-    # Assuming patient has organization_id or we use current_user.organization_id
-    
-    org_id = current_user.organization_id # Assuming user has this
-    
+    # 4. Create Document Record
     new_doc = Document(
         id=file_id,
-        patient_id=current_user.id if current_user.role == "patient" else current_user.id, # If doctor uploads, whose patient? Prompt says "Patient uploads".
-        organization_id=org_id,
+        patient_id=patient.id,
+        organization_id=current_user.organization_id,
         file_name=file.filename,
         file_type=file.content_type,
-        file_size=0, # Need actual size
+        file_size=0, # Updated below
         storage_path=storage_path,
         uploaded_by=current_user.id,
         notes=notes,
@@ -95,7 +111,7 @@ async def upload_document(
     audit_service = AuditService(db)
     await audit_service.log_event(
         user_id=current_user.id,
-        organization_id=org_id,
+        organization_id=current_user.organization_id,
         action="upload",
         resource_type="document",
         resource_id=new_doc.id,
@@ -142,7 +158,25 @@ async def request_upload_url(
     """
     Request a presigned upload URL for document upload.
     Requires 'doctor' or 'admin' role.
+    Only the doctor who onboarded the patient can upload documents.
     """
+    # Verify Patient Ownership
+    stmt = select(Patient).where(
+        Patient.id == request_data.patientId,
+        Patient.deleted_at.is_(None)
+    )
+    result = await db.execute(stmt)
+    patient = result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    if patient.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access Denied: Only the onboarding doctor can upload documents for this patient.")
+
+    if patient.organization_id != organization_id:
+        raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
+
     service = DocumentService(db)
     storage = StorageService()
     

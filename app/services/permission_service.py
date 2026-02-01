@@ -42,6 +42,7 @@ class PermissionService:
             and_(
                 DataAccessGrant.doctor_id == doctor_id,
                 DataAccessGrant.patient_id == patient_id,
+                DataAccessGrant.status == "active",
                 DataAccessGrant.is_active == True,
                 or_(
                     DataAccessGrant.expires_at.is_(None),
@@ -71,34 +72,86 @@ class PermissionService:
         
         return appointment is not None
     
+    async def request_access(
+        self,
+        doctor_id: UUID,
+        patient_id: UUID,
+        reason: Optional[str] = None
+    ) -> DataAccessGrant:
+        """
+        Doctor requests access to a patient's records.
+        """
+        # Check if already exists
+        existing_query = select(DataAccessGrant).where(
+            DataAccessGrant.doctor_id == doctor_id,
+            DataAccessGrant.patient_id == patient_id,
+            DataAccessGrant.is_active == True
+        )
+        existing = (await self.db.execute(existing_query)).scalars().first()
+        
+        if existing:
+            if existing.status == "active":
+                return existing # Already active
+            # Update pending request
+            existing.status = "pending"
+            existing.grant_reason = reason
+            existing.revoked_at = None
+            return existing
+            
+        # Create new pending request
+        grant = DataAccessGrant(
+            doctor_id=doctor_id,
+            patient_id=patient_id,
+            grant_reason=reason or "Doctor requested access",
+            status="pending", # Default is active in model, we set pending here
+            is_active=True
+        )
+        self.db.add(grant)
+        await self.db.flush()
+        return grant
+
     async def create_access_grant(
         self,
         doctor_id: UUID,
         patient_id: UUID,
         appointment_id: Optional[UUID] = None,
         grant_reason: Optional[str] = None,
-        expires_at: Optional[datetime] = None
+        expires_at: Optional[datetime] = None,
+        access_level: str = "read_analyze",
+        ai_access_permission: bool = False
     ) -> DataAccessGrant:
         """
-        Create a new data access grant.
-        
-        Args:
-            doctor_id: UUID of the doctor
-            patient_id: UUID of the patient
-            appointment_id: Optional linked appointment
-            grant_reason: Reason for granting access
-            expires_at: Optional expiration timestamp
-        
-        Returns:
-            Created DataAccessGrant object
+        Create (or Approve) a data access grant.
         """
+        # Check for existing request/grant
+        stmt = select(DataAccessGrant).where(
+            DataAccessGrant.doctor_id == doctor_id,
+            DataAccessGrant.patient_id == patient_id
+        )
+        result = await self.db.execute(stmt)
+        existing_grant = result.scalars().first()
+        
+        if existing_grant:
+            # Update existing
+            existing_grant.status = "active"
+            existing_grant.is_active = True
+            existing_grant.grant_reason = grant_reason
+            existing_grant.expires_at = expires_at
+            existing_grant.access_level = access_level
+            existing_grant.ai_access_permission = ai_access_permission
+            existing_grant.revoked_at = None
+            return existing_grant
+
         grant = DataAccessGrant(
             doctor_id=doctor_id,
             patient_id=patient_id,
             appointment_id=appointment_id,
             grant_reason=grant_reason or "Appointment-based access",
             expires_at=expires_at,
-            is_active=True
+            is_active=True,
+            status="active",
+            access_level=access_level,
+            ai_access_permission=ai_access_permission
         )
         
         self.db.add(grant)
@@ -129,6 +182,7 @@ class PermissionService:
             return False
         
         grant.is_active = False
+        grant.status = "revoked"
         grant.revoked_at = datetime.utcnow()
         grant.revoked_reason = revoked_reason
         

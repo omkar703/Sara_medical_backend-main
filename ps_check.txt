@@ -1,0 +1,6 @@
+CONTAINER ID   IMAGE                                COMMAND                  CREATED         STATUS                     PORTS                                                                                      NAMES
+ef99edacef97   sara_medical_backend-main-backend    "uvicorn app.main:ap…"   7 minutes ago   Up 3 minutes (unhealthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp                                                saramedico_backend
+1217755a9bb5   minio/minio:latest                   "/usr/bin/docker-ent…"   7 minutes ago   Up 6 minutes (healthy)     0.0.0.0:9010->9000/tcp, [::]:9010->9000/tcp, 0.0.0.0:9011->9001/tcp, [::]:9011->9001/tcp   saramedico_minio
+1ef57fb3074d   sara_medical_backend-main-postgres   "docker-entrypoint.s…"   7 minutes ago   Up 6 minutes (healthy)     0.0.0.0:5435->5432/tcp, [::]:5435->5432/tcp                                                saramedico_postgres
+57d7e902bc7c   redis:7-alpine                       "docker-entrypoint.s…"   7 minutes ago   Up 6 minutes (healthy)     0.0.0.0:6382->6379/tcp, [::]:6382->6379/tcp                                                saramedico_redis
+282a3e35577a   mailhog/mailhog:latest               "MailHog"                7 minutes ago   Up 6 minutes (healthy)     0.0.0.0:1030->1025/tcp, [::]:1030->1025/tcp, 0.0.0.0:8030->8025/tcp, [::]:8030->8025/tcp   saramedico_mailhog

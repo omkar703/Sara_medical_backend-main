@@ -1,0 +1,618 @@
+Created bucket: saramedico-medical-records
+≡ƒÜÇ Starting Saramedico Backend...
+≡ƒôª Environment: development
+≡ƒöº Debug Mode: True
+2026-01-29 14:07:20,081 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+2026-01-29 14:07:20,081 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-29 14:07:20,087 INFO sqlalchemy.engine.Engine select current_schema()
+2026-01-29 14:07:20,087 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-29 14:07:20,091 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+2026-01-29 14:07:20,091 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-29 14:07:20,095 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-29 14:07:20,099 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,099 INFO sqlalchemy.engine.Engine [generated in 0.00027s] ('audit_logs', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,104 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,104 INFO sqlalchemy.engine.Engine [cached since 0.005822s ago] ('consultations', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,105 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+INFO:     Will watch for changes in these directories: ['/app']
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,105 INFO sqlalchemy.engine.Engine [cached since 0.006784s ago] ('documents', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,106 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [1] using WatchFiles
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+2026-01-29 14:07:20,106 INFO sqlalchemy.engine.Engine [cached since 0.007854s ago] ('patients', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,107 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,107 INFO sqlalchemy.engine.Engine [cached since 0.008838s ago] ('tasks', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,109 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,109 INFO sqlalchemy.engine.Engine [cached since 0.01007s ago] ('appointments', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,109 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,110 INFO sqlalchemy.engine.Engine [cached since 0.01102s ago] ('activity_logs', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,110 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,110 INFO sqlalchemy.engine.Engine [cached since 0.01176s ago] ('organizations', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,111 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,111 INFO sqlalchemy.engine.Engine [cached since 0.01247s ago] ('users', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,112 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,112 INFO sqlalchemy.engine.Engine [cached since 0.01322s ago] ('refresh_tokens', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,112 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,112 INFO sqlalchemy.engine.Engine [cached since 0.01387s ago] ('invitations', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,113 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,113 INFO sqlalchemy.engine.Engine [cached since 0.01444s ago] ('chunks', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,114 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,114 INFO sqlalchemy.engine.Engine [cached since 0.01518s ago] ('data_access_grants', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,114 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,114 INFO sqlalchemy.engine.Engine [cached since 0.01589s ago] ('ai_processing_queue', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,115 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_class.relname 
+FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+WHERE pg_catalog.pg_class.relname = $1::VARCHAR AND pg_catalog.pg_class.relkind = ANY (ARRAY[$2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::VARCHAR, $6::VARCHAR]) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != $7::VARCHAR
+2026-01-29 14:07:20,116 INFO sqlalchemy.engine.Engine [cached since 0.01718s ago] ('chat_history', 'r', 'p', 'f', 'v', 'm', 'pg_catalog')
+2026-01-29 14:07:20,120 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_type.typname 
+FROM pg_catalog.pg_type JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type.typnamespace 
+WHERE pg_catalog.pg_type.typname = $1::VARCHAR AND pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AND pg_catalog.pg_namespace.nspname != $2::VARCHAR
+2026-01-29 14:07:20,120 INFO sqlalchemy.engine.Engine [generated in 0.00027s] ('task_priority', 'pg_catalog')
+2026-01-29 14:07:20,122 INFO sqlalchemy.engine.Engine CREATE TYPE task_priority AS ENUM ('urgent', 'normal')
+2026-01-29 14:07:20,122 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,127 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_type.typname 
+FROM pg_catalog.pg_type JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type.typnamespace 
+WHERE pg_catalog.pg_type.typname = $1::VARCHAR AND pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AND pg_catalog.pg_namespace.nspname != $2::VARCHAR
+2026-01-29 14:07:20,127 INFO sqlalchemy.engine.Engine [cached since 0.00779s ago] ('task_status', 'pg_catalog')
+2026-01-29 14:07:20,129 INFO sqlalchemy.engine.Engine CREATE TYPE task_status AS ENUM ('pending', 'completed')
+2026-01-29 14:07:20,129 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,131 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_type.typname 
+FROM pg_catalog.pg_type JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type.typnamespace 
+WHERE pg_catalog.pg_type.typname = $1::VARCHAR AND pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AND pg_catalog.pg_namespace.nspname != $2::VARCHAR
+2026-01-29 14:07:20,131 INFO sqlalchemy.engine.Engine [cached since 0.01139s ago] ('appointment_status', 'pg_catalog')
+2026-01-29 14:07:20,133 INFO sqlalchemy.engine.Engine CREATE TYPE appointment_status AS ENUM ('pending', 'accepted', 'declined', 'completed', 'cancelled')
+2026-01-29 14:07:20,133 INFO sqlalchemy.engine.Engine [no key 0.00017s] ()
+2026-01-29 14:07:20,136 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_type.typname 
+FROM pg_catalog.pg_type JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type.typnamespace 
+WHERE pg_catalog.pg_type.typname = $1::VARCHAR AND pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AND pg_catalog.pg_namespace.nspname != $2::VARCHAR
+2026-01-29 14:07:20,136 INFO sqlalchemy.engine.Engine [cached since 0.01607s ago] ('user_role', 'pg_catalog')
+2026-01-29 14:07:20,138 INFO sqlalchemy.engine.Engine CREATE TYPE user_role AS ENUM ('patient', 'doctor', 'admin', 'hospital')
+2026-01-29 14:07:20,138 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,140 INFO sqlalchemy.engine.Engine SELECT pg_catalog.pg_type.typname 
+FROM pg_catalog.pg_type JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type.typnamespace 
+WHERE pg_catalog.pg_type.typname = $1::VARCHAR AND pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AND pg_catalog.pg_namespace.nspname != $2::VARCHAR
+2026-01-29 14:07:20,140 INFO sqlalchemy.engine.Engine [cached since 0.02046s ago] ('ai_queue_status', 'pg_catalog')
+2026-01-29 14:07:20,141 INFO sqlalchemy.engine.Engine CREATE TYPE ai_queue_status AS ENUM ('pending', 'processing', 'completed', 'failed')
+2026-01-29 14:07:20,141 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,144 INFO sqlalchemy.engine.Engine 
+CREATE TABLE organizations (
+	id UUID NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	subscription_tier VARCHAR(50) NOT NULL, 
+	subscription_status VARCHAR(50) NOT NULL, 
+	trial_ends_at TIMESTAMP WITH TIME ZONE, 
+	current_period_end TIMESTAMP WITH TIME ZONE, 
+	stripe_customer_id VARCHAR(255), 
+	stripe_subscription_id VARCHAR(255), 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	UNIQUE (stripe_customer_id)
+)
+
+
+2026-01-29 14:07:20,144 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,159 INFO sqlalchemy.engine.Engine 
+CREATE TABLE users (
+	id UUID NOT NULL, 
+	email VARCHAR(255) NOT NULL, 
+	password_hash VARCHAR(255) NOT NULL, 
+	full_name VARCHAR(255) NOT NULL, 
+	role user_role NOT NULL, 
+	phone_number VARCHAR(255), 
+	specialty VARCHAR(100), 
+	license_number VARCHAR(255), 
+	organization_id UUID NOT NULL, 
+	mfa_enabled BOOLEAN NOT NULL, 
+	mfa_secret VARCHAR(255), 
+	email_verified BOOLEAN NOT NULL, 
+	email_verification_token VARCHAR(255), 
+	email_verification_expires TIMESTAMP WITH TIME ZONE, 
+	password_reset_token VARCHAR(255), 
+	password_reset_expires TIMESTAMP WITH TIME ZONE, 
+	avatar_url VARCHAR(500), 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	last_login TIMESTAMP WITH TIME ZONE, 
+	deleted_at TIMESTAMP WITH TIME ZONE, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE CASCADE
+)
+
+
+2026-01-29 14:07:20,159 INFO sqlalchemy.engine.Engine [no key 0.00020s] ()
+2026-01-29 14:07:20,168 INFO sqlalchemy.engine.Engine CREATE UNIQUE INDEX ix_users_email ON users (email)
+2026-01-29 14:07:20,168 INFO sqlalchemy.engine.Engine [no key 0.00017s] ()
+2026-01-29 14:07:20,171 INFO sqlalchemy.engine.Engine CREATE INDEX ix_users_organization_id ON users (organization_id)
+2026-01-29 14:07:20,171 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,174 INFO sqlalchemy.engine.Engine 
+CREATE TABLE audit_logs (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	user_id UUID, 
+	organization_id UUID, 
+	action VARCHAR(100) NOT NULL, 
+	resource_type VARCHAR(100) NOT NULL, 
+	resource_id UUID, 
+	ip_address INET, 
+	user_agent VARCHAR, 
+	metadata JSONB, 
+	timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id), 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id)
+)
+
+
+2026-01-29 14:07:20,175 INFO sqlalchemy.engine.Engine [no key 0.00017s] ()
+2026-01-29 14:07:20,182 INFO sqlalchemy.engine.Engine CREATE INDEX ix_audit_logs_user_id ON audit_logs (user_id)
+2026-01-29 14:07:20,183 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,185 INFO sqlalchemy.engine.Engine CREATE INDEX ix_audit_logs_organization_id ON audit_logs (organization_id)
+2026-01-29 14:07:20,185 INFO sqlalchemy.engine.Engine [no key 0.00012s] ()
+2026-01-29 14:07:20,187 INFO sqlalchemy.engine.Engine CREATE INDEX ix_audit_logs_timestamp ON audit_logs (timestamp)
+2026-01-29 14:07:20,187 INFO sqlalchemy.engine.Engine [no key 0.00013s] ()
+2026-01-29 14:07:20,191 INFO sqlalchemy.engine.Engine 
+CREATE TABLE patients (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	mrn VARCHAR(50) NOT NULL, 
+	organization_id UUID NOT NULL, 
+	full_name VARCHAR(500) NOT NULL, 
+	date_of_birth VARCHAR(500) NOT NULL, 
+	gender VARCHAR(20), 
+	phone_number VARCHAR(500), 
+	email VARCHAR(500), 
+	address JSONB, 
+	emergency_contact JSONB, 
+	medical_history VARCHAR, 
+	allergies JSONB, 
+	medications JSONB, 
+	created_by UUID, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	deleted_at TIMESTAMP WITHOUT TIME ZONE, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE CASCADE, 
+	FOREIGN KEY(created_by) REFERENCES users (id)
+)
+
+
+2026-01-29 14:07:20,191 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,198 INFO sqlalchemy.engine.Engine CREATE INDEX ix_patients_organization_id ON patients (organization_id)
+2026-01-29 14:07:20,199 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,201 INFO sqlalchemy.engine.Engine CREATE INDEX ix_patients_created_by ON patients (created_by)
+2026-01-29 14:07:20,201 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,204 INFO sqlalchemy.engine.Engine CREATE UNIQUE INDEX ix_patients_mrn ON patients (mrn)
+2026-01-29 14:07:20,204 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,207 INFO sqlalchemy.engine.Engine 
+CREATE TABLE tasks (
+	id UUID NOT NULL, 
+	doctor_id UUID NOT NULL, 
+	title VARCHAR(255) NOT NULL, 
+	description TEXT, 
+	due_date TIMESTAMP WITH TIME ZONE, 
+	priority task_priority NOT NULL, 
+	status task_status NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(doctor_id) REFERENCES users (id) ON DELETE CASCADE
+)
+
+
+2026-01-29 14:07:20,207 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,212 INFO sqlalchemy.engine.Engine CREATE INDEX ix_tasks_doctor_id ON tasks (doctor_id)
+2026-01-29 14:07:20,213 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,218 INFO sqlalchemy.engine.Engine 
+CREATE TABLE appointments (
+	id UUID NOT NULL, 
+	doctor_id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	requested_date TIMESTAMP WITH TIME ZONE NOT NULL, 
+	reason TEXT, 
+	status appointment_status NOT NULL, 
+	meeting_id VARCHAR(50), 
+	join_url TEXT, 
+	start_url TEXT, 
+	meeting_password VARCHAR(50), 
+	doctor_notes TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(doctor_id) REFERENCES users (id), 
+	FOREIGN KEY(patient_id) REFERENCES users (id)
+)
+
+
+2026-01-29 14:07:20,218 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,229 INFO sqlalchemy.engine.Engine CREATE INDEX ix_appointments_patient_id ON appointments (patient_id)
+2026-01-29 14:07:20,229 INFO sqlalchemy.engine.Engine [no key 0.00019s] ()
+2026-01-29 14:07:20,234 INFO sqlalchemy.engine.Engine CREATE INDEX ix_appointments_doctor_id ON appointments (doctor_id)
+2026-01-29 14:07:20,235 INFO sqlalchemy.engine.Engine [no key 0.00019s] ()
+2026-01-29 14:07:20,239 INFO sqlalchemy.engine.Engine 
+CREATE TABLE refresh_tokens (
+	id UUID NOT NULL, 
+	user_id UUID NOT NULL, 
+	token_hash VARCHAR(255) NOT NULL, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	revoked BOOLEAN NOT NULL, 
+	ip_address INET, 
+	user_agent TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+)
+
+
+2026-01-29 14:07:20,239 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,245 INFO sqlalchemy.engine.Engine CREATE UNIQUE INDEX ix_refresh_tokens_token_hash ON refresh_tokens (token_hash)
+2026-01-29 14:07:20,246 INFO sqlalchemy.engine.Engine [no key 0.00023s] ()
+2026-01-29 14:07:20,249 INFO sqlalchemy.engine.Engine CREATE INDEX ix_refresh_tokens_user_id ON refresh_tokens (user_id)
+2026-01-29 14:07:20,249 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,253 INFO sqlalchemy.engine.Engine 
+CREATE TABLE invitations (
+	id UUID NOT NULL, 
+	email VARCHAR(255) NOT NULL, 
+	role user_role NOT NULL, 
+	token_hash VARCHAR(255) NOT NULL, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	organization_id UUID NOT NULL, 
+	created_by_id UUID, 
+	status VARCHAR(20), 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE CASCADE, 
+	FOREIGN KEY(created_by_id) REFERENCES users (id) ON DELETE SET NULL
+)
+
+
+2026-01-29 14:07:20,253 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,259 INFO sqlalchemy.engine.Engine CREATE INDEX ix_invitations_email ON invitations (email)
+2026-01-29 14:07:20,259 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,262 INFO sqlalchemy.engine.Engine CREATE UNIQUE INDEX ix_invitations_token_hash ON invitations (token_hash)
+2026-01-29 14:07:20,262 INFO sqlalchemy.engine.Engine [no key 0.00013s] ()
+2026-01-29 14:07:20,266 INFO sqlalchemy.engine.Engine CREATE INDEX ix_invitations_organization_id ON invitations (organization_id)
+2026-01-29 14:07:20,266 INFO sqlalchemy.engine.Engine [no key 0.00026s] ()
+2026-01-29 14:07:20,271 INFO sqlalchemy.engine.Engine 
+CREATE TABLE ai_processing_queue (
+	id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	doctor_id UUID NOT NULL, 
+	organization_id UUID NOT NULL, 
+	data_payload JSONB NOT NULL, 
+	request_type VARCHAR(50) NOT NULL, 
+	status ai_queue_status NOT NULL, 
+	result_data JSONB, 
+	error_message TEXT, 
+	queued_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	processing_started_at TIMESTAMP WITH TIME ZONE, 
+	completed_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(patient_id) REFERENCES users (id), 
+	FOREIGN KEY(doctor_id) REFERENCES users (id), 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id)
+)
+
+
+2026-01-29 14:07:20,271 INFO sqlalchemy.engine.Engine [no key 0.00020s] ()
+2026-01-29 14:07:20,279 INFO sqlalchemy.engine.Engine CREATE INDEX ix_ai_processing_queue_doctor_id ON ai_processing_queue (doctor_id)
+2026-01-29 14:07:20,280 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,283 INFO sqlalchemy.engine.Engine CREATE INDEX ix_ai_processing_queue_organization_id ON ai_processing_queue (organization_id)
+2026-01-29 14:07:20,283 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,286 INFO sqlalchemy.engine.Engine CREATE INDEX ix_ai_processing_queue_patient_id ON ai_processing_queue (patient_id)
+2026-01-29 14:07:20,286 INFO sqlalchemy.engine.Engine [no key 0.00013s] ()
+2026-01-29 14:07:20,288 INFO sqlalchemy.engine.Engine CREATE INDEX ix_ai_processing_queue_status ON ai_processing_queue (status)
+2026-01-29 14:07:20,288 INFO sqlalchemy.engine.Engine [no key 0.00013s] ()
+2026-01-29 14:07:20,292 INFO sqlalchemy.engine.Engine 
+CREATE TABLE consultations (
+	id UUID DEFAULT gen_random_uuid() NOT NULL, 
+	scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	duration_minutes INTEGER NOT NULL, 
+	doctor_id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	organization_id UUID NOT NULL, 
+	status VARCHAR(20) NOT NULL, 
+	meeting_id VARCHAR(50), 
+	join_url TEXT, 
+	start_url TEXT, 
+	password VARCHAR(50), 
+	notes TEXT, 
+	diagnosis TEXT, 
+	prescription TEXT, 
+	audio_recording_path VARCHAR(500), 
+	transcript TEXT, 
+	soap_note JSONB, 
+	ai_status VARCHAR(20) NOT NULL, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	deleted_at TIMESTAMP WITHOUT TIME ZONE, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(doctor_id) REFERENCES users (id), 
+	FOREIGN KEY(patient_id) REFERENCES patients (id) ON DELETE CASCADE, 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE CASCADE
+)
+
+
+2026-01-29 14:07:20,292 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,298 INFO sqlalchemy.engine.Engine CREATE INDEX ix_consultations_scheduled_at ON consultations (scheduled_at)
+2026-01-29 14:07:20,298 INFO sqlalchemy.engine.Engine [no key 0.00017s] ()
+2026-01-29 14:07:20,301 INFO sqlalchemy.engine.Engine CREATE INDEX ix_consultations_doctor_id ON consultations (doctor_id)
+2026-01-29 14:07:20,302 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,305 INFO sqlalchemy.engine.Engine CREATE INDEX ix_consultations_patient_id ON consultations (patient_id)
+2026-01-29 14:07:20,305 INFO sqlalchemy.engine.Engine [no key 0.00020s] ()
+2026-01-29 14:07:20,309 INFO sqlalchemy.engine.Engine CREATE INDEX ix_consultations_status ON consultations (status)
+2026-01-29 14:07:20,309 INFO sqlalchemy.engine.Engine [no key 0.00023s] ()
+2026-01-29 14:07:20,313 INFO sqlalchemy.engine.Engine CREATE INDEX ix_consultations_organization_id ON consultations (organization_id)
+2026-01-29 14:07:20,313 INFO sqlalchemy.engine.Engine [no key 0.00015s] ()
+2026-01-29 14:07:20,316 INFO sqlalchemy.engine.Engine 
+CREATE TABLE documents (
+	id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	organization_id UUID NOT NULL, 
+	file_name VARCHAR(500) NOT NULL, 
+	file_type VARCHAR(50) NOT NULL, 
+	file_size BIGINT NOT NULL, 
+	storage_path VARCHAR(1000) NOT NULL, 
+	category VARCHAR(100), 
+	title VARCHAR(500), 
+	notes TEXT, 
+	uploaded_by UUID NOT NULL, 
+	uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	virus_scanned BOOLEAN NOT NULL, 
+	virus_scan_result VARCHAR(50), 
+	processing_details JSONB, 
+	total_chunks INTEGER NOT NULL, 
+	deleted_at TIMESTAMP WITH TIME ZONE, 
+	PRIMARY KEY (id), 
+	CONSTRAINT chk_file_size CHECK (file_size > 0 AND file_size <= 104857600), 
+	FOREIGN KEY(patient_id) REFERENCES patients (id) ON DELETE CASCADE, 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE CASCADE, 
+	UNIQUE (storage_path), 
+	FOREIGN KEY(uploaded_by) REFERENCES users (id)
+)
+
+
+2026-01-29 14:07:20,317 INFO sqlalchemy.engine.Engine [no key 0.00017s] ()
+2026-01-29 14:07:20,325 INFO sqlalchemy.engine.Engine CREATE INDEX ix_documents_organization_id ON documents (organization_id)
+2026-01-29 14:07:20,325 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,328 INFO sqlalchemy.engine.Engine CREATE INDEX ix_documents_uploaded_by ON documents (uploaded_by)
+2026-01-29 14:07:20,328 INFO sqlalchemy.engine.Engine [no key 0.00013s] ()
+2026-01-29 14:07:20,330 INFO sqlalchemy.engine.Engine CREATE INDEX ix_documents_patient_id ON documents (patient_id)
+2026-01-29 14:07:20,331 INFO sqlalchemy.engine.Engine [no key 0.00013s] ()
+2026-01-29 14:07:20,334 INFO sqlalchemy.engine.Engine 
+CREATE TABLE activity_logs (
+	id UUID NOT NULL, 
+	user_id UUID NOT NULL, 
+	organization_id UUID NOT NULL, 
+	activity_type VARCHAR(100) NOT NULL, 
+	description TEXT, 
+	status VARCHAR(50), 
+	patient_id UUID, 
+	related_entity_type VARCHAR(50), 
+	related_entity_id UUID, 
+	extra_data JSONB, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id), 
+	FOREIGN KEY(organization_id) REFERENCES organizations (id), 
+	FOREIGN KEY(patient_id) REFERENCES patients (id)
+)
+
+
+2026-01-29 14:07:20,334 INFO sqlalchemy.engine.Engine [no key 0.00021s] ()
+2026-01-29 14:07:20,341 INFO sqlalchemy.engine.Engine CREATE INDEX ix_activity_logs_organization_id ON activity_logs (organization_id)
+2026-01-29 14:07:20,341 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,344 INFO sqlalchemy.engine.Engine CREATE INDEX ix_activity_logs_user_id ON activity_logs (user_id)
+2026-01-29 14:07:20,344 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,347 INFO sqlalchemy.engine.Engine CREATE INDEX ix_activity_logs_created_at ON activity_logs (created_at)
+2026-01-29 14:07:20,347 INFO sqlalchemy.engine.Engine [no key 0.00014s] ()
+2026-01-29 14:07:20,351 INFO sqlalchemy.engine.Engine 
+CREATE TABLE data_access_grants (
+	id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	doctor_id UUID NOT NULL, 
+	appointment_id UUID, 
+	grant_reason VARCHAR(255), 
+	ai_access_permission BOOLEAN NOT NULL, 
+	access_level VARCHAR(50) NOT NULL, 
+	granted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	expires_at TIMESTAMP WITH TIME ZONE, 
+	is_active BOOLEAN NOT NULL, 
+	revoked_at TIMESTAMP WITH TIME ZONE, 
+	revoked_reason TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(patient_id) REFERENCES users (id), 
+	FOREIGN KEY(doctor_id) REFERENCES users (id), 
+	FOREIGN KEY(appointment_id) REFERENCES appointments (id)
+)
+
+
+2026-01-29 14:07:20,352 INFO sqlalchemy.engine.Engine [no key 0.00020s] ()
+2026-01-29 14:07:20,359 INFO sqlalchemy.engine.Engine CREATE INDEX ix_data_access_grants_patient_id ON data_access_grants (patient_id)
+2026-01-29 14:07:20,359 INFO sqlalchemy.engine.Engine [no key 0.00019s] ()
+2026-01-29 14:07:20,363 INFO sqlalchemy.engine.Engine CREATE INDEX ix_data_access_grants_doctor_id ON data_access_grants (doctor_id)
+2026-01-29 14:07:20,363 INFO sqlalchemy.engine.Engine [no key 0.00017s] ()
+2026-01-29 14:07:20,368 INFO sqlalchemy.engine.Engine 
+CREATE TABLE chunks (
+	id UUID NOT NULL, 
+	document_id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	content TEXT NOT NULL, 
+	source VARCHAR(50) NOT NULL, 
+	chunk_type VARCHAR(50) NOT NULL, 
+	page_number INTEGER, 
+	medical_keywords JSONB, 
+	embedding VECTOR(1536), 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
+	FOREIGN KEY(patient_id) REFERENCES users (id)
+ERROR:    Traceback (most recent call last):
+)
+
+
+2026-01-29 14:07:20,368 INFO sqlalchemy.engine.Engine [no key 0.00016s] ()
+2026-01-29 14:07:20,377 INFO sqlalchemy.engine.Engine ROLLBACK
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 546, in _prepare_and_execute
+    self._rows = await prepared_stmt.fetch(*parameters)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/asyncpg/prepared_stmt.py", line 176, in fetch
+    data = await self.__bind_execute(args, 0, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/asyncpg/prepared_stmt.py", line 241, in __bind_execute
+    data, status, _ = await self.__do_execute(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/asyncpg/prepared_stmt.py", line 230, in __do_execute
+    return await executor(protocol)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 207, in bind_execute
+asyncpg.exceptions.UndefinedObjectError: type "vector" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 922, in do_execute
+    cursor.execute(statement, parameters)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 580, in execute
+    self._adapt_connection.await_(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 130, in await_only
+    return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 195, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 558, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 509, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.ProgrammingError: <class 'asyncpg.exceptions.UndefinedObjectError'>: type "vector" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.11/site-packages/starlette/routing.py", line 738, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+  File "/usr/local/lib/python3.11/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/main.py", line 24, in lifespan
+    await init_db()
+  File "/app/app/database.py", line 58, in init_db
+    await conn.run_sync(Base.metadata.create_all)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/ext/asyncio/engine.py", line 891, in run_sync
+    return await greenlet_spawn(fn, self._proxied, *arg, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 200, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/schema.py", line 5832, in create_all
+    bind._run_ddl_visitor(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2448, in _run_ddl_visitor
+    visitorcallable(self.dialect, self, **kwargs).traverse_single(element)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/visitors.py", line 671, in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 919, in visit_metadata
+    self.traverse_single(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/visitors.py", line 671, in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 957, in visit_table
+    )._invoke_with(self.connection)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 315, in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1416, in execute
+    return meth(
+           ^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 181, in _execute_on_connection
+    return connection._execute_ddl(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1528, in _execute_ddl
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2344, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 922, in do_execute
+    cursor.execute(statement, parameters)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 580, in execute
+    self._adapt_connection.await_(
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 130, in await_only
+    return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 195, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 558, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 509, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/opt/venv/lib/python3.11/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.exc.ProgrammingError: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedObjectError'>: type "vector" does not exist
+[SQL: 
+CREATE TABLE chunks (
+	id UUID NOT NULL, 
+	document_id UUID NOT NULL, 
+	patient_id UUID NOT NULL, 
+	content TEXT NOT NULL, 
+	source VARCHAR(50) NOT NULL, 
+	chunk_type VARCHAR(50) NOT NULL, 
+	page_number INTEGER, 
+	medical_keywords JSONB, 
+	embedding VECTOR(1536), 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
+	FOREIGN KEY(patient_id) REFERENCES users (id)
+)
+
+]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+ERROR:    Application startup failed. Exiting.

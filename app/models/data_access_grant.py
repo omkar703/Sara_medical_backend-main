@@ -34,8 +34,11 @@ class DataAccessGrant(Base):
     granted_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     
+    # Status tracking (pending, active, revoked, expired)
+    status = Column(String(20), default="active", nullable=False)
+    
     # Revocation tracking
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False) # Deprecated in favor of status, kept for safety
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     revoked_reason = Column(Text, nullable=True)
     

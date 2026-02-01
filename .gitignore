@@ -64,3 +64,5 @@ celerybeat.pid
 *.bak
 
 /_documents
+*_output.txt
+*_log.txt

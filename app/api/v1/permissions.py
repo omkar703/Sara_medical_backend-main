@@ -24,6 +24,10 @@ class GrantAccessRequest(BaseModel):
     expiry_days: int = 90
     reason: Optional[str] = None
 
+class RequestAccessRequest(BaseModel):
+    patient_id: UUID
+    reason: Optional[str] = None
+
 class RevokeAccessRequest(BaseModel):
     doctor_id: UUID
 
@@ -48,36 +52,20 @@ async def grant_access(
     # Check if doctor exists (optional verification)
     
     # Create or Update Grant
-    # Check if existing active grant
-    stmt = select(DataAccessGrant).where(
-        DataAccessGrant.patient_id == current_user.id,
-        DataAccessGrant.doctor_id == request.doctor_id,
-        DataAccessGrant.is_active == True
-    )
-    result = await db.execute(stmt)
-    existing_grant = result.scalars().first()
+    # Create or Approave using Service
+    from app.services.permission_service import PermissionService
+    service = PermissionService(db)
     
     expires_at = datetime.now(timezone.utc) + timedelta(days=request.expiry_days)
     
-    if existing_grant:
-        # Update
-        existing_grant.expires_at = expires_at
-        existing_grant.grant_reason = request.reason
-        existing_grant.ai_access_permission = request.ai_access_permission
-        existing_grant.access_level = request.access_level
-        existing_grant.is_active = True
-    else:
-        # Create
-        new_grant = DataAccessGrant(
-            patient_id=current_user.id,
-            doctor_id=request.doctor_id,
-            grant_reason=request.reason,
-            expires_at=expires_at,
-            is_active=True,
-            ai_access_permission=request.ai_access_permission,
-            access_level=request.access_level
-        )
-        db.add(new_grant)
+    grant = await service.create_access_grant(
+        doctor_id=request.doctor_id,
+        patient_id=current_user.id,
+        grant_reason=request.reason,
+        expires_at=expires_at,
+        access_level=request.access_level,
+        ai_access_permission=request.ai_access_permission
+    )
     
     await db.commit()
     
@@ -88,12 +76,34 @@ async def grant_access(
         user_id=current_user.id,
         action="permission.grant",
         resource_type="data_access_grant",
-        resource_id=existing_grant.id if existing_grant else new_grant.id,
+        resource_id=grant.id,
         organization_id=current_user.organization_id,
         metadata={"doctor_id": str(request.doctor_id), "ai_access": request.ai_access_permission}
     )
     
     return {"success": True, "message": "Access granted"}
+
+@router.post("/request", status_code=status.HTTP_201_CREATED)
+async def request_access(
+    request: RequestAccessRequest,
+    current_user: User = Depends(get_current_active_user), # Doctor
+    db: AsyncSession = Depends(get_db)
+):
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Only doctors can request access")
+        
+    from app.services.permission_service import PermissionService
+    service = PermissionService(db)
+    
+    grant = await service.request_access(
+        doctor_id=current_user.id,
+        patient_id=request.patient_id,
+        reason=request.reason
+    )
+    
+    await db.commit()
+    
+    return {"success": True, "message": "Access request sent", "status": grant.status}
 
 @router.delete("/revoke-doctor-access")
 async def revoke_access(
@@ -134,24 +144,10 @@ async def check_permission(
     current_user: User = Depends(get_current_active_user), # Doctor
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(DataAccessGrant).where(
-        DataAccessGrant.patient_id == patient_id,
-        DataAccessGrant.doctor_id == current_user.id,
-        DataAccessGrant.is_active == True
-    )
-    result = await db.execute(stmt)
-    grant = result.scalars().first()
+    from app.services.permission_service import PermissionService
+    service = PermissionService(db)
     
-    has_perm = grant is not None
-    # Check expiry
-    if has_perm and grant.expires_at:
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
-        if grant.expires_at < now:
-            has_perm = False
-        
-    # Need to check ai_access_permission column which I'm about to add.
-    # For now assuming if grant exists it implies permission or we check the field.
+    has_perm = await service.check_doctor_access(current_user.id, patient_id)
     
     return {
         "success": has_perm,

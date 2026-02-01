@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from uuid import UUID
 from datetime import datetime
 from typing import List
 
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_role
 from app.models.user import User
 from app.models.document import Document
 from app.models.patient import Patient
@@ -18,7 +19,7 @@ from app.schemas.medical_history import MedicalHistoryResponse, DocumentCategory
 from app.services.minio_service import minio_service
 from app.services.audit_service import log_action
 
-router = APIRouter(prefix="/patient/medical-history", tags=["Medical History"])
+router = APIRouter(prefix="/doctor/medical-history", tags=["Medical History"])
 
 # Allowed file extensions for medical documents
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".dicom", ".dcm"}
@@ -28,20 +29,17 @@ MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 @router.post("", response_model=MedicalHistoryResponse, status_code=status.HTTP_201_CREATED)
 async def upload_medical_history(
     file: UploadFile = File(...),
+    patient_id: UUID = Form(...),
     category: str = Form(...),
     title: str = Form(None),
     description: str = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("doctor")),
     request: Request = None
 ):
     """
-    Upload patient medical history document with HIPAA-compliant security.
-    
-    Security:
-    - Files stored with encryption at rest in MinIO
-    - Returns presigned URL with 15-minute expiration
-    - All uploads are audit logged
+    Upload patient medical history document (Doctor only).
+    Only the doctor who onboarded the patient can upload documents.
     """
     
     # Validate file extension
@@ -78,18 +76,38 @@ async def upload_medical_history(
             detail=f"Invalid category. Allowed: {', '.join([c.value for c in DocumentCategory])}"
         )
     
-    # Get patient record for current user
+    # Get patient record and verify ownership
     patient_query = select(Patient).where(
-        Patient.id == current_user.id,
+        Patient.id == patient_id,
+        Patient.data_is_deleted == False if hasattr(Patient, "data_is_deleted") else Patient.deleted_at.is_(None)
+    )
+    # Using getattr generic check or just deleted_at since I saw it in view_file
+    patient_query = select(Patient).where(
+        Patient.id == patient_id,
         Patient.deleted_at.is_(None)
     )
+    
     patient_result = await db.execute(patient_query)
     patient = patient_result.scalar_one_or_none()
     
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient profile not found"
+            detail="Patient not found"
+        )
+        
+    # Security Check: Creator Only
+    if patient.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Only the doctor who onboarded this patient can upload medical history."
+        )
+
+    # Ensure patient belongs to same organization (double check)
+    if patient.organization_id != current_user.organization_id:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Patient belongs to a different organization."
         )
     
     # Generate unique storage path
@@ -141,7 +159,8 @@ async def upload_medical_history(
         metadata={
             "file_name": file.filename,
             "category": category,
-            "file_size": file_size
+            "file_size": file_size,
+            "patient_id": str(patient.id)
         }
     )
     await db.commit()
