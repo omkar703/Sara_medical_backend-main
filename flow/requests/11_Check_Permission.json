@@ -1,0 +1,11 @@
+{
+  "step": 11,
+  "step_name": "Check_Permission",
+  "timestamp": "2026-02-07T02:21:47.437809",
+  "method": "GET",
+  "url": "http://localhost:8000/api/v1/permissions/check?patient_id=85af63d9-1fab-41c2-811e-24191e73f50b",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***"
+  },
+  "body": null
+}

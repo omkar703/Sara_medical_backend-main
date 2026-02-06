@@ -1,0 +1,16 @@
+{
+  "step": 3,
+  "step_name": "Create_Patient",
+  "timestamp": "2026-02-07T01:51:44.668251",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/patients",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "fullName": "John Doe Test",
+    "dateOfBirth": "1985-05-15",
+    "phone": "+1234567890"
+  }
+}

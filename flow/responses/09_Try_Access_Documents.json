@@ -1,0 +1,16 @@
+{
+  "step": 9,
+  "step_name": "Try_Access_Documents",
+  "timestamp": "2026-02-07T02:21:47.412693",
+  "status_code": 403,
+  "status_text": "Forbidden",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:51:45 GMT",
+    "server": "uvicorn",
+    "content-length": "61",
+    "content-type": "application/json"
+  },
+  "body": {
+    "detail": "Access to medical records not granted by patient"
+  }
+}

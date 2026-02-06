@@ -1,0 +1,15 @@
+{
+  "step": 9,
+  "step_name": "Update_Consultation",
+  "timestamp": "2026-02-07T02:27:38.461128",
+  "method": "PUT",
+  "url": "http://localhost:8000/api/v1/consultations/f5b51023-6521-4bfa-8bb9-fb0f3dab9f17",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "status": "completed",
+    "diagnosis": "Common cold - prescribe rest and fluids"
+  }
+}

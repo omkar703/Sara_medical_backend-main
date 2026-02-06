@@ -1,0 +1,12 @@
+{
+  "step": 9,
+  "step_name": "Login",
+  "timestamp": "2026-02-07T02:09:14.625242",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/auth/login",
+  "headers": {},
+  "body": {
+    "email": "doctor2_test_20260207020913@example.com",
+    "password": "SecurePass123!"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "step": 3,
+  "step_name": "Update_Doctor_Profile",
+  "timestamp": "2026-02-07T02:09:13.844553",
+  "status_code": 200,
+  "status_text": "OK",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:39:12 GMT",
+    "server": "uvicorn",
+    "content-length": "67",
+    "content-type": "application/json"
+  },
+  "body": {
+    "message": "Profile updated successfully",
+    "specialty": "Cardiology"
+  }
+}

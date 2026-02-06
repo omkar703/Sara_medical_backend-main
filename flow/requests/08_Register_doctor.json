@@ -1,0 +1,14 @@
+{
+  "step": 8,
+  "step_name": "Register_doctor",
+  "timestamp": "2026-02-07T02:09:14.314125",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/auth/register",
+  "headers": {},
+  "body": {
+    "email": "doctor2_test_20260207020913@example.com",
+    "password": "SecurePass123!",
+    "role": "doctor",
+    "full_name": "Dr. Second 20260207020913"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "step": 4,
+  "step_name": "FlowB_Direct_Upload",
+  "timestamp": "2026-02-07T01:51:44.716322",
+  "status_code": 201,
+  "status_text": "Created",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:21:43 GMT",
+    "server": "uvicorn",
+    "content-length": "153",
+    "content-type": "application/json"
+  },
+  "body": {
+    "success": true,
+    "document_id": "b848119f-a856-4150-b3bd-9a032ac6f183",
+    "status": "processing",
+    "message": "Document uploaded. Processing started via Celery."
+  }
+}

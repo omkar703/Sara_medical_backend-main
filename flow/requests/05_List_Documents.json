@@ -1,0 +1,11 @@
+{
+  "step": 5,
+  "step_name": "List_Documents",
+  "timestamp": "2026-02-07T01:51:44.720614",
+  "method": "GET",
+  "url": "http://localhost:8000/api/v1/documents?patient_id=433ab909-2712-43a6-b680-b60c35844ff6",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***"
+  },
+  "body": null
+}

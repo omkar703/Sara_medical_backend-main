@@ -1,0 +1,17 @@
+{
+  "step": 4,
+  "step_name": "Schedule_Consultation",
+  "timestamp": "2026-02-07T02:27:36.306390",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/consultations",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "patientId": "cf32c627-d03d-47c1-b713-5a0074c65b20",
+    "scheduledAt": "2026-02-08T10:00:00",
+    "durationMinutes": 30,
+    "notes": "Initial consultation"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "step": 7,
+  "step_name": "Request_Permission",
+  "timestamp": "2026-02-07T02:21:47.353501",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/permissions/request",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "patient_id": "85af63d9-1fab-41c2-811e-24191e73f50b",
+    "reason": "Need to review patient's medical history for consultation",
+    "expiry_days": 90
+  }
+}

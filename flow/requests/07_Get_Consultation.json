@@ -1,0 +1,11 @@
+{
+  "step": 7,
+  "step_name": "Get_Consultation",
+  "timestamp": "2026-02-07T02:27:38.397946",
+  "method": "GET",
+  "url": "http://localhost:8000/api/v1/consultations/f5b51023-6521-4bfa-8bb9-fb0f3dab9f17",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***"
+  },
+  "body": null
+}

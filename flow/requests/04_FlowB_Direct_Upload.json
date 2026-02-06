@@ -1,0 +1,15 @@
+{
+  "step": 4,
+  "step_name": "FlowB_Direct_Upload",
+  "timestamp": "2026-02-07T01:51:44.688741",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/documents/upload",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***"
+  },
+  "body": {
+    "patient_id": "433ab909-2712-43a6-b680-b60c35844ff6",
+    "notes": "Test upload via direct flow (Flow B)",
+    "file": "Introduction to IT - Practice Quiz_ Binary _ Google Skills.pdf"
+  }
+}

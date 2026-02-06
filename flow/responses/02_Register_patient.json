@@ -1,0 +1,16 @@
+{
+  "step": 2,
+  "step_name": "Register_patient",
+  "timestamp": "2026-02-07T02:15:09.269469",
+  "status_code": 403,
+  "status_text": "Forbidden",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:45:08 GMT",
+    "server": "uvicorn",
+    "content-length": "105",
+    "content-type": "application/json"
+  },
+  "body": {
+    "detail": "Patients cannot register themselves. Please contact your healthcare provider for onboarding."
+  }
+}

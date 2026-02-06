@@ -1,0 +1,39 @@
+{
+  "step": 6,
+  "step_name": "List_Consultations",
+  "timestamp": "2026-02-07T02:27:38.390048",
+  "status_code": 200,
+  "status_text": "OK",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:57:38 GMT",
+    "server": "uvicorn",
+    "content-length": "1129",
+    "content-type": "application/json"
+  },
+  "body": {
+    "consultations": [
+      {
+        "id": "f5b51023-6521-4bfa-8bb9-fb0f3dab9f17",
+        "scheduledAt": "2026-02-08T10:00:00Z",
+        "durationMinutes": 30,
+        "status": "scheduled",
+        "doctorId": "1c489077-4cbe-4b40-b754-83d66d1d0a06",
+        "doctorName": "Dr. Consult Test 20260207022735",
+        "patientId": "cf32c627-d03d-47c1-b713-5a0074c65b20",
+        "patientName": "Patient Consult Test 20260207022735",
+        "meetingId": "73280611588",
+        "joinUrl": "https://us04web.zoom.us/j/73280611588?pwd=eGfQOLN6Mq1WcagAp3PiKdBQgcdVr8.1",
+        "startUrl": "https://us04web.zoom.us/s/73280611588?zak=eyJ0eXAiOiJKV1QiLCJzdiI6IjAwMDAwMiIsInptX3NrbSI6InptX28ybSIsImFsZyI6IkhTMjU2In0.eyJpc3MiOiJ3ZWIiLCJjbHQiOjAsIm1udW0iOiI3MzI4MDYxMTU4OCIsImF1ZCI6ImNsaWVudHNtIiwidWlkIjoiSW1RZXF3NGlSejJ1d2V5NlFTaDlWdyIsInppZCI6ImVjZDVmMzE5NmViYzQxOTM5YmFmMjkwZjYxM2I4OTczIiwic2siOiIwIiwic3R5IjoxLCJ3Y2QiOiJ1czA0IiwiZXhwIjoxNzcwNDE4NjU3LCJpYXQiOjE3NzA0MTE0NTcsImFpZCI6IlpKdGROQkUwUnJDWUo0V0Iyc3hUbHciLCJjaWQiOiIifQ.LgHjFcdjWSshWdgHj6q2UGHhFrU_GX03rBQLd0BQMAM",
+        "password": "Rf6ENt",
+        "notes": "Initial consultation",
+        "diagnosis": null,
+        "prescription": null,
+        "aiStatus": "pending",
+        "hasAudio": false,
+        "hasTranscript": false,
+        "hasSoapNote": false
+      }
+    ],
+    "total": 1
+  }
+}

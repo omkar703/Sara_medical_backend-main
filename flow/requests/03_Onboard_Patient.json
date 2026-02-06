@@ -1,0 +1,18 @@
+{
+  "step": 3,
+  "step_name": "Onboard_Patient",
+  "timestamp": "2026-02-07T02:27:35.904067",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/doctor/onboard-patient",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "email": "patient_consult_20260207022735@example.com",
+    "full_name": "Patient Consult Test 20260207022735",
+    "date_of_birth": "1990-01-01",
+    "phone_number": "+1234567890",
+    "password": "SecurePass123!"
+  }
+}

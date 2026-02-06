@@ -15,12 +15,22 @@ class MinIOService:
     """
     
     def __init__(self):
+        # Internal client for backend-to-MinIO communication  
         self.client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ROOT_USER,
             secret_key=settings.MINIO_ROOT_PASSWORD,
             secure=settings.MINIO_USE_SSL
         )
+        
+        # External client for presigned URLs accessible from outside Docker
+        self.external_client = Minio(
+            settings.minio_presigned_endpoint,
+            access_key=settings.MINIO_ROOT_USER,
+            secret_key=settings.MINIO_ROOT_PASSWORD,
+            secure=settings.MINIO_USE_SSL
+        )
+        
         self._ensure_buckets()
     
     def _ensure_buckets(self):
@@ -85,7 +95,7 @@ class MinIOService:
             Presigned URL string or None if error
         """
         try:
-            url = self.client.presigned_get_object(
+            url = self.external_client.presigned_get_object(
                 bucket_name,
                 object_name,
                 expires=timedelta(seconds=expiry_seconds)

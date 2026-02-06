@@ -1,0 +1,12 @@
+{
+  "step": 10,
+  "step_name": "Trigger_AI_Analysis",
+  "timestamp": "2026-02-07T02:27:38.492623",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/consultations/f5b51023-6521-4bfa-8bb9-fb0f3dab9f17/analyze",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": null
+}

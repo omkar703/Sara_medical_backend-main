@@ -13,13 +13,23 @@ class StorageService:
     """Service for managing file storage with MinIO"""
     
     def __init__(self):
-        """Initialize MinIO client"""
+        """Initialize MinIO clients"""
+        # Internal client for backend-to-MinIO communication
         self.client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ROOT_USER,
             secret_key=settings.MINIO_ROOT_PASSWORD,
             secure=settings.MINIO_USE_SSL
         )
+        
+        # External client for presigned URLs accessible from outside Docker
+        self.external_client = Minio(
+            settings.minio_presigned_endpoint,
+            access_key=settings.MINIO_ROOT_USER,
+            secret_key=settings.MINIO_ROOT_PASSWORD,
+            secure=settings.MINIO_USE_SSL
+        )
+        
         self.bucket_name = settings.MINIO_BUCKET_DOCUMENTS
     
     async def generate_upload_url(
@@ -41,7 +51,7 @@ class StorageService:
         """
         from datetime import timedelta
         try:
-            url = self.client.presigned_put_object(
+            url = self.external_client.presigned_put_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
                 expires=timedelta(seconds=expires_in)
@@ -67,7 +77,7 @@ class StorageService:
         """
         from datetime import timedelta
         try:
-            url = self.client.presigned_get_object(
+            url = self.external_client.presigned_get_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
                 expires=timedelta(seconds=expires_in)

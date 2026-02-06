@@ -1,0 +1,27 @@
+{
+  "step": 8,
+  "step_name": "Register_doctor",
+  "timestamp": "2026-02-07T02:09:14.623809",
+  "status_code": 201,
+  "status_text": "Created",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:39:12 GMT",
+    "server": "uvicorn",
+    "content-length": "406",
+    "content-type": "application/json"
+  },
+  "body": {
+    "id": "406cab92-22f1-4a37-b047-2cdd558366c9",
+    "name": "Dr. Second 20260207020913",
+    "email": "doctor2_test_20260207020913@example.com",
+    "first_name": "Dr.",
+    "last_name": "Second 20260207020913",
+    "phone_number": null,
+    "role": "doctor",
+    "organization_id": "a50f8ddf-c944-454f-a2bf-1c712ee53dc2",
+    "mfa_enabled": false,
+    "email_verified": true,
+    "created_at": "2026-02-06T20:39:14.616680Z",
+    "updated_at": "2026-02-06T20:39:14.616682Z"
+  }
+}

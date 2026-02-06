@@ -1,0 +1,33 @@
+{
+  "step": 5,
+  "step_name": "List_Documents",
+  "timestamp": "2026-02-07T01:51:44.742753",
+  "status_code": 200,
+  "status_text": "OK",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:21:43 GMT",
+    "server": "uvicorn",
+    "content-length": "854",
+    "content-type": "application/json"
+  },
+  "body": {
+    "documents": [
+      {
+        "id": "b848119f-a856-4150-b3bd-9a032ac6f183",
+        "patientId": "433ab909-2712-43a6-b680-b60c35844ff6",
+        "fileName": "Introduction to IT - Practice Quiz_ Binary _ Google Skills.pdf",
+        "fileType": "application/pdf",
+        "fileSize": 227737,
+        "category": null,
+        "title": null,
+        "notes": "Test upload via direct flow (Flow B)",
+        "uploadedAt": "2026-02-06T20:21:44.706836+00:00",
+        "uploadedBy": "09588b51-0560-49b1-b58e-db5e12ce07cc",
+        "downloadUrl": "http://minio:9000/saramedico-documents//tmp/saramedico_uploads/b848119f-a856-4150-b3bd-9a032ac6f183.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=saramedico_minio_admin%2F20260206%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260206T202144Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=7161a803049798f1942732dca7a5e0e3f42f23b1ae758d2eb1e5499091e536e0",
+        "virusScanned": false,
+        "virusScanResult": null
+      }
+    ],
+    "total": 1
+  }
+}

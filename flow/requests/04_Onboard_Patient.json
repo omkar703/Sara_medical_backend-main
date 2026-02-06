@@ -1,0 +1,18 @@
+{
+  "step": 4,
+  "step_name": "Onboard_Patient",
+  "timestamp": "2026-02-07T02:09:13.849590",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/doctor/onboard-patient",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "email": "patient_test_20260207020913@example.com",
+    "full_name": "Patient Test 20260207020913",
+    "date_of_birth": "1990-01-01",
+    "phone_number": "+1234567890",
+    "password": "TempPass123!"
+  }
+}

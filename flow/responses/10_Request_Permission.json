@@ -1,0 +1,18 @@
+{
+  "step": 10,
+  "step_name": "Request_Permission",
+  "timestamp": "2026-02-07T02:09:14.938692",
+  "status_code": 201,
+  "status_text": "Created",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:39:12 GMT",
+    "server": "uvicorn",
+    "content-length": "67",
+    "content-type": "application/json"
+  },
+  "body": {
+    "success": true,
+    "message": "Access request sent",
+    "status": "pending"
+  }
+}

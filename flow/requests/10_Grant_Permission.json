@@ -1,0 +1,15 @@
+{
+  "step": 10,
+  "step_name": "Grant_Permission",
+  "timestamp": "2026-02-07T02:21:47.415774",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/permissions/grant-doctor-access",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "doctor_id": "3abac9a8-f586-4d9e-863d-2fc2d42741dc",
+    "ai_access_permission": true
+  }
+}

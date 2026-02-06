@@ -1,0 +1,24 @@
+{
+  "step": 6,
+  "step_name": "Create_Task",
+  "timestamp": "2026-02-07T02:09:14.251259",
+  "status_code": 201,
+  "status_text": "Created",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:39:12 GMT",
+    "server": "uvicorn",
+    "content-length": "369",
+    "content-type": "application/json"
+  },
+  "body": {
+    "title": "Review Lab Results",
+    "description": "Please review your latest blood test results and contact us if you have any questions.",
+    "due_date": null,
+    "priority": "normal",
+    "status": "pending",
+    "id": "bf3ef745-99e0-42ea-9cbd-701223da36dc",
+    "doctor_id": "b27cfe6a-fffe-4a09-9c6a-ea44cebe1fb3",
+    "created_at": "2026-02-06T20:39:14.236245Z",
+    "updated_at": "2026-02-06T20:39:14.236248Z"
+  }
+}

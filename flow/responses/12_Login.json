@@ -1,0 +1,34 @@
+{
+  "step": 12,
+  "step_name": "Login",
+  "timestamp": "2026-02-07T02:09:15.267931",
+  "status_code": 200,
+  "status_text": "OK",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:39:12 GMT",
+    "server": "uvicorn",
+    "content-length": "1188",
+    "content-type": "application/json"
+  },
+  "body": {
+    "success": true,
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyZWExOGY0NC1mZTk4LTQzNmQtOTU0Yi1jMmE1ZGVmNGE3M2EiLCJyb2xlIjoicGF0aWVudCIsImV4cCI6MTc3MDQ5Njc1NSwiaWF0IjoxNzcwNDEwMzU1LCJ0eXBlIjoiYWNjZXNzIn0.TOtk4uZuBlbQ3kBrgV-KJYnWWsBHkE-h3sbPWKGgxgI",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyZWExOGY0NC1mZTk4LTQzNmQtOTU0Yi1jMmE1ZGVmNGE3M2EiLCJyb2xlIjoicGF0aWVudCIsImV4cCI6MTc3MDQ5Njc1NSwiaWF0IjoxNzcwNDEwMzU1LCJ0eXBlIjoiYWNjZXNzIn0.TOtk4uZuBlbQ3kBrgV-KJYnWWsBHkE-h3sbPWKGgxgI",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyZWExOGY0NC1mZTk4LTQzNmQtOTU0Yi1jMmE1ZGVmNGE3M2EiLCJleHAiOjE3NzMwMDIzNTUsImlhdCI6MTc3MDQxMDM1NSwidHlwZSI6InJlZnJlc2gifQ.KXEVo34yn_WWESCuNt7YBbUAXm6I-83wGBL1sqCr7eg",
+    "token_type": "bearer",
+    "user": {
+      "id": "2ea18f44-fe98-436d-954b-c2a5def4a73a",
+      "name": "Patient Test 20260207020913",
+      "email": "patient_test_20260207020913@example.com",
+      "first_name": "Patient",
+      "last_name": "Test 20260207020913",
+      "phone_number": "+1234567890",
+      "role": "patient",
+      "organization_id": "a50f8ddf-c944-454f-a2bf-1c712ee53dc2",
+      "mfa_enabled": false,
+      "email_verified": true,
+      "created_at": "2026-02-06T20:39:14.151004Z",
+      "updated_at": "2026-02-06T20:39:15.257671"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "step": 7,
+  "step_name": "List_Pending_Tasks",
+  "timestamp": "2026-02-07T02:09:14.258046",
+  "method": "GET",
+  "url": "http://localhost:8000/api/v1/doctor/tasks",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***"
+  },
+  "body": null
+}

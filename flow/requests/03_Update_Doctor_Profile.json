@@ -1,0 +1,16 @@
+{
+  "step": 3,
+  "step_name": "Update_Doctor_Profile",
+  "timestamp": "2026-02-07T02:09:13.826407",
+  "method": "PATCH",
+  "url": "http://localhost:8000/api/v1/doctor/profile",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "specialty": "Cardiology",
+    "bio": "Experienced cardiologist specializing in preventive care",
+    "license_number": "MD-20260207020913"
+  }
+}

@@ -1,7 +1,7 @@
 """Application Configuration"""
 
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     
     # MinIO
     MINIO_ENDPOINT: str
+    MINIO_EXTERNAL_ENDPOINT: Optional[str] = None  # For presigned URLs accessible from outside Docker
     MINIO_ROOT_USER: str
     MINIO_ROOT_PASSWORD: str
     MINIO_USE_SSL: bool = False
@@ -61,6 +62,11 @@ class Settings(BaseSettings):
     MINIO_BUCKET_AUDIO: str = "saramedico-audio"
     MINIO_BUCKET_AVATARS: str = "saramedico-avatars"
     PRESIGNED_URL_EXPIRY: int = 3600  # 1 hour
+    
+    @property
+    def minio_presigned_endpoint(self) -> str:
+        """Get the endpoint to use for presigned URLs (external if set, otherwise internal)"""
+        return self.MINIO_EXTERNAL_ENDPOINT or self.MINIO_ENDPOINT
     
     # Email
     SMTP_HOST: str

@@ -1,0 +1,13 @@
+{
+  "step": 5,
+  "step_name": "FlowA_Upload_To_MinIO",
+  "timestamp": "2026-02-07T01:51:18.985098",
+  "method": "PUT",
+  "url": "http://minio:9000/saramedico-documents/a50f8ddf-c944-454f-a2bf-1c712ee53dc2/5e7aa7ab-5c28-4d21-8e87-...",
+  "headers": {
+    "Content-Type": "application/pdf"
+  },
+  "body": {
+    "note": "Binary file upload"
+  }
+}

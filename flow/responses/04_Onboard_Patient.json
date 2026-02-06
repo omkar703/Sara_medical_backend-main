@@ -1,0 +1,19 @@
+{
+  "step": 4,
+  "step_name": "Onboard_Patient",
+  "timestamp": "2026-02-07T02:09:14.160415",
+  "status_code": 200,
+  "status_text": "OK",
+  "headers": {
+    "date": "Fri, 06 Feb 2026 20:39:12 GMT",
+    "server": "uvicorn",
+    "content-length": "182",
+    "content-type": "application/json"
+  },
+  "body": {
+    "message": "Patient onboarded successfully",
+    "patient_id": "2ea18f44-fe98-436d-954b-c2a5def4a73a",
+    "email": "patient_test_20260207020913@example.com",
+    "temporary_password": "TempPass123!"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "step": 6,
+  "step_name": "Create_Task",
+  "timestamp": "2026-02-07T02:09:14.225373",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/doctor/tasks",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "patient_id": "2ea18f44-fe98-436d-954b-c2a5def4a73a",
+    "title": "Review Lab Results",
+    "description": "Please review your latest blood test results and contact us if you have any questions."
+  }
+}

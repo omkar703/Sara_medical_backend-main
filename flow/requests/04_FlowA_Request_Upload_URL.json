@@ -1,0 +1,17 @@
+{
+  "step": 4,
+  "step_name": "FlowA_Request_Upload_URL",
+  "timestamp": "2026-02-07T01:51:18.953654",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/documents/upload-url",
+  "headers": {
+    "Authorization": "Bearer ***TOKEN***",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "fileName": "Introduction to IT - Practice Quiz_ Binary _ Google Skills.pdf",
+    "fileType": "application/pdf",
+    "fileSize": 227737,
+    "patientId": "5e7aa7ab-5c28-4d21-8e87-c647ad89bb23"
+  }
+}
