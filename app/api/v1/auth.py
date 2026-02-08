@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import Request
 from fastapi_sso.sso.google import GoogleSSO
-# from fastapi_sso.sso.apple import AppleSSO
+from fastapi_sso.sso.apple import AppleSSO
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
