@@ -24,6 +24,8 @@ class UserCreate(BaseModel):
     role: str = Field(..., pattern="^(patient|doctor|admin|hospital)$")
     organization_name: Optional[str] = "Default Org"
     date_of_birth: Optional[date] = None
+    google_id: Optional[str] = None
+    apple_id: Optional[str] = None
     
     @validator('confirm_password')
     def passwords_match(cls, v, values):
@@ -54,7 +56,13 @@ class UserResponse(BaseModel):
     email: EmailStr
     first_name: str
     last_name: str
-    phone_number: Optional[str]
+    
+    # FIX APPLIED HERE:
+    # Made optional (= None). 
+    # Logic: If user logged in via Email, DB has phone -> returns phone. 
+    # If via Google, DB has None -> returns None (instead of crashing).
+    phone_number: Optional[str] = None
+    
     role: str
     organization_id: UUID
     mfa_enabled: bool
@@ -79,7 +87,12 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     """Schema for successful login (without MFA)"""
     success: bool = True
-    token: str
+    
+    # FIX APPLIED HERE:
+    # Google/Apple login flow typically returns 'access_token' but not the redundant 'token' field.
+    # Making this optional prevents a "Field required" crash for Social Login.
+    token: Optional[str] = None
+    
     access_token: str
     refresh_token: str
     token_type: str = "bearer"

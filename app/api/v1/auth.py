@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+from fastapi import Request
+from fastapi_sso.sso.google import GoogleSSO
+# from fastapi_sso.sso.apple import AppleSSO
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,13 +58,6 @@ async def register(
 ):
     """
     Register a new user
-    
-    Steps:
-    1. Validate email is unique
-    2. Create organization if new
-    3. Create user with hashed password
-    4. Send verification email
-    5. Return user data
     """
     if user_data.role == "patient":
         raise HTTPException(
@@ -91,7 +88,7 @@ async def register(
         db.add(organization)
         await db.flush()  # Get organization ID
     
-    # Hash password
+    # Hash password (Fixed: using hash_password from imports)
     password_hash = hash_password(user_data.password)
     
     # Generate verification token
@@ -101,11 +98,15 @@ async def register(
     
     # Encrypt PII fields
     pii_encryption = PIIEncryption()
+    
+    # Fixed: Logic to determine full_name string before encryption
     if user_data.full_name:
         full_name_str = user_data.full_name
     else:
         full_name_str = f"{user_data.first_name} {user_data.last_name}"
+        
     encrypted_full_name = pii_encryption.encrypt(full_name_str)
+    
     phone_input = user_data.phone_number or user_data.phone
     encrypted_phone = pii_encryption.encrypt(phone_input) if phone_input else None
     
@@ -121,6 +122,10 @@ async def register(
         email_verification_expires=None,
         email_verified=True,
         mfa_enabled=False,
+        
+        # Social Auth Fields
+        google_id=user_data.google_id,
+        apple_id=user_data.apple_id
     )
     
     db.add(user)
@@ -141,9 +146,8 @@ async def register(
         
         # Prepare patient data
         # Use RAW values from user_data to avoid double encryption
-        full_name_raw = f"{user_data.first_name} {user_data.last_name}"
         p_data = {
-            "full_name": full_name_raw,
+            "full_name": full_name_str,
             "email": user_data.email,
             "phone_number": user_data.phone_number or user_data.phone,
             "date_of_birth": user_data.date_of_birth,
@@ -161,14 +165,6 @@ async def register(
             patient_id=user.id
         )
         await db.commit()
-
-    # Send verification email (async task in production)
-    # decrypted_first_name = pii_encryption.decrypt(user.first_name)
-    # await send_verification_email(
-    #     to_email=user.email,
-    #     verification_token=verification_token,
-    #     user_name=decrypted_first_name
-    # )
     
     first_name = name_parts[0]
     last_name = name_parts[1] if len(name_parts) > 1 else ""
@@ -714,3 +710,185 @@ async def get_current_user_info(
         created_at=current_user.created_at,
         updated_at=current_user.updated_at
     )
+
+
+# ==========================================
+# Social Authentication
+# ==========================================
+
+# Initialize SSO Providers
+# Note: For production, ensure allow_insecure_http is False
+google_sso = GoogleSSO(
+    client_id=settings.GOOGLE_CLIENT_ID or "missing-id",
+    client_secret=settings.GOOGLE_CLIENT_SECRET or "missing-secret",
+    allow_insecure_http=settings.APP_ENV == "development"
+)
+
+# apple_sso = AppleSSO(
+#     client_id=settings.APPLE_CLIENT_ID or "missing-id",
+#     client_secret=settings.APPLE_CLIENT_SECRET or "missing-secret",
+#     allow_insecure_http=settings.APP_ENV == "development"
+# )
+
+@router.get("/google/login")
+async def google_login(request: Request):
+    """Initiate Google Login"""
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google Auth not configured")
+    
+    # Construct callback URL dynamically to match the request host
+    # e.g., http://localhost:8000/api/v1/auth/google/callback
+    redirect_uri = str(request.url_for("google_callback"))
+    return await google_sso.get_login_redirect(redirect_uri=redirect_uri)
+
+
+@router.get("/google/callback", response_model=LoginResponse)
+async def google_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Handle Google Login Callback"""
+    try:
+        user_info = await google_sso.verify_and_process(request)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Google Auth Failed: {str(e)}")
+
+    if not user_info or not user_info.email:
+        raise HTTPException(status_code=400, detail="No email provided by Google")
+
+    # Find user by email
+    result = await db.execute(select(User).where(User.email == user_info.email.lower()))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # STRICT SECURITY: Do not auto-register.
+        # Patients must be added by doctors first.
+        # Doctors must register via the specific doctor flow.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account not found. Please register or ask your provider to onboard you first."
+        )
+
+    # Link Google ID if not linked
+    if not user.google_id:
+        user.google_id = user_info.id
+        user.email_verified = True # Trust Google verification
+        await db.commit()
+        await db.refresh(user)
+
+    # Generate Tokens (reuse existing logic)
+    access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+    refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+    
+    refresh_token_hash = hash_token(refresh_token_value)
+    refresh_token = RefreshToken(
+        user_id=user.id,
+        token_hash=refresh_token_hash,
+        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    db.add(refresh_token)
+    user.last_login = datetime.utcnow()
+    await db.commit()
+
+    # Prepare response
+    pii_encryption = PIIEncryption()
+    decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    name_parts = decrypted_full_name.split(" ", 1)
+
+    return LoginResponse(
+        success=True,
+        access_token=access_token,
+        refresh_token=refresh_token_value,
+        token_type="bearer",
+        user=UserResponse(
+            id=user.id,
+            name=decrypted_full_name,
+            email=user.email,
+            first_name=name_parts[0],
+            last_name=name_parts[1] if len(name_parts) > 1 else "",
+            role=user.role,
+            organization_id=user.organization_id,
+            email_verified=user.email_verified,
+            mfa_enabled=user.mfa_enabled,
+            created_at=user.created_at,
+            updated_at=user.updated_at
+        )
+    )
+
+
+# @router.get("/apple/login")
+# async def apple_login(request: Request):
+#     """Initiate Apple Login"""
+#     if not settings.APPLE_CLIENT_ID:
+#         raise HTTPException(status_code=500, detail="Apple Auth not configured")
+        
+#     redirect_uri = str(request.url_for("apple_callback"))
+#     return await apple_sso.get_login_redirect(redirect_uri=redirect_uri)
+
+
+# @router.get("/apple/callback", response_model=LoginResponse)
+# async def apple_callback(
+#     request: Request,
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """Handle Apple Login Callback"""
+#     try:
+#         user_info = await apple_sso.verify_and_process(request)
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Apple Auth Failed: {str(e)}")
+
+#     if not user_info or not user_info.email:
+#          raise HTTPException(status_code=400, detail="No email provided by Apple")
+
+#     # Find user
+#     result = await db.execute(select(User).where(User.email == user_info.email.lower()))
+#     user = result.scalar_one_or_none()
+
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Account not found. Please register or ask your provider to onboard you first."
+#         )
+
+#     # Link Apple ID
+#     if not user.apple_id:
+#         user.apple_id = user_info.id
+#         await db.commit()
+    
+#     # Generate Tokens (reuse same logic as Google)
+#     access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+#     refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+    
+#     refresh_token_hash = hash_token(refresh_token_value)
+#     refresh_token = RefreshToken(
+#         user_id=user.id,
+#         token_hash=refresh_token_hash,
+#         expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+#     )
+#     db.add(refresh_token)
+#     user.last_login = datetime.utcnow()
+#     await db.commit()
+
+#     pii_encryption = PIIEncryption()
+#     decrypted_full_name = pii_encryption.decrypt(user.full_name)
+#     name_parts = decrypted_full_name.split(" ", 1)
+
+#     return LoginResponse(
+#         success=True,
+#         access_token=access_token,
+#         refresh_token=refresh_token_value,
+#         token_type="bearer",
+#         user=UserResponse(
+#             id=user.id,
+#             name=decrypted_full_name,
+#             email=user.email,
+#             first_name=name_parts[0],
+#             last_name=name_parts[1] if len(name_parts) > 1 else "",
+#             role=user.role,
+#             organization_id=user.organization_id,
+#             email_verified=user.email_verified,
+#             mfa_enabled=user.mfa_enabled,
+#             created_at=user.created_at,
+#             updated_at=user.updated_at
+#         )
+#     )

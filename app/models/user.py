@@ -20,11 +20,7 @@ class Organization(Base):
     name = Column(String(255), nullable=False)
     
     # Subscription details
-    subscription_tier = Column(
-        String(50), 
-        default="free-trial",
-        nullable=False
-    )
+    subscription_tier = Column(String(50), default="free-trial", nullable=False)
     subscription_status = Column(String(50), default="trialing", nullable=False)
     trial_ends_at = Column(DateTime(timezone=True), nullable=True)
     current_period_end = Column(DateTime(timezone=True), nullable=True)
@@ -51,21 +47,25 @@ class User(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
-    # Authentication (encrypted fields will be handled in service layer)
-    email = Column(String(255), unique=True, nullable=False, index=True)  # Will be encrypted
+    # Authentication
+    email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     
+    # Social Auth (New Fields)
+    google_id = Column(String(255), unique=True, nullable=True, index=True)
+    apple_id = Column(String(255), unique=True, nullable=True, index=True)
+    
     # Profile
-    full_name = Column(String(255), nullable=False)  # Will be encrypted
+    full_name = Column(String(255), nullable=False)  # Encrypted
     role = Column(
         Enum("patient", "doctor", "admin", "hospital", name="user_role"),
         nullable=False
     )
-    phone_number = Column(String(255), nullable=True)  # Will be encrypted
+    phone_number = Column(String(255), nullable=True)  # Encrypted
     
     # Doctor-specific fields
     specialty = Column(String(100), nullable=True)
-    license_number = Column(String(255), nullable=True)  # Will be encrypted
+    license_number = Column(String(255), nullable=True)  # Encrypted
     
     # Organization relationship
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -73,7 +73,8 @@ class User(Base):
     
     # MFA
     mfa_enabled = Column(Boolean, default=False, nullable=False)
-    mfa_secret = Column(String(255), nullable=True)  # Will be encrypted (TOTP secret)
+    mfa_secret = Column(String(255), nullable=True)  # Encrypted
+    mfa_backup_codes = Column(String(1000), nullable=True)
     
     # Email verification
     email_verified = Column(Boolean, default=False, nullable=False)

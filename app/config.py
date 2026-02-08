@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     
     # MinIO
     MINIO_ENDPOINT: str
-    MINIO_EXTERNAL_ENDPOINT: Optional[str] = None  # For presigned URLs accessible from outside Docker
+    MINIO_EXTERNAL_ENDPOINT: Optional[str] = None
     MINIO_ROOT_USER: str
     MINIO_ROOT_PASSWORD: str
     MINIO_USE_SSL: bool = False
@@ -61,11 +61,10 @@ class Settings(BaseSettings):
     MINIO_BUCKET_DOCUMENTS: str = "saramedico-documents"
     MINIO_BUCKET_AUDIO: str = "saramedico-audio"
     MINIO_BUCKET_AVATARS: str = "saramedico-avatars"
-    PRESIGNED_URL_EXPIRY: int = 3600  # 1 hour
+    PRESIGNED_URL_EXPIRY: int = 3600
     
     @property
     def minio_presigned_endpoint(self) -> str:
-        """Get the endpoint to use for presigned URLs (external if set, otherwise internal)"""
         return self.MINIO_EXTERNAL_ENDPOINT or self.MINIO_ENDPOINT
     
     # Email
@@ -103,12 +102,11 @@ class Settings(BaseSettings):
     
     @property
     def allowed_extensions_list(self) -> List[str]:
-        """Parse allowed file extensions from comma-separated string"""
         return [ext.strip() for ext in self.ALLOWED_FILE_EXTENSIONS.split(",")]
     
     # Audit Logging
     AUDIT_LOG_ENABLED: bool = True
-    AUDIT_LOG_RETENTION_DAYS: int = 2555  # 7 years
+    AUDIT_LOG_RETENTION_DAYS: int = 2555
     
     # Session Management
     SESSION_EXPIRY_HOURS: int = 24
@@ -133,26 +131,30 @@ class Settings(BaseSettings):
     FEATURE_CLOUD_STORAGE: bool = False
     
     # Zoom Configuration
-    ZOOM_ACCOUNT_ID: str
-    ZOOM_CLIENT_ID: str
-    ZOOM_CLIENT_SECRET: str
-    ZOOM_ADMIN_EMAIL: str
+    ZOOM_ACCOUNT_ID: str = ""
+    ZOOM_CLIENT_ID: str = ""
+    ZOOM_CLIENT_SECRET: str = ""
+    ZOOM_ADMIN_EMAIL: str = ""
     ZOOM_BASE_URL: str = "https://api.zoom.us/v2"
     ZOOM_AUTH_URL: str = "https://zoom.us/oauth/token"
+
+    # Social Auth (Google & Apple)
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    APPLE_CLIENT_ID: Optional[str] = None
+    APPLE_CLIENT_SECRET: Optional[str] = None  # This must be the generated JWT
+    APPLE_REDIRECT_URI: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore"  # Ignore extra environment variables
+        extra="ignore"
     )
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    """Get cached settings instance"""
     return Settings()
 
-
-# Global settings instance
 settings = get_settings()
