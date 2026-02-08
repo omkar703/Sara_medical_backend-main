@@ -7,7 +7,7 @@ from app.config import settings
 class ZoomService:
     """
     Zoom Service for Server-to-Server OAuth integration.
-    Handles token management and meeting creation.
+    Handles token management, meeting creation, and transcript retrieval.
     """
     def __init__(self):
         self.client_id = settings.ZOOM_CLIENT_ID
@@ -42,20 +42,19 @@ class ZoomService:
 
     async def create_meeting(self, topic: str, start_time: str, duration_minutes: int = 30, agenda: str = "") -> Dict:
         """
-        Create a new Zoom meeting (Mocked for local audit if credentials missing or forced)
+        Create a new Zoom meeting
         """
+        # Mock logic (keep existing mock check if needed)
         import os
-        if os.getenv("FORCE_MOCK_ZOOM") == "true" or not self.client_id or self.client_id == "your_client_id":
+        if os.getenv("FORCE_MOCK_ZOOM") == "true":
             return {
                 "id": "mock_meeting_id",
-                "topic": topic,
                 "join_url": "https://zoom.us/j/mock",
                 "start_url": "https://zoom.us/s/mock",
-                "password": "mock_password"
+                "password": "mock"
             }
 
         token = await self.get_access_token()
-        
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -63,22 +62,19 @@ class ZoomService:
         
         meeting_data = {
             "topic": topic,
-            "type": 2,  # Scheduled meeting
+            "type": 2, 
             "start_time": str(start_time),
             "duration": duration_minutes,
             "timezone": "UTC",
             "settings": {
                 "host_video": True,
                 "participant_video": True,
-                "join_before_host": False,
-                "mute_upon_entry": True,
+                "auto_recording": "cloud", # FORCE CLOUD RECORDING FOR TRANSCRIPTS
                 "waiting_room": True
             }
         }
         
-        # We use the admin email as the host or 'me' if it's the account owner
         user_id = settings.ZOOM_ADMIN_EMAIL
-        
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.base_url}/users/{user_id}/meetings",
@@ -88,5 +84,50 @@ class ZoomService:
             response.raise_for_status()
             return response.json()
 
-# Global instance
+    async def get_meeting_transcript(self, meeting_id: str) -> Optional[str]:
+        """
+        Fetch the transcript content for a specific meeting.
+        Returns the text content of the transcript or None if not found/ready.
+        """
+        token = await self.get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        async with httpx.AsyncClient() as client:
+            # 1. Get Recording Details
+            try:
+                response = await client.get(
+                    f"{self.base_url}/meetings/{meeting_id}/recordings",
+                    headers=headers
+                )
+                if response.status_code == 404:
+                    return None # Recording not processed yet
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError:
+                return None
+
+            # 2. Find the Transcript File
+            transcript_file = None
+            for file in data.get("recording_files", []):
+                if file.get("file_type") == "TRANSCRIPT":
+                    transcript_file = file
+                    break
+            
+            if not transcript_file:
+                return None
+
+            # 3. Download the content
+            download_url = transcript_file.get("download_url")
+            if not download_url:
+                return None
+
+            # Zoom requires the token in the query param or header for download
+            # Using header is safer
+            download_response = await client.get(download_url, headers=headers)
+            
+            if download_response.status_code == 200:
+                return download_response.text
+            
+            return None
+
 zoom_service = ZoomService()

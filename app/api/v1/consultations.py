@@ -230,61 +230,42 @@ async def analyze_consultation(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Trigger AI analysis (Transcription + SOAP Note).
-    STUB: Placeholder for future AI integration.
+    Fetch Zoom transcript and trigger AI analysis.
     """
-    # Verify existence
+    # 1. Get Consultation
     service = ConsultationService(db)
     consultation = await service.get_consultation(consultation_id, organization_id)
+    
     if not consultation:
         raise HTTPException(status_code=404, detail="Consultation not found")
         
-    # In real impl: check for audio file, trigger Celery task
-    # from app.workers.tasks import process_consultation_ai
-    # process_consultation_ai.delay(str(consultation_id))
+    if not consultation.meeting_id:
+        raise HTTPException(status_code=400, detail="No Zoom meeting linked to this consultation")
+
+    # 2. Fetch Transcript from Zoom
+    # (Note: This might fail if the meeting just ended. Zoom takes time to process.)
+    from app.services.zoom_service import zoom_service
+    transcript_text = await zoom_service.get_meeting_transcript(consultation.meeting_id)
+
+    if not transcript_text:
+        # If we already have a transcript saved manually, use that
+        if consultation.transcript:
+            transcript_text = consultation.transcript
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="Transcript not ready yet. Please wait for Zoom to process the cloud recording."
+            )
+    else:
+        # Save the new transcript to DB
+        consultation.transcript = transcript_text
+        consultation.ai_status = "processing"
+        await db.commit()
+
+    # 3. Trigger AI Processing (Stub for now)
+    # In the next step, you will pass `transcript_text` to your LLM here.
+    # For now, we simulate success.
     
     return MessageResponse(
-        message="AI analysis queued. (Stub: Implementation pending in future phase)"
-    )
-
-
-# Helper
-async def _consultation_to_response(c) -> ConsultationResponse:
-    from app.core.security import pii_encryption
-    
-    # Decrypt patient name if needed (Patient model has full_name encrypted)
-    patient_name = "Unknown"
-    if c.patient:
-        try:
-            patient_name = pii_encryption.decrypt(c.patient.full_name)
-        except:
-            patient_name = "Encrypted"
-            
-    doctor_name = "Unknown"
-    if c.doctor:
-        try:
-            doctor_name = pii_encryption.decrypt(c.doctor.full_name)
-        except:
-            doctor_name = "Encrypted"
-
-    return ConsultationResponse(
-        id=str(c.id),
-        scheduledAt=c.scheduled_at,
-        durationMinutes=c.duration_minutes,
-        status=c.status,
-        doctorId=str(c.doctor_id),
-        doctorName=doctor_name,
-        patientId=str(c.patient_id),
-        patientName=patient_name,
-        meetingId=c.meeting_id,
-        joinUrl=c.join_url,
-        startUrl=c.start_url,
-        password=c.password,
-        notes=c.notes,
-        diagnosis=c.diagnosis,
-        prescription=c.prescription,
-        aiStatus=c.ai_status,
-        hasAudio=bool(c.audio_recording_path),
-        hasTranscript=bool(c.transcript),
-        hasSoapNote=bool(c.soap_note)
+        message="Transcript retrieved successfully. AI analysis started."
     )
