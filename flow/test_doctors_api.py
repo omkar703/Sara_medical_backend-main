@@ -246,7 +246,7 @@ def update_doctor_profile(token: str, specialty: str = None, bio: str = None, li
 def onboard_patient(token: str, email: str, full_name: str, dob: str, phone: str, password: str = "TempPass123!") -> Dict[str, Any]:
     """Onboard a new patient"""
     step_name = "Onboard_Patient"
-    url = f"{BASE_URL}/doctor/onboard-patient"
+    url = f"{BASE_URL}/patients"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
@@ -521,11 +521,12 @@ def main():
         phone="+1234567890"
     )
     
-    if not onboard_data or 'patient_id' not in onboard_data:
+    
+    if not onboard_data or 'id' not in onboard_data:
         print_error("Patient onboarding failed. Exiting.")
         return
     
-    patient_id = onboard_data['patient_id']
+    patient_id = onboard_data['id']
     patient_user_id = onboard_data.get('user_id')
     patient_password = onboard_data.get('temporary_password', 'TempPass123!')
     
