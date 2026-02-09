@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
+import phonenumbers
 
 from pydantic import BaseModel, EmailStr, Field, validator
 
@@ -28,6 +29,17 @@ class EmergencyContactSchema(BaseModel):
     
     class Config:
         populate_by_name = True
+        
+    @validator('phone_number')
+    def validate_ec_phone(cls, v):
+        if not v: return v
+        try:
+            n = phonenumbers.parse(v, None)
+            if not phonenumbers.is_valid_number(n):
+                raise ValueError('Invalid phone number')
+            return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
+        except phonenumbers.NumberParseException:
+            raise ValueError('Invalid phone number format. Use E.164 (e.g. +1234567890)')
 
 
 # ==========================================
@@ -54,6 +66,17 @@ class PatientBase(BaseModel):
         if v > date.today():
             raise ValueError("Date of birth cannot be in the future")
         return v
+
+    @validator('phone_number')
+    def validate_phone(cls, v):
+        if not v: return v
+        try:
+            n = phonenumbers.parse(v, None)
+            if not phonenumbers.is_valid_number(n):
+                raise ValueError('Invalid phone number')
+            return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
+        except phonenumbers.NumberParseException:
+            raise ValueError('Invalid phone number format. Use E.164 (e.g. +1234567890)')
 
 
 class PatientCreate(PatientBase):

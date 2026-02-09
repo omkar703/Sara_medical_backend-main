@@ -3,6 +3,7 @@
 from datetime import datetime, date
 from typing import Optional
 from uuid import UUID
+import phonenumbers
 
 from pydantic import BaseModel, EmailStr, Field, validator
 
@@ -26,6 +27,17 @@ class UserCreate(BaseModel):
     date_of_birth: Optional[date] = None
     google_id: Optional[str] = None
     apple_id: Optional[str] = None
+    
+    @validator('phone', 'phone_number')
+    def validate_phone(cls, v):
+        if not v: return v
+        try:
+            n = phonenumbers.parse(v, None)
+            if not phonenumbers.is_valid_number(n):
+                raise ValueError('Invalid phone number')
+            return phonenumbers.format_number(n, phonenumbers.PhoneNumberFormat.E164)
+        except phonenumbers.NumberParseException:
+            raise ValueError('Invalid phone number format. Use E.164 (e.g. +1234567890)')
     
     @validator('confirm_password')
     def passwords_match(cls, v, values):
