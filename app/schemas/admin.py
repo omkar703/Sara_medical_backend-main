@@ -22,11 +22,12 @@ class SystemAlert(BaseModel):
     message: str
     time_ago: str 
     severity: str = "info" 
-
+    
 class StorageStats(BaseModel):
-    used_gb: int
-    total_gb: int
-    percent_used: float
+    used_gb: float
+    total_gb: float
+    percentage: float
+    files_count: int
 
 class AdminOverviewResponse(BaseModel):
     """Composite response for the main admin landing page"""
@@ -79,3 +80,16 @@ class InviteRequest(BaseModel):
     full_name: str     
     email: str
     role: str         
+    
+class DashboardAlert(BaseModel):
+    id: str
+    severity: str  # e.g., "high", "medium", "info"
+    message: str
+    created_at: datetime
+
+class RecentActivity(BaseModel):
+    id: UUID
+    user: str
+    action: str
+    timestamp: datetime
+    status: str
