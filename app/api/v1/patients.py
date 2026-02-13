@@ -18,6 +18,10 @@ from app.schemas.patient import (
 )
 from app.services.audit_service import log_action
 from app.services.patient_service import PatientService
+from sqlalchemy import select
+from app.models.health_metric import HealthMetric
+from app.schemas.health_metric import HealthMetricResponse
+from typing import List
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
 
@@ -260,3 +264,32 @@ async def delete_patient(
     await db.commit()
     
     return None
+
+@router.get("/{patient_id}/health", response_model=List[HealthMetricResponse])
+async def get_patient_health_metrics(
+    patient_id: UUID,
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetch patient's health metrics (Vitals like BP, Heart Rate).
+    Returns the most recent metrics first.
+    """
+    # 1. Verify Patient Exists & Access
+    service = PatientService(db)
+    patient = await service.get_patient(patient_id, organization_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # 2. Fetch Metrics
+    result = await db.execute(
+        select(HealthMetric)
+        .where(HealthMetric.patient_id == patient_id)
+        .order_by(HealthMetric.recorded_at.desc())
+        .limit(limit)
+    )
+    metrics = result.scalars().all()
+    
+    return metrics

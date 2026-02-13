@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     MINIO_USE_SSL: bool = False
     MINIO_BUCKET_UPLOADS: str = "saramedico-uploads"
     MINIO_BUCKET_DOCUMENTS: str = "saramedico-documents"
-    MINIO_BUCKET_AUDIO: str = "saramedico-audio"
+    MINIO_BUCKET_AUDIO: str = "saramedico-audio-logs"
     MINIO_BUCKET_AVATARS: str = "saramedico-avatars"
     PRESIGNED_URL_EXPIRY: int = 3600
     

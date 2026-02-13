@@ -65,6 +65,27 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     )
     return encoded_jwt
 
+def create_voice_token(user_id: str, role: str) -> str:
+    """
+    Create a short-lived token specifically for WebSocket voice connection.
+    Expires in 2 minutes (sufficient time to initiate connection).
+    """
+    expire = datetime.utcnow() + timedelta(minutes=2)
+    
+    to_encode = {
+        "sub": str(user_id),
+        "role": role,
+        "type": "voice_socket",  # Distinct type to prevent misuse
+        "exp": expire,
+        "iat": datetime.utcnow(),
+    }
+    
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM
+    )
+    return encoded_jwt
 
 def create_refresh_token(data: dict) -> str:
     """
