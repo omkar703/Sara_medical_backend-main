@@ -86,3 +86,46 @@ class ConsultationListResponse(BaseModel):
     """Schema for paginated consultation list"""
     consultations: list[ConsultationResponse]
     total: int
+    
+class DoctorConsultationHistoryRow(BaseModel):
+    """
+    Row for the Doctor's History Table.
+    Shows Patient details instead of Doctor details.
+    """
+    id: UUID
+    scheduled_at: datetime
+    status: str  # e.g., 'completed', 'cancelled'
+    
+    # Flattened Patient Details
+    patient_id: UUID
+    patient_name: str
+    patient_mrn: str
+    patient_gender: Optional[str] = None
+    
+    # Medical Summary
+    diagnosis: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+        
+class ConsultationSearchRow(BaseModel):
+    """
+    Schema for Search Results.
+    """
+    id: UUID
+    scheduled_at: datetime
+    status: str
+    
+    # Patient Info (So doctor knows who this is for)
+    patient_name: str
+    patient_mrn: str
+    
+    # The Fields we searched
+    diagnosis: Optional[str] = None
+    prescription: Optional[str] = None
+    
+    # We won't return the full SOAP note (it's too big), 
+    # but the frontend can fetch the details using the ID if needed.
+    
+    class Config:
+        from_attributes = True

@@ -16,7 +16,7 @@ from app.models.activity_log import ActivityLog
 from app.models.consultation import Consultation
 from app.models.health_metric import HealthMetric 
 from app.models.recent_doctors import RecentDoctor
-from app.models.recent_patients import RecentPatient # <--- NEW IMPORT
+from app.models.recent_patients import RecentPatient
 from app.core.security import hash_password, pii_encryption
 from app.config import settings
 
@@ -29,7 +29,7 @@ engine = create_async_engine(DB_URL, echo=False)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 async def seed():
-    # 1. Force Create Tables (Now includes recent_patients)
+    # 1. Force Create Tables
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -99,7 +99,7 @@ async def seed():
         )
         db.add(bp_metric)
 
-        # 6. Add Recent Doctor (Patient's view)
+        # 6. Add Recent Doctor/Patient Links
         recent_doc = RecentDoctor(
             patient_id=patient_uuid,
             doctor_id=doctor_id,
@@ -108,7 +108,6 @@ async def seed():
         )
         db.add(recent_doc)
 
-        # 7. Add Recent Patient (Doctor's view) <--- NEW SECTION
         recent_pat = RecentPatient(
             doctor_id=doctor_id,
             patient_id=patient_uuid,
@@ -116,18 +115,52 @@ async def seed():
             visit_count=3
         )
         db.add(recent_pat)
+
+        # 7. Add Appointment (Future)
+        appointment = Appointment(
+            doctor_id=doctor_id,
+            patient_id=patient_uuid,
+            requested_date=datetime.utcnow() + timedelta(hours=10),
+            reason="Post-op check",
+            status="accepted"
+        )
+        db.add(appointment)
+
+        # 8. Add Completed Consultation with RICH DATA for Search
+        consultation = Consultation(
+            id=uuid.uuid4(),
+            doctor_id=doctor_id,
+            patient_id=patient_uuid,
+            organization_id=org_id,
+            scheduled_at=datetime.utcnow() - timedelta(days=2),
+            status="completed",
+            
+            # Searchable Fields
+            diagnosis="Acute Viral Pharyngitis",
+            prescription="1. Paracetamol 500mg SOS\n2. Warm Saline Gargles\n3. Azithromycin 500mg OD for 3 days",
+            notes="Patient presented with sore throat and mild fever.",
+            
+            # JSON SOAP Note (Also Searchable)
+            soap_note={
+                "subjective": "Patient complains of throat pain for 2 days, worse when swallowing.",
+                "objective": "Throat redness observed. No pus pockets.",
+                "assessment": "Likely viral infection.",
+                "plan": "Monitor temperature. Hydration recommended."
+            },
+            duration_minutes=15
+        )
+        db.add(consultation)
         
         await db.commit()
         
         print("\n" + "="*40)
         print("✅ SEED SUCCESSFUL")
         print("="*40)
-        print(f"🏥 Organization ID: {org_id}")
         print(f"👨‍⚕️ Doctor: {doctor_email}")
-        print(f"👤 Patient: {patient_email}")
         print(f"🔑 DOCTOR ID:  {doctor_id}") 
         print("="*40)
-        print(f"👉 Doctor's Recent Patients: GET /api/v1/doctors/{doctor_id}/recent-patients")
+        print(f"👉 Search API: GET /api/v1/doctors/{doctor_id}/search?q=Azithromycin")
+        print(f"👉 Search API: GET /api/v1/doctors/{doctor_id}/search?q=throat")
         print("="*40)
 
 if __name__ == "__main__":

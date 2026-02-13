@@ -22,6 +22,11 @@ from sqlalchemy.orm import selectinload
 from app.models.recent_patients import RecentPatient
 from app.schemas.recent_patients import RecentPatientResponse
 from typing import List
+from app.schemas.consultation import DoctorConsultationHistoryRow
+from app.core.security import pii_encryption
+
+from sqlalchemy import cast, String, or_
+from app.schemas.consultation import ConsultationSearchRow
 
 router = APIRouter(prefix="/doctor", tags=["Doctor Dashboard"])
 
@@ -50,7 +55,6 @@ async def get_doctor_patients(
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Only doctors can access this directory")
 
-    from app.core.security import pii_encryption
 
     # Fetch patients in the organization
     query = select(Patient).where(Patient.organization_id == organization_id, Patient.deleted_at == None)
@@ -284,3 +288,113 @@ async def get_doctor_recent_patients(
         ))
         
     return response_data
+
+@router.get("/{doctor_id}/history", response_model=List[DoctorConsultationHistoryRow])
+async def get_doctor_consultation_history(
+    doctor_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetch the consultation history for a specific Doctor.
+    Shows list of patients treated by this doctor.
+    """
+    # 1. Security: Only the Doctor themselves (or Admin) can view their history
+    if current_user.role != "admin" and current_user.id != doctor_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # 2. Query: Fetch Consultations + Join Patient details
+    # We filter by doctor_id and only show past events (completed/cancelled)
+    stmt = (
+        select(Consultation)
+        .where(
+            Consultation.doctor_id == doctor_id,
+            Consultation.status.in_(["completed", "cancelled", "no_show"])
+        )
+        .options(selectinload(Consultation.patient)) # Eager load Patient for name/MRN
+        .order_by(Consultation.scheduled_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    consultations = result.scalars().all()
+    
+    # 3. Map & Decrypt
+    history_list = []
+    
+    for c in consultations:
+        # Decrypt Patient Name
+        try:
+            pat_name = pii_encryption.decrypt(c.patient.full_name)
+        except:
+            pat_name = "Unknown Patient"
+            
+        history_list.append(DoctorConsultationHistoryRow(
+            id=c.id,
+            scheduled_at=c.scheduled_at,
+            status=c.status,
+            patient_id=c.patient_id,
+            patient_name=pat_name,
+            patient_mrn=c.patient.mrn,
+            patient_gender=c.patient.gender,
+            diagnosis=c.diagnosis or "No diagnosis recorded"
+        ))
+        
+    return history_list
+
+@router.get("/{doctor_id}/search", response_model=List[ConsultationSearchRow])
+async def search_doctor_records(
+    doctor_id: UUID,
+    q: str = Query(..., min_length=2, description="Search term for notes, diagnosis, or prescriptions"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Search through all consultation records (SOAP Notes, Prescriptions, Diagnosis).
+    """
+    # 1. Security Check
+    if current_user.role != "admin" and current_user.id != doctor_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # 2. Construct Search Query
+    search_term = f"%{q}%"
+    
+    stmt = (
+        select(Consultation)
+        .where(
+            Consultation.doctor_id == doctor_id,
+            or_(
+                Consultation.diagnosis.ilike(search_term),
+                Consultation.prescription.ilike(search_term),
+                Consultation.notes.ilike(search_term),
+                # Cast JSONB SOAP note to string for text searching
+                cast(Consultation.soap_note, String).ilike(search_term) 
+            )
+        )
+        .options(selectinload(Consultation.patient)) # Load patient for the response name
+        .order_by(Consultation.scheduled_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+    
+    # 3. Format Response
+    response = []
+    from app.core.security import pii_encryption
+    
+    for c in records:
+        try:
+            pat_name = pii_encryption.decrypt(c.patient.full_name)
+        except:
+            pat_name = "Unknown"
+            
+        response.append(ConsultationSearchRow(
+            id=c.id,
+            scheduled_at=c.scheduled_at,
+            status=c.status,
+            patient_name=pat_name,
+            patient_mrn=c.patient.mrn,
+            diagnosis=c.diagnosis,
+            prescription=c.prescription
+        ))
+        
+    return response
