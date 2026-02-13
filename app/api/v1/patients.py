@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_active_user, get_organization_id, require_doctor, require_role
 from app.database import get_db
 from app.models.user import User
+from app.models.patient import Patient
 from app.schemas.patient import (
     PatientCreate,
     PatientListResponse,
@@ -25,6 +26,10 @@ from app.schemas.health_metric import HealthMetricResponse
 from app.models.recent_doctors import RecentDoctor
 from app.schemas.recent_doctors import RecentDoctorResponse
 from typing import List
+
+from app.schemas.patient import PatientDetailResponse
+from app.models.consultation import Consultation
+from datetime import date, datetime
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
 
@@ -348,3 +353,96 @@ async def get_patient_recent_doctors(
         ))
         
     return response_data
+
+@router.get("/{patient_id}/details", response_model=PatientDetailResponse)
+async def get_patient_details_for_dashboard(
+    patient_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Aggregate Patient Details for the Doctor's Dashboard.
+    Fetches: Profile (Decrypted), Age, Latest Vitals, and Last Consultation.
+    """
+    # 1. Fetch Patient Profile (using Service to handle basic checks)
+    # We could reuse PatientService, but we need raw access to join tables or just simple queries.
+    stmt = select(Patient).where(Patient.id == patient_id)
+    result = await db.execute(stmt)
+    patient = result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # 2. Fetch Latest Vitals (Blood Pressure & Heart Rate)
+    # We query the HealthMetric table for the most recent entries
+    vitals_stmt = (
+        select(HealthMetric)
+        .where(HealthMetric.patient_id == patient_id)
+        .order_by(HealthMetric.recorded_at.desc())
+        .limit(5) # Fetch last few to find BP and HR
+    )
+    vitals_result = await db.execute(vitals_stmt)
+    vitals_records = vitals_result.scalars().all()
+    
+    latest_bp = next((v.value for v in vitals_records if v.metric_type == "blood_pressure"), None)
+    latest_hr = next((v.value for v in vitals_records if v.metric_type == "heart_rate"), None)
+
+    # 3. Fetch Last Consultation
+    cons_stmt = (
+        select(Consultation)
+        .where(
+            Consultation.patient_id == patient_id,
+            Consultation.status == "completed"
+        )
+        .order_by(Consultation.scheduled_at.desc())
+        .limit(1)
+    )
+    cons_result = await db.execute(cons_stmt)
+    last_cons = cons_result.scalar_one_or_none()
+
+    # 4. Decrypt & Calculate (The "UI Logic")
+    from app.core.security import pii_encryption
+    
+    # Decrypt Basics
+    try:
+        decrypted_name = pii_encryption.decrypt(patient.full_name)
+        decrypted_phone = pii_encryption.decrypt(patient.phone_number)
+        dob_str = pii_encryption.decrypt(patient.date_of_birth)
+        
+        # Calculate Age
+        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+        today = date.today()
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    except:
+        decrypted_name = "Error Decrypting"
+        decrypted_phone = None
+        age = 0
+
+    # Decrypt Medical Data (Lists are stored as JSON)
+    # Assuming 'allergies' and 'medications' are JSONB, they don't need decryption if not encrypted.
+    # If they are encrypted strings, decrypt them. Based on your model, they are JSONB.
+    
+    return PatientDetailResponse(
+        id=patient.id,
+        mrn=patient.mrn,
+        full_name=decrypted_name,
+        age=age,
+        gender=patient.gender,
+        phone_number=decrypted_phone,
+        email=patient.email, # Email usually plain or hashed in User table, but mapped here if synced
+        address=patient.address,
+        emergency_contact=patient.emergency_contact,
+        
+        medical_history=patient.medical_history, # Decrypt if this field is encrypted in your model
+        allergies=patient.allergies or [],
+        medications=patient.medications or [],
+        
+        latest_vitals={
+            "bp": latest_bp or "N/A",
+            "hr": latest_hr or "N/A"
+        },
+        last_consultation={
+            "date": last_cons.scheduled_at if last_cons else None,
+            "diagnosis": last_cons.diagnosis if last_cons else "No history"
+        }
+    )

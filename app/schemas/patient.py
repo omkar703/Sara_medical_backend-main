@@ -1,10 +1,9 @@
 """Pydantic Schemas for Patient Management"""
 
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 import phonenumbers
-
 from pydantic import BaseModel, EmailStr, Field, validator
 
 
@@ -143,3 +142,30 @@ class PatientListResponse(BaseModel):
     
     class Config:
         populate_by_name = True
+
+class PatientDetailResponse(BaseModel):
+    """
+    Composite View for Doctor's Dashboard.
+    Combines Profile + Vitals + Last Visit Context.
+    """
+    id: UUID
+    mrn: str
+    full_name: str
+    age: Optional[int] = None # Calculated field
+    gender: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[Dict[str, Any]] = None
+    emergency_contact: Optional[Dict[str, Any]] = None
+    
+    # Medical Profile
+    medical_history: Optional[str] = None
+    allergies: Optional[List[str]] = []
+    medications: Optional[List[str]] = []
+    
+    # Dashboard Widgets (The new part)
+    latest_vitals: Optional[Dict[str, str]] = None  # e.g., {"bp": "120/80", "hr": "72"}
+    last_consultation: Optional[Dict[str, Any]] = None # e.g., {"date": "2024-02-10", "diagnosis": "Flu"}
+    
+    class Config:
+        from_attributes = True
