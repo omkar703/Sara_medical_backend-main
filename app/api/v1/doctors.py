@@ -9,6 +9,11 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.schemas.doctor import DoctorSearchResponse, DoctorSearchItem
 from app.core.security import pii_encryption
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.models.recent_patients import RecentPatient
+from app.schemas.recent_patients import RecentPatientResponse
+from typing import List
 
 router = APIRouter(prefix="/doctors", tags=["Public Directory"])
 

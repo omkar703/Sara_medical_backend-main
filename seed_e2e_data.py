@@ -15,7 +15,8 @@ from app.models.appointment import Appointment
 from app.models.activity_log import ActivityLog
 from app.models.consultation import Consultation
 from app.models.health_metric import HealthMetric 
-from app.models.recent_doctors import RecentDoctor # <--- NEW IMPORT
+from app.models.recent_doctors import RecentDoctor
+from app.models.recent_patients import RecentPatient # <--- NEW IMPORT
 from app.core.security import hash_password, pii_encryption
 from app.config import settings
 
@@ -28,7 +29,7 @@ engine = create_async_engine(DB_URL, echo=False)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 async def seed():
-    # 1. Force Create Tables (Now includes recent_doctors)
+    # 1. Force Create Tables (Now includes recent_patients)
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -53,7 +54,7 @@ async def seed():
             password_hash=hash_password("Password123"),
             full_name=pii_encryption.encrypt("Dr. Gregory House"),
             role="doctor",
-            specialty="Diagnostic Medicine", # Added Specialty
+            specialty="Diagnostic Medicine",
             organization_id=org_id,
             email_verified=True
         )
@@ -98,7 +99,7 @@ async def seed():
         )
         db.add(bp_metric)
 
-        # 6. Add Recent Doctor Entry (NEW FEATURE)
+        # 6. Add Recent Doctor (Patient's view)
         recent_doc = RecentDoctor(
             patient_id=patient_uuid,
             doctor_id=doctor_id,
@@ -106,6 +107,15 @@ async def seed():
             visit_count=3
         )
         db.add(recent_doc)
+
+        # 7. Add Recent Patient (Doctor's view) <--- NEW SECTION
+        recent_pat = RecentPatient(
+            doctor_id=doctor_id,
+            patient_id=patient_uuid,
+            last_visit_at=datetime.utcnow() - timedelta(hours=2),
+            visit_count=3
+        )
+        db.add(recent_pat)
         
         await db.commit()
         
@@ -113,11 +123,11 @@ async def seed():
         print("✅ SEED SUCCESSFUL")
         print("="*40)
         print(f"🏥 Organization ID: {org_id}")
-        print(f"👨‍⚕️ Doctor: {doctor_email} (Spec: Diagnostic Medicine)")
+        print(f"👨‍⚕️ Doctor: {doctor_email}")
         print(f"👤 Patient: {patient_email}")
-        print(f"🔑 PATIENT ID: {patient_uuid}") 
+        print(f"🔑 DOCTOR ID:  {doctor_id}") 
         print("="*40)
-        print(f"👉 Recent Doctors API: GET /api/v1/patients/{patient_uuid}/recent-doctors")
+        print(f"👉 Doctor's Recent Patients: GET /api/v1/doctors/{doctor_id}/recent-patients")
         print("="*40)
 
 if __name__ == "__main__":

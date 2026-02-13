@@ -17,6 +17,11 @@ from app.schemas.appointment import AppointmentResponse
 from app.schemas.doctor import DoctorProfileUpdate
 from app.schemas.patient import PatientOnboard
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.models.recent_patients import RecentPatient
+from app.schemas.recent_patients import RecentPatientResponse
+from typing import List
 
 router = APIRouter(prefix="/doctor", tags=["Doctor Dashboard"])
 
@@ -218,3 +223,64 @@ async def update_doctor_profile(
     await db.refresh(current_user)
     
     return {"message": "Profile updated successfully", "specialty": current_user.specialty}
+
+@router.get("/{doctor_id}/recent-patients", response_model=List[RecentPatientResponse])
+async def get_doctor_recent_patients(
+    doctor_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get list of patients the doctor has visited/treated recently.
+    """
+    # 1. Security Check
+    # Only the doctor themselves or an admin should see their patient list
+    if current_user.role != "admin" and current_user.id != doctor_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # 2. Fetch with Eager Loading
+    stmt = (
+        select(RecentPatient)
+        .where(RecentPatient.doctor_id == doctor_id)
+        .options(selectinload(RecentPatient.patient)) # Load Patient details
+        .order_by(RecentPatient.last_visit_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+    
+    # 3. Format Response
+    response_data = []
+    
+    from app.core.security import pii_encryption
+    from datetime import date
+    
+    for r in records:
+        # Decrypt Patient Info
+        try:
+            name = pii_encryption.decrypt(r.patient.full_name)
+            dob_str = pii_encryption.decrypt(r.patient.date_of_birth)
+            
+            # Calculate Age
+            try:
+                dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+                today = date.today()
+                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            except:
+                age = 0
+        except:
+            name = "Unknown"
+            age = 0
+
+        response_data.append(RecentPatientResponse(
+            id=r.id,
+            patient_id=r.patient_id,
+            full_name=name,
+            mrn=r.patient.mrn,
+            gender=r.patient.gender,
+            age=age,
+            last_visit_at=r.last_visit_at,
+            visit_count=r.visit_count
+        ))
+        
+    return response_data
