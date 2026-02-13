@@ -4,36 +4,36 @@ import sys
 import os
 from datetime import datetime, timedelta
 
-# Add backend to path so we can import app
+# Add backend to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from app.database import Base # Import Base to create tables
+from app.database import Base 
 from app.models.user import User, Organization
 from app.models.patient import Patient
 from app.models.appointment import Appointment
 from app.models.activity_log import ActivityLog
 from app.models.consultation import Consultation
 from app.models.health_metric import HealthMetric 
+from app.models.recent_doctors import RecentDoctor # <--- NEW IMPORT
 from app.core.security import hash_password, pii_encryption
 from app.config import settings
 
 # ---------------------------------------------------------
 # CONFIGURATION
 # ---------------------------------------------------------
-# Port 5435 matches your docker-compose.yml (saramedico_postgres)
 DB_URL = "postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@localhost:5435/saramedico_dev"
 
 engine = create_async_engine(DB_URL, echo=False)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 async def seed():
-    # 1. Force Create Tables (Ensures health_metrics table exists)
+    # 1. Force Create Tables (Now includes recent_doctors)
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     except Exception as e:
-        print(f"⚠️ Warning during table creation (might be connection issue): {e}")
+        print(f"⚠️ Warning during table creation: {e}")
 
     async with SessionLocal() as db:
         print(f"🌱 Seeding data to Database at {DB_URL}...")
@@ -44,7 +44,7 @@ async def seed():
         db.add(org)
         await db.flush()
         
-        # 3. Create Doctor (Randomized Email to avoid IntegrityError)
+        # 3. Create Doctor
         doctor_id = uuid.uuid4()
         doctor_email = f"doctor_{uuid.uuid4().hex[:4]}@test.com"
         doctor = User(
@@ -53,12 +53,13 @@ async def seed():
             password_hash=hash_password("Password123"),
             full_name=pii_encryption.encrypt("Dr. Gregory House"),
             role="doctor",
+            specialty="Diagnostic Medicine", # Added Specialty
             organization_id=org_id,
             email_verified=True
         )
         db.add(doctor)
         
-        # 4. Create Patient (Randomized Email)
+        # 4. Create Patient
         patient_uuid = uuid.uuid4()
         patient_email = f"patient_{uuid.uuid4().hex[:4]}@test.com"
         
@@ -86,7 +87,7 @@ async def seed():
         db.add(patient_profile)
         await db.flush()
         
-        # 5. Add Health Metrics (The new feature)
+        # 5. Add Health Metrics
         bp_metric = HealthMetric(
             patient_id=patient_uuid,
             metric_type="blood_pressure",
@@ -95,36 +96,16 @@ async def seed():
             notes="Normal resting BP",
             recorded_at=datetime.utcnow() - timedelta(minutes=15)
         )
-        hr_metric = HealthMetric(
-            patient_id=patient_uuid,
-            metric_type="heart_rate",
-            value="72",
-            unit="bpm",
-            notes="Resting heart rate",
-            recorded_at=datetime.utcnow() - timedelta(minutes=15)
-        )
         db.add(bp_metric)
-        db.add(hr_metric)
-        
-        # 6. Add Appointment & Logs
-        appointment = Appointment(
-            doctor_id=doctor_id,
+
+        # 6. Add Recent Doctor Entry (NEW FEATURE)
+        recent_doc = RecentDoctor(
             patient_id=patient_uuid,
-            requested_date=datetime.utcnow() + timedelta(hours=10),
-            reason="Post-op check",
-            status="accepted"
+            doctor_id=doctor_id,
+            last_visit_at=datetime.utcnow() - timedelta(days=5),
+            visit_count=3
         )
-        db.add(appointment)
-        
-        log1 = ActivityLog(
-            user_id=doctor_id,
-            organization_id=org_id,
-            activity_type="Lab Results Reviewed",
-            description="Reviewed blood work for Daniel Benjamin",
-            status="completed",
-            created_at=datetime.utcnow() - timedelta(minutes=60)
-        )
-        db.add(log1)
+        db.add(recent_doc)
         
         await db.commit()
         
@@ -132,11 +113,11 @@ async def seed():
         print("✅ SEED SUCCESSFUL")
         print("="*40)
         print(f"🏥 Organization ID: {org_id}")
-        print(f"👨‍⚕️ Doctor Email:    {doctor_email}")
-        print(f"👤 Patient Email:   {patient_email}")
-        print(f"🔑 PATIENT ID:      {patient_uuid}") 
+        print(f"👨‍⚕️ Doctor: {doctor_email} (Spec: Diagnostic Medicine)")
+        print(f"👤 Patient: {patient_email}")
+        print(f"🔑 PATIENT ID: {patient_uuid}") 
         print("="*40)
-        print(f"👉 Test API: GET /api/v1/patients/{patient_uuid}/health")
+        print(f"👉 Recent Doctors API: GET /api/v1/patients/{patient_uuid}/recent-doctors")
         print("="*40)
 
 if __name__ == "__main__":
@@ -144,4 +125,3 @@ if __name__ == "__main__":
         asyncio.run(seed())
     except Exception as e:
         print(f"❌ Error: {e}")
-        print("Hint: Ensure Docker is running and port 5435 is exposed.")

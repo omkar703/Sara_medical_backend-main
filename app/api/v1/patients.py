@@ -19,8 +19,11 @@ from app.schemas.patient import (
 from app.services.audit_service import log_action
 from app.services.patient_service import PatientService
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.models.health_metric import HealthMetric
 from app.schemas.health_metric import HealthMetricResponse
+from app.models.recent_doctors import RecentDoctor
+from app.schemas.recent_doctors import RecentDoctorResponse
 from typing import List
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
@@ -293,3 +296,55 @@ async def get_patient_health_metrics(
     metrics = result.scalars().all()
     
     return metrics
+
+@router.get("/{patient_id}/recent-doctors", response_model=List[RecentDoctorResponse])
+async def get_patient_recent_doctors(
+    patient_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get list of doctors the patient has visited recently.
+    """
+    # 1. Permission Check (Patient can see own, Doctor/Admin can see all)
+    if current_user.role == "patient" and current_user.id != patient_id:
+         # Check if the user is actually the patient they are requesting
+         # (If your patient_id logic is different, adjust this check)
+         # For now, assuming strict ID match:
+         raise HTTPException(status_code=403, detail="Access denied")
+
+    # 2. Fetch with Eager Loading (The FIX)
+    stmt = (
+        select(RecentDoctor)
+        .where(RecentDoctor.patient_id == patient_id)
+        .options(selectinload(RecentDoctor.doctor))  # <--- CRITICAL FIX
+        .order_by(RecentDoctor.last_visit_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+    
+    # 3. Format Response
+    response_data = []
+    
+    from app.core.security import pii_encryption
+    
+    for r in records:
+        # Decrypt doctor name
+        try:
+            doc_name = pii_encryption.decrypt(r.doctor.full_name)
+        except:
+            doc_name = "Unknown Doctor"
+
+        response_data.append(RecentDoctorResponse(
+            id=r.id,
+            doctor_id=r.doctor_id,
+            doctor_name=doc_name,
+            specialty=r.doctor.specialty or "General Physician",
+            avatar_url=r.doctor.avatar_url,
+            last_visit_at=r.last_visit_at,
+            visit_count=r.visit_count
+        ))
+        
+    return response_data
