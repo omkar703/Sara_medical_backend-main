@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import PIIEncryption
 from app.models.patient import Patient
+from app.models.recent_patients import RecentPatient # <--- Add this
+from app.models.recent_doctors import RecentDoctor
 
 
 class PatientService:
@@ -189,6 +191,26 @@ class PatientService:
         
         self.db.add(patient)
         await self.db.flush() # Get ID
+        
+        recent_pat = RecentPatient(
+            doctor_id=created_by,
+            patient_id=patient.id,
+            last_visit_at=datetime.utcnow(),
+            visit_count=1 # Initial onboarding counts as an interaction
+        )
+        self.db.add(recent_pat)
+
+        # Add to Patient's Care Team List
+        recent_doc = RecentDoctor(
+            patient_id=patient.id,
+            doctor_id=created_by,
+            last_visit_at=datetime.utcnow(),
+            visit_count=1
+        )
+        self.db.add(recent_doc)
+        
+        await self.db.flush()
+        # ======================
         
         return self.decrypt_patient_data(patient)
 

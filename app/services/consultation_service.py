@@ -12,6 +12,8 @@ from app.models.consultation import Consultation
 from app.models.patient import Patient
 from app.models.user import User
 from app.services.zoom_service import ZoomService
+from app.models.recent_doctors import RecentDoctor  
+from app.models.recent_patients import RecentPatient
 
 
 class ConsultationService:
@@ -143,6 +145,57 @@ class ConsultationService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
     
+    async def _sync_recent_connections(self, consultation: Consultation):
+        """
+        Updates RecentDoctor and RecentPatient tables.
+        Called when a consultation is marked 'completed'.
+        """
+        # 1. Update Doctor's Recent Patients List
+        stmt_pat = select(RecentPatient).where(
+            RecentPatient.doctor_id == consultation.doctor_id,
+            RecentPatient.patient_id == consultation.patient_id
+        )
+        result_pat = await self.db.execute(stmt_pat)
+        recent_pat = result_pat.scalar_one_or_none()
+
+        if recent_pat:
+            # Update existing
+            recent_pat.last_visit_at = datetime.utcnow()
+            recent_pat.visit_count += 1
+        else:
+            # Create new
+            new_pat = RecentPatient(
+                doctor_id=consultation.doctor_id,
+                patient_id=consultation.patient_id,
+                last_visit_at=datetime.utcnow(),
+                visit_count=1
+            )
+            self.db.add(new_pat)
+
+        # 2. Update Patient's Recent Doctors List
+        stmt_doc = select(RecentDoctor).where(
+            RecentDoctor.patient_id == consultation.patient_id,
+            RecentDoctor.doctor_id == consultation.doctor_id
+        )
+        result_doc = await self.db.execute(stmt_doc)
+        recent_doc = result_doc.scalar_one_or_none()
+
+        if recent_doc:
+            # Update existing
+            recent_doc.last_visit_at = datetime.utcnow()
+            recent_doc.visit_count += 1
+        else:
+            # Create new
+            new_doc = RecentDoctor(
+                patient_id=consultation.patient_id,
+                doctor_id=consultation.doctor_id,
+                last_visit_at=datetime.utcnow(),
+                visit_count=1
+            )
+            self.db.add(new_doc)
+            
+        await self.db.flush()
+    
     async def update_consultation(
         self,
         consultation_id: UUID,
@@ -154,9 +207,19 @@ class ConsultationService:
         if not consultation:
             return None
         
+        # Check if status is changing to 'completed'
+        is_completing = (
+            updates.get("status") == "completed" and 
+            consultation.status != "completed"
+        )
+        
         for field, value in updates.items():
             if hasattr(consultation, field) and value is not None:
                 setattr(consultation, field, value)
+        
+        # Trigger the sync
+        if is_completing:
+            await self._sync_recent_connections(consultation)
         
         await self.db.flush()
         return consultation
