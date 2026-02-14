@@ -72,3 +72,48 @@ async def search_doctors(
         ))
         
     return DoctorSearchResponse(results=filtered_doctors)
+
+@router.get("/directory", response_model=DoctorSearchResponse)
+async def search_global_doctor_directory(
+    query: Optional[str] = Query(None, min_length=2, description="Search by doctor name"),
+    specialty: Optional[str] = Query(None, description="Filter by specialty"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Patient-facing Directory Search.
+    Allows searching for ANY doctor in the system (unlike /search which is restricted).
+    """
+    # 1. Fetch ALL active doctors
+    stmt = select(User).where(User.role == "doctor", User.deleted_at.is_(None))
+    
+    # Filter by Specialty (Database side)
+    if specialty:
+        stmt = stmt.where(User.specialty.ilike(f"%{specialty}%"))
+        
+    result = await db.execute(stmt)
+    doctors = result.scalars().all()
+    
+    # 2. Filter by Name (In-Memory due to encryption)
+    filtered_results = []
+    
+    for doc in doctors:
+        # Decrypt Name
+        try:
+            name = pii_encryption.decrypt(doc.full_name)
+        except:
+            name = "Unknown Doctor"
+            
+        # Apply Name Filter
+        if query:
+            if query.lower() not in name.lower():
+                continue
+        
+        filtered_results.append(DoctorSearchItem(
+            id=doc.id,
+            name=name,
+            specialty=doc.specialty,
+            photo_url=doc.avatar_url
+        ))
+        
+    return DoctorSearchResponse(results=filtered_results)

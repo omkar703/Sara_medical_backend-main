@@ -18,3 +18,15 @@ class DoctorSearchItem(BaseModel):
 
 class DoctorSearchResponse(BaseModel):
     results: List[DoctorSearchItem]
+
+class DoctorSearchItem(BaseModel):
+    id: UUID
+    name: str
+    specialty: Optional[str] = "General Physician"
+    photo_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class DoctorSearchResponse(BaseModel):
+    results: List[DoctorSearchItem]
