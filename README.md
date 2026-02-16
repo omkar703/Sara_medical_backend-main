@@ -146,6 +146,71 @@ backend/
 - `GET /health/redis` - Redis status
 - `GET /health/minio` - MinIO status
 
+#### Calendar System 📅
+
+The Calendar System provides Google Calendar-like functionality for all user roles with automatic synchronization.
+
+**Features:**
+- ✅ Role-agnostic API (works for patients, doctors, admins, hospitals)
+- ✅ Bidirectional appointment sync (creates events for both patient and doctor)
+- ✅ Automatic task sync (tasks with due dates appear in calendar)
+- ✅ Custom events (user-created calendar entries)
+- ✅ Day/Month views with event summaries
+- ✅ Color-coded events and reminders
+
+**Endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/calendar/events` | List calendar events (with filters) |
+| GET | `/api/v1/calendar/events/{id}` | Get single event details |
+| POST | `/api/v1/calendar/events` | Create custom event |
+| PUT | `/api/v1/calendar/events/{id}` | Update custom event |
+| DELETE | `/api/v1/calendar/events/{id}` | Delete custom event |
+| GET | `/api/v1/calendar/day/{date}` | Get day view (YYYY-MM-DD) |
+| GET | `/api/v1/calendar/month/{year}/{month}` | Get month summary |
+
+**Query Parameters (GET /events):**
+- `start_date` (required) - Start of date range (ISO 8601)
+- `end_date` (required) - End of date range (ISO 8601)
+- `event_type` (optional) - Filter by type: `appointment`, `custom`, or `task`
+
+**Event Types:**
+- **Appointment** 🔵 (Blue `#3B82F6`) - Auto-synced from appointment system
+- **Task** 🔴/🟠 (Red/Orange) - Auto-synced from tasks with due dates
+- **Custom** 🎨 (User-defined color) - User-created events
+
+**Automatic Sync Behavior:**
+1. **Patient books appointment** → Calendar events created for patient AND doctor
+2. **Appointment approved** → Both calendar events updated with confirmed time + Zoom link
+3. **Appointment cancelled** → Both calendar events marked as cancelled
+4. **Task created with due_date** → Calendar event created
+5. **Task due_date removed** → Calendar event deleted
+
+**Example Request:**
+```bash
+# Get all events for next 7 days
+curl -X GET "http://localhost:8000/api/v1/calendar/events?start_date=2026-02-16T00:00:00Z&end_date=2026-02-23T23:59:59Z" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Create custom event
+curl -X POST "http://localhost:8000/api/v1/calendar/events" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Team Meeting",
+    "description": "Weekly sync",
+    "start_time": "2026-02-20T14:00:00Z",
+    "end_time": "2026-02-20T15:00:00Z",
+    "color": "#10B981",
+    "reminder_minutes": 15
+  }'
+```
+
+See full API docs at http://localhost:8000/docs
+- **API Guide:** [docs/CALENDAR_API_GUIDE.md](docs/CALENDAR_API_GUIDE.md)
+- **Test Report:** [docs/CALENDAR_TEST_REPORT.md](docs/CALENDAR_TEST_REPORT.md)
+
 ### Development Workflow
 
 1. **Phase-by-phase development** - Each phase must be completed and tested before proceeding

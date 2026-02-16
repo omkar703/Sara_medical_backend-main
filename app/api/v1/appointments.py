@@ -53,6 +53,11 @@ async def create_appointment(
             grant_reason="Patient granted access during appointment booking"
         )
     
+    # Sync appointment to calendar (create events for patient and doctor)
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    await calendar_service.sync_appointment_to_calendar(appointment, "create")
+    
     await db.commit()
     await db.refresh(appointment)
     
@@ -101,6 +106,16 @@ async def update_appointment_status(
     if status_update.doctor_notes:
         appointment.doctor_notes = status_update.doctor_notes
     appointment.updated_at = datetime.utcnow()
+    
+    # Sync appointment status to calendar
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    
+    # If declined or cancelled, mark calendar events as cancelled
+    if status_update.status in ["declined", "cancelled"]:
+        await calendar_service.sync_appointment_to_calendar(appointment, "cancel")
+    else:
+        await calendar_service.sync_appointment_to_calendar(appointment, "update")
     
     await db.commit()
     await db.refresh(appointment)
@@ -166,6 +181,11 @@ async def approve_appointment(
     if approval_in.doctor_notes:
         appointment.doctor_notes = approval_in.doctor_notes
     appointment.updated_at = datetime.utcnow()
+    
+    # Sync appointment to calendar (update events with confirmed time and Zoom link)
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    await calendar_service.sync_appointment_to_calendar(appointment, "update")
     
     await db.commit()
     await db.refresh(appointment)

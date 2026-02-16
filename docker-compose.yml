@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # ============================================
   # PostgreSQL Database with pgvector extension
@@ -139,6 +137,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_backend
+    entrypoint: ["bash", "scripts/entrypoint.sh"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - .:/app
@@ -179,8 +178,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_celery_worker
+    entrypoint: ["bash", "scripts/entrypoint.sh"]
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
     volumes:
+      - .:/app
       - medical_data:/app/medical-records
       - backend_logs:/app/logs
 
@@ -190,9 +191,12 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
     depends_on:
-      - redis
-      - postgres
-      - backend
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - saramedico_network
@@ -205,8 +209,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_celery_beat
+    entrypoint: ["bash", "scripts/entrypoint.sh"]
     command: celery -A app.workers.celery_app beat --loglevel=info
     volumes:
+      - .:/app
       - backend_logs:/app/logs
       - medical_data:/app/medical-records
 
@@ -216,9 +222,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
     depends_on:
-      - redis
-      - postgres
-      - celery_worker
+      celery_worker:
+        condition: service_started
     restart: unless-stopped
     networks:
       - saramedico_network

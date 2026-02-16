@@ -39,6 +39,14 @@ async def create_task(
         doctor_id=current_user.id
     )
     db.add(task)
+    await db.flush()
+    
+    # Sync task to calendar if it has a due date
+    if task.due_date:
+        from app.services.calendar_service import CalendarService
+        calendar_service = CalendarService(db)
+        await calendar_service.sync_task_to_calendar(task, "create")
+    
     await db.commit()
     await db.refresh(task)
     return task
@@ -100,6 +108,11 @@ async def update_task(
     # Update timestamp
     task.updated_at = datetime.utcnow()
     
+    # Sync task to calendar (handles creation, update, or deletion of calendar event)
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    await calendar_service.sync_task_to_calendar(task, "update")
+    
     await db.commit()
     await db.refresh(task)
     return task
@@ -116,6 +129,11 @@ async def delete_task(
     
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Delete calendar event if it exists
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    await calendar_service.sync_task_to_calendar(task, "delete")
         
     await db.delete(task)
     await db.commit()

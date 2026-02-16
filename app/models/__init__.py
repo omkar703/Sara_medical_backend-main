@@ -10,9 +10,10 @@ from app.models.patient import Patient
 from app.models.task import Task
 from app.models.appointment import Appointment
 from app.models.activity_log import ActivityLog
+from app.models.calendar_event import CalendarEvent
 from app.models.user import Organization, RefreshToken, User
 
-__all__ = ["Organization", "User", "RefreshToken", "Patient", "AuditLog", "Document", "Consultation", "Task", "Appointment", "ActivityLog"]
+__all__ = ["Organization", "User", "RefreshToken", "Patient", "AuditLog", "Document", "Consultation", "Task", "Appointment", "ActivityLog", "CalendarEvent"]
 
 # Future imports:
 # from app.models.document import Document

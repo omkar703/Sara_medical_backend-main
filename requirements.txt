@@ -67,3 +67,7 @@ pypdf==4.0.1
 pillow==10.2.0
 fastapi-sso==0.10.0
 phonenumbers==8.13.29
+
+
+python-Levenshtein==0.23.0
+SpeechRecognition==3.10.1
