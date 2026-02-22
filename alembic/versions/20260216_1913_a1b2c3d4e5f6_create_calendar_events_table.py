@@ -20,9 +20,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade database schema - Create calendar_events table"""
+    # 1. Drop the table if it was left behind
+    op.execute("DROP TABLE IF EXISTS calendar_events CASCADE;")
     
-    # Create calendar_events table
+    # 2. Drop the types (you already have these from the last step)
+    op.execute("DROP TYPE IF EXISTS calendar_event_type CASCADE;")
+    op.execute("DROP TYPE IF EXISTS calendar_event_status CASCADE;")
+    
+    # 3. Create the table
     op.create_table(
         'calendar_events',
         sa.Column('id', sa.UUID(), primary_key=True, server_default=sa.text('gen_random_uuid()')),

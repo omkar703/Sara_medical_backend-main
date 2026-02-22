@@ -431,3 +431,36 @@ class CalendarService:
             "days": list(days_summary.values()),
             "total_events": len(events)
         }
+
+    async def get_organization_events(
+        self,
+        organization_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        event_type: Optional[str] = None
+    ) -> List[CalendarEvent]:
+        """
+        Get all calendar events for an entire organization within a date range.
+        Used for the department-wide Shift Schedule UI.
+        """
+        from sqlalchemy.orm import selectinload
+        
+        query = select(CalendarEvent).where(
+            and_(
+                CalendarEvent.organization_id == organization_id,
+                CalendarEvent.start_time >= start_date,
+                CalendarEvent.start_time <= end_date
+            )
+        ).options(
+            selectinload(CalendarEvent.user),       # Eager load the staff member
+            selectinload(CalendarEvent.appointment),
+            selectinload(CalendarEvent.task)
+        )
+        
+        if event_type:
+            query = query.where(CalendarEvent.event_type == event_type)
+        
+        query = query.order_by(CalendarEvent.start_time.asc())
+        
+        result = await self.db.execute(query)
+        return result.scalars().all()

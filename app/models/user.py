@@ -61,6 +61,7 @@ class User(Base):
         Enum("patient", "doctor", "admin", "hospital", name="user_role"),
         nullable=False
     )
+    
     phone_number = Column(String(255), nullable=True)  # Encrypted
     
     # Doctor-specific fields
@@ -152,6 +153,10 @@ class Invitation(Base):
     
     # Status
     status = Column(String(20), default="pending")  # pending, accepted, expired
+    
+    # Additions for Staff Management UI
+    staff_status = Column(String(20), default="Active") # 'Active', 'On Leave', 'Inactive'
+    department_role = Column(String(100), nullable=True) # e.g., 'Chief Cardiologist', 'Senior Physician'
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)

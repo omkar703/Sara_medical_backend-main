@@ -107,3 +107,24 @@ class MonthViewResponse(BaseModel):
     month: int
     days: List[MonthDaySummary]
     total_events: int
+
+class CalendarEventResponse(CalendarEventBase):
+    """Schema for calendar event response"""
+    id: UUID
+    user_id: UUID
+    organization_id: UUID
+    event_type: str  # "appointment", "custom", "task"
+    appointment_id: Optional[UUID] = None
+    task_id: Optional[UUID] = None
+    status: str  # "scheduled", "completed", "cancelled"
+    created_at: datetime
+    updated_at: datetime
+    
+    # NEW FIELD: To display "Dr. Von" on the org-wide schedule
+    user_name: Optional[str] = None
+    
+    # Optional metadata for appointments
+    metadata: Optional[Dict] = Field(None, description="Additional metadata (e.g., patient/doctor names for appointments)")
+
+    class Config:
+        from_attributes = True

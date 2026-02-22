@@ -59,3 +59,12 @@ class Consultation(Base):
     doctor = relationship("User", foreign_keys=[doctor_id], backref="consultations")
     patient = relationship("Patient", backref="consultations")
     organization = relationship("Organization")
+    
+    # New fields to support Clinical Dashboard & Queue
+    urgency_level: Mapped[str] = mapped_column(String(20), default="normal", index=True) # e.g., 'normal', 'high', 'critical'
+    chief_complaint: Mapped[str] = mapped_column(Text, nullable=True)
+    visit_state: Mapped[str] = mapped_column(String(50), default="scheduled", index=True) # e.g., 'Needs Review', 'Processing', 'Signed'
+    
+    # New Timestamp fields for KPI calculations
+    check_in_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    completion_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

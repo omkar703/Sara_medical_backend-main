@@ -1,0 +1,241 @@
+// --- 2. GET /consultations/queue/metrics ---
+// Status: 200
+{
+  "pending_review": 2,
+  "high_urgency": 0,
+  "cleared_today": 0,
+  "avg_wait_time_minutes": 12
+}
+
+// --- 3. GET /doctor/me/dashboard ---
+// Status: 200
+{
+  "pending_notes": 2,
+  "urgent_notes": 3,
+  "avg_completion_minutes": 4,
+  "completion_delta_seconds": -18,
+  "patients_today": 0,
+  "scheduled_today": 16,
+  "unsigned_orders": 2
+}
+
+// --- 4. GET /consultations (Approval Queue Filtered) ---
+// Status: 200
+{
+  "consultations": [
+    {
+      "id": "1083c082-099b-4dd8-b3b7-148999b88d30",
+      "scheduledAt": "2026-02-22T14:54:16.435978Z",
+      "durationMinutes": 30,
+      "status": "completed",
+      "urgency_level": "normal",
+      "visit_state": "Signed",
+      "doctorId": "b12db19d-2292-4673-8578-11aa0e2f7201",
+      "doctorName": "Dr. Sarah Mitchell",
+      "patientId": "f36cc27d-0834-4ce7-963d-344c5e1ee356",
+      "patientName": "Nikhil Hegde",
+      "meetingId": null,
+      "joinUrl": null,
+      "startUrl": null,
+      "password": null,
+      "notes": null,
+      "diagnosis": null,
+      "prescription": null,
+      "aiStatus": "pending",
+      "hasAudio": false,
+      "hasTranscript": false,
+      "hasSoapNote": false,
+      "chief_complaint": null,
+      "checkInTime": null,
+      "completionTime": null
+    },
+    {
+      "id": "1785406f-0a2b-4fae-a343-228135cfa8cc",
+      "scheduledAt": "2026-02-22T15:03:06.910286Z",
+      "durationMinutes": 30,
+      "status": "completed",
+      "urgency_level": "normal",
+      "visit_state": "Signed",
+      "doctorId": "b12db19d-2292-4673-8578-11aa0e2f7201",
+      "doctorName": "Dr. Sarah Mitchell",
+      "patientId": "f36cc27d-0834-4ce7-963d-344c5e1ee356",
+      "patientName": "Nikhil Hegde",
+      "meetingId": null,
+      "joinUrl": null,
+      "startUrl": null,
+      "password": null,
+      "notes": null,
+      "diagnosis": null,
+      "prescription": null,
+      "aiStatus": "pending",
+      "hasAudio": false,
+      "hasTranscript": false,
+      "hasSoapNote": false,
+      "chief_complaint": null,
+      "checkInTime": null,
+      "completionTime": null
+    },
+    {
+      "id": "620cf692-fc9d-47f8-9762-22906c7aff52",
+      "scheduledAt": "2026-02-22T16:54:16.435978Z",
+      "durationMinutes": 30,
+      "status": "completed",
+      "urgency_level": "high",
+      "visit_state": "Needs Review",
+      "doctorId": "b12db19d-2292-4673-8578-11aa0e2f7201",
+      "doctorName": "Dr. Sarah Mitchell",
+      "patientId": "f36cc27d-0834-4ce7-963d-344c5e1ee356",
+      "patientName": "Nikhil Hegde",
+      "meetingId": null,
+      "joinUrl": null,
+      "startUrl": null,
+      "password": null,
+      "notes": null,
+      "diagnosis": null,
+      "prescription": null,
+      "aiStatus": "pending",
+      "hasAudio": false,
+      "hasTranscript": false,
+      "hasSoapNote": false,
+      "chief_complaint": null,
+      "checkInTime": null,
+      "completionTime": null
+    },
+    {
+      "id": "64d7637c-54e9-4580-802f-27308f5a1939",
+      "scheduledAt": "2026-02-22T17:03:06.910286Z",
+      "durationMinutes": 30,
+      "status": "completed",
+      "urgency_level": "high",
+      "visit_state": "Needs Review",
+      "doctorId": "b12db19d-2292-4673-8578-11aa0e2f7201",
+      "doctorName": "Dr. Sarah Mitchell",
+      "patientId": "f36cc27d-0834-4ce7-963d-344c5e1ee356",
+      "patientName": "Nikhil Hegde",
+      "meetingId": null,
+      "joinUrl": null,
+      "startUrl": null,
+      "password": null,
+      "notes": null,
+      "diagnosis": null,
+      "prescription": null,
+      "aiStatus": "pending",
+      "hasAudio": false,
+      "hasTranscript": false,
+      "hasSoapNote": false,
+      "chief_complaint": null,
+      "checkInTime": null,
+      "completionTime": null
+    }
+  ],
+  "total": 4
+}
+
+// --- 5. GET /team/staff ---
+// Status: 200
+[
+  {
+    "id": "fab53304-c279-4633-b62c-796961a68faf",
+    "name": "Test User",
+    "email": "chillaxmusika@gmail.com",
+    "role": "Admin",
+    "last_accessed": "2026-02-08T05:49:21.791986Z",
+    "status": "Active"
+  },
+  {
+    "id": "f36cc27d-0834-4ce7-963d-344c5e1ee356",
+    "name": "Nikhil Hegde",
+    "email": "hegdenikhil101@example.com",
+    "role": "Patient",
+    "last_accessed": null,
+    "status": "Active"
+  },
+  {
+    "id": "b2cb0827-90e3-408a-94e7-8abaf1651b5d",
+    "name": "Nikhil Hegde",
+    "email": "hegdenikhil101@google.com",
+    "role": "Patient",
+    "last_accessed": null,
+    "status": "Active"
+  },
+  {
+    "id": "5f561d7f-e83f-4716-9181-74e942c737a6",
+    "name": "Nikhil Hegde",
+    "email": "hegdenikhil101@gmail.com",
+    "role": "Patient",
+    "last_accessed": "2026-02-08T06:18:52.076742Z",
+    "status": "Active"
+  },
+  {
+    "id": "8e36fa3d-3daf-45d3-9efe-616a6b14eeed",
+    "name": "Test User",
+    "email": "sample@gmail.com",
+    "role": "Admin",
+    "last_accessed": null,
+    "status": "Active"
+  },
+  {
+    "id": "3a268c56-6466-4347-bf75-0b859bfe9596",
+    "name": "Test Doc",
+    "email": "azurafoundation@gmail.com",
+    "role": "Doctor",
+    "last_accessed": "2026-02-08T06:10:30.409299Z",
+    "status": "Active"
+  },
+  {
+    "id": "193d12d8-1ce2-4859-9f5a-8ae223c4283f",
+    "name": "Test Doc",
+    "email": "sampleemailaddress@gmail.com",
+    "role": "Doctor",
+    "last_accessed": null,
+    "status": "Active"
+  },
+  {
+    "id": "0df8e3b6-ec3c-4939-997a-40f7defa0413",
+    "name": "Test Doc",
+    "email": "sampleema@gmail.com",
+    "role": "Doctor",
+    "last_accessed": null,
+    "status": "Active"
+  },
+  {
+    "id": "b079c2ee-54e4-4693-a231-19015c652d7f",
+    "name": "Test Doc",
+    "email": "somethingtestwithphoes@gmail.com",
+    "role": "Doctor",
+    "last_accessed": null,
+    "status": "Active"
+  },
+  {
+    "id": "cf72ab29-3b02-45d1-8024-a87876766526",
+    "name": "Test Doc",
+    "email": "admintestemail@gmail.com",
+    "role": "Admin",
+    "last_accessed": "2026-02-11T08:03:22.784629Z",
+    "status": "Active"
+  },
+  {
+    "id": "adca46bd-29f3-405d-ac58-413f7379980c",
+    "name": "Test Doc",
+    "email": "doctortestemailid@gmail.com",
+    "role": "Doctor",
+    "last_accessed": "2026-02-13T11:48:02.023860Z",
+    "status": "Active"
+  },
+  {
+    "id": "b12db19d-2292-4673-8578-11aa0e2f7201",
+    "name": "Dr. Sarah Mitchell",
+    "email": "dr_dashboard_test@saramedico.com",
+    "role": "Doctor",
+    "last_accessed": "2026-02-22T13:33:07.248391Z",
+    "status": "Active"
+  }
+]
+
+// --- 6. GET /team/invites/pending ---
+// Status: 403
+{"detail":"Only admins can view pending invites"}
+
+// --- 7. GET /calendar/organization/events (Shifts) ---
+// Status: 404
+{"detail":"Not Found"}

@@ -223,3 +223,80 @@ class ConsultationService:
         
         await self.db.flush()
         return consultation
+    
+async def list_consultations(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        role: str,
+        status: Optional[str] = None,
+        visit_state: Optional[str] = None,
+        urgency_level: Optional[str] = None,
+        provider_id: Optional[UUID] = None,
+        search_query: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None
+    ) -> tuple[List[Consultation], int]:
+        """
+        List consultations with advanced filtering for the Approval Queue.
+        Returns a tuple of (List of Consultations, Total Count).
+        """
+        from sqlalchemy import or_, func
+
+        # Base query with eager loading to prevent N+1 issues when fetching rows
+        query = select(Consultation).options(
+            selectinload(Consultation.doctor),
+            selectinload(Consultation.patient)
+        ).where(
+            Consultation.organization_id == organization_id,
+            Consultation.deleted_at.is_(None)
+        )
+        
+        # --- Apply Filters ---
+        if role == "doctor" and not provider_id:
+            # By default, doctors might only see their own, unless they are filtering the global queue
+            # (Adjust logic depending on if regular doctors can view the whole queue)
+            query = query.where(Consultation.doctor_id == user_id)
+        elif provider_id:
+            query = query.where(Consultation.doctor_id == provider_id)
+
+        if status:
+            query = query.where(Consultation.status == status)
+            
+        if visit_state:
+            query = query.where(Consultation.visit_state == visit_state)
+            
+        if urgency_level:
+            query = query.where(Consultation.urgency_level == urgency_level)
+
+        if search_query:
+            search_term = f"%{search_query}%"
+            # Join required for searching patient/doctor names
+            query = query.join(Consultation.patient).join(Consultation.doctor).where(
+                or_(
+                    Patient.full_name.ilike(search_term),
+                    Patient.mrn.ilike(search_term),
+                    User.full_name.ilike(search_term),
+                    # Cast UUID to text for searching Session IDs
+                    func.cast(Consultation.id, sqlalchemy.String).ilike(search_term)
+                )
+            )
+
+        if date_from:
+            query = query.where(Consultation.scheduled_at >= date_from)
+            
+        if date_to:
+            query = query.where(Consultation.scheduled_at <= date_to)
+
+        # Calculate total count before pagination
+        count_query = select(func.count()).select_from(query.subquery())
+        total_count_result = await self.db.execute(count_query)
+        total_count = total_count_result.scalar() or 0
+
+        # Apply ordering and pagination
+        query = query.order_by(Consultation.scheduled_at.desc()).offset(skip).limit(limit)
+        
+        result = await self.db.execute(query)
+        return result.scalars().all(), total_count

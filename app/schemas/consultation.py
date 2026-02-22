@@ -55,6 +55,9 @@ class ConsultationResponse(BaseModel):
     durationMinutes: int
     status: str
     
+    urgency_level: str = "normal"
+    visit_state: str = "scheduled"
+    
     # Participants
     doctorId: str
     doctorName: Optional[str] = None
@@ -77,6 +80,12 @@ class ConsultationResponse(BaseModel):
     hasAudio: bool
     hasTranscript: bool
     hasSoapNote: bool
+    
+    urgency_level: str
+    chief_complaint: Optional[str] = None
+    visit_state: str
+    checkInTime: Optional[datetime] = None
+    completionTime: Optional[datetime] = None 
     
     class Config:
         from_attributes = True
@@ -129,3 +138,20 @@ class ConsultationSearchRow(BaseModel):
     
     class Config:
         from_attributes = True
+
+class QueueMetricsResponse(BaseModel):
+    """Schema for the top cards on the Structured Approval Queue"""
+    pending_review: int
+    high_urgency: int
+    cleared_today: int
+    avg_wait_time_minutes: int
+
+class ClinicalDashboardMetrics(BaseModel):
+    """Schema for the top cards on the Doctor's Clinical Dashboard"""
+    pending_notes: int
+    urgent_notes: int
+    avg_completion_minutes: int
+    completion_delta_seconds: int # e.g., -18s vs last week
+    patients_today: int
+    scheduled_today: int
+    unsigned_orders: int

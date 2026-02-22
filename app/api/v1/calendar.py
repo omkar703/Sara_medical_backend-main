@@ -5,6 +5,8 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.deps import get_current_user, get_organization_id
+from app.core.security import pii_encryption
 
 from app.database import get_db
 from app.core.deps import get_current_user
@@ -252,3 +254,4 @@ async def get_month_view(
         days=days_summary,
         total_events=month_data["total_events"]
     )
+
