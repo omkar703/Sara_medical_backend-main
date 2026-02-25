@@ -11,7 +11,8 @@ from sqlalchemy.orm import selectinload
 from app.models.consultation import Consultation
 from app.models.patient import Patient
 from app.models.user import User
-from app.services.zoom_service import ZoomService
+from app.services.google_meet_service import google_meet_service
+from app.core.security import pii_encryption
 from app.models.recent_doctors import RecentDoctor  
 from app.models.recent_patients import RecentPatient
 
@@ -21,7 +22,6 @@ class ConsultationService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.zoom = ZoomService()
         
     async def schedule_consultation(
         self,
@@ -45,18 +45,24 @@ class ConsultationService:
         if not patient or not doctor:
             raise ValueError("Patient or Doctor not found")
 
-        # 2. Create Zoom Meeting
-        meeting_topic = f"Consultation: Dr. {doctor.full_name} - {patient.mrn}"
-        start_time_str = scheduled_at.isoformat().replace("+00:00", "Z")
+        # 2. Create Google Meet
+        try:
+            doc_name = pii_encryption.decrypt(doctor.full_name)
+        except:
+            doc_name = doctor.full_name or "Doctor"
+            
+        meeting_topic = f"Consultation: Dr. {doc_name} - {patient.mrn}"
         
-        zoom_meeting = await self.zoom.create_meeting(
-            topic=meeting_topic,
-            start_time=start_time_str,
+        # Call Google Meet Service
+        google_event_id, meet_link = await google_meet_service.create_meeting(
+            start_time=scheduled_at,
             duration_minutes=duration_minutes,
-            agenda=f"Medical consultation for {patient.mrn}"
+            summary=meeting_topic,
+            description=f"Medical consultation for {patient.mrn}",
+            attendees=[doctor.email, patient.email] 
         )
         
-        # 3. Create Database Record
+        # 3. Create Database Record (Using the new Google fields)
         consultation = Consultation(
             doctor_id=doctor_id,
             patient_id=patient_id,
@@ -65,10 +71,8 @@ class ConsultationService:
             duration_minutes=duration_minutes,
             status="scheduled",
             notes=notes,
-            meeting_id=str(zoom_meeting.get("id")),
-            join_url=zoom_meeting.get("join_url"),
-            start_url=zoom_meeting.get("start_url"),
-            password=zoom_meeting.get("password"),
+            google_event_id=google_event_id,
+            meet_link=meet_link,
             ai_status="pending"
         )
         

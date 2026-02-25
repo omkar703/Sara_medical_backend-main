@@ -139,8 +139,10 @@ class Settings(BaseSettings):
     ZOOM_AUTH_URL: str = "https://zoom.us/oauth/token"
 
     # Social Auth (Google & Apple)
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    GOOGLE_REFRESH_TOKEN: str = ""
     APPLE_CLIENT_ID: Optional[str] = None
     APPLE_CLIENT_SECRET: Optional[str] = None  # This must be the generated JWT
     APPLE_REDIRECT_URI: Optional[str] = None

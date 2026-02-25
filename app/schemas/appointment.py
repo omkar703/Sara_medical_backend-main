@@ -22,11 +22,9 @@ class AppointmentResponse(AppointmentBase):
     status: str
     doctor_notes: Optional[str] = None
     
-    # Zoom Implementation
-    meeting_id: Optional[str] = None
-    join_url: Optional[str] = None
-    start_url: Optional[str] = None
-    meeting_password: Optional[str] = None
+    # Google Meet Implementation
+    google_event_id: Optional[str] = None
+    meet_link: Optional[str] = None
     
     created_at: datetime
     updated_at: datetime

@@ -22,6 +22,7 @@ from app.schemas.consultation import (
 )
 from app.schemas.document import MessageResponse
 from app.services.audit_service import log_action
+from app.services.google_meet_service import google_meet_service
 from app.services.consultation_service import ConsultationService
 from app.api.v1.websockets import manager
 from app.core.security import pii_encryption
@@ -51,19 +52,18 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         doctorName=doctor_name,
         patientId=str(consultation.patient_id),
         patientName=patient_name,
-        meetingId=consultation.meeting_id,
-        joinUrl=consultation.join_url,
-        startUrl=consultation.start_url,
-        password=consultation.password,
+        
+        # NEW Google Meet Info
+        google_event_id=getattr(consultation, 'google_event_id', None),
+        meet_link=getattr(consultation, 'meet_link', None),
+        
         notes=consultation.notes,
         diagnosis=consultation.diagnosis,
         prescription=consultation.prescription,
         aiStatus=getattr(consultation, 'ai_status', 'pending'),
-        hasAudio=False, # Stubbed, update if you track audio uploads
+        hasAudio=False, 
         hasTranscript=bool(getattr(consultation, 'transcript', False)),
         hasSoapNote=bool(getattr(consultation, 'soap_note', False)),
-        
-        # New Dashboard fields
         urgency_level=getattr(consultation, 'urgency_level', 'normal'),
         visit_state=getattr(consultation, 'visit_state', 'scheduled')
     )
@@ -275,44 +275,36 @@ async def analyze_consultation(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Fetch Zoom transcript and trigger AI analysis.
+    Fetch Google Meet transcript and trigger AI analysis.
     """
-    # 1. Get Consultation
     service = ConsultationService(db)
     consultation = await service.get_consultation(consultation_id, organization_id)
     
     if not consultation:
         raise HTTPException(status_code=404, detail="Consultation not found")
         
-    if not consultation.meeting_id:
-        raise HTTPException(status_code=400, detail="No Zoom meeting linked to this consultation")
+    if getattr(consultation, 'google_event_id', None) is None:
+        raise HTTPException(status_code=400, detail="No Google Meet linked to this consultation")
 
-    # 2. Fetch Transcript from Zoom
-    # (Note: This might fail if the meeting just ended. Zoom takes time to process.)
-    from app.services.zoom_service import zoom_service
-    transcript_text = await zoom_service.get_meeting_transcript(consultation.meeting_id)
-
+    # Fetch the transcript text
+    transcript_text = await google_meet_service.get_meeting_transcript(consultation.google_event_id)
+    
     if not transcript_text:
-        # If we already have a transcript saved manually, use that
-        if consultation.transcript:
-            transcript_text = consultation.transcript
-        else:
-            raise HTTPException(
-                status_code=400, 
-                detail="Transcript not ready yet. Please wait for Zoom to process the cloud recording."
-            )
-    else:
-        # Save the new transcript to DB
-        consultation.transcript = transcript_text
-        consultation.ai_status = "processing"
-        await db.commit()
-
-    # 3. Trigger AI Processing (Stub for now)
-    # In the next step, you will pass `transcript_text` to your LLM here.
-    # For now, we simulate success.
+        raise HTTPException(
+            status_code=404, 
+            detail="Transcript not found. If the meeting just ended, Google may still be processing it."
+        )
+        
+    # Save it to the database
+    consultation.transcript = transcript_text
+    consultation.ai_status = "processing"
+    await db.commit()
+    
+    # TODO: Pass `transcript_text` to your AI LLM here to generate the SOAP note!
+    # e.g., soap_note = await ai_service.generate_soap_note(transcript_text)
     
     return MessageResponse(
-        message="Transcript retrieved successfully. AI analysis started."
+        message="Transcript fetched successfully. AI analysis initiated."
     )
 
 @router.get("/queue/metrics", response_model=QueueMetricsResponse)

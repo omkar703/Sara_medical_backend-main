@@ -33,11 +33,9 @@ class Consultation(Base):
     # Status: scheduled, active, completed, cancelled, no_show
     status: Mapped[str] = mapped_column(String(20), default="scheduled", index=True)
     
-    # Zoom Integration
-    meeting_id: Mapped[str] = mapped_column(String(50), nullable=True)
-    join_url: Mapped[str] = mapped_column(Text, nullable=True)
-    start_url: Mapped[str] = mapped_column(Text, nullable=True)
-    password: Mapped[str] = mapped_column(String(50), nullable=True)
+    # Google Meet Integration
+    google_event_id: Mapped[str] = mapped_column(String(255), nullable=True) # ID of the event in Google Calendar
+    meet_link: Mapped[str] = mapped_column(Text, nullable=True)
     
     # Medical Data
     notes: Mapped[str] = mapped_column(Text, nullable=True)  # Doctor's manual notes

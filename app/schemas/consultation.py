@@ -64,11 +64,9 @@ class ConsultationResponse(BaseModel):
     patientId: str
     patientName: Optional[str] = None
     
-    # Zoom Info
-    meetingId: Optional[str] = None
-    joinUrl: Optional[str] = None
-    startUrl: Optional[str] = None
-    password: Optional[str] = None
+    # Google Meet Info
+    googleEventId: Optional[str] = Field(None, alias="google_event_id")
+    meetLink: Optional[str] = Field(None, alias="meet_link")
     
     # Medical Data
     notes: Optional[str] = None
