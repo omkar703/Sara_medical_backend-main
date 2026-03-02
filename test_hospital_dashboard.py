@@ -11,10 +11,11 @@ from app.models.patient import Patient
 from app.models.consultation import Consultation
 from app.models.task import Task
 from app.models.calendar_event import CalendarEvent
+from app.models.activity_log import ActivityLog
 from app.core.security import hash_password, pii_encryption
 
 BASE_URL = "http://localhost:8000/api/v1"
-TEST_EMAIL = "dr_dashboard_test@saramedico.com"
+TEST_EMAIL = "hospital_admin@saramedico.com"
 TEST_PASSWORD = "Password123!"
 
 async def seed_database():
@@ -28,20 +29,19 @@ async def seed_database():
             session.add(org)
             await session.flush()
 
-        # 2. Create Test Doctor
+        # 2. Create Test Hospital Manager (Role: 'hospital')
         user_result = await session.execute(select(User).where(User.email == TEST_EMAIL))
-        doctor = user_result.scalar_one_or_none()
-        if not doctor:
-            doctor = User(
+        manager = user_result.scalar_one_or_none()
+        if not manager:
+            manager = User(
                 email=TEST_EMAIL,
                 password_hash=hash_password(TEST_PASSWORD),
-                full_name=pii_encryption.encrypt("Dr. Sarah Mitchell"),
-                role="doctor",
-                # REMOVED department_role and staff_status from here
+                full_name=pii_encryption.encrypt("Dr. Sarah Smith"),
+                role="hospital", # Ensure role is 'hospital' to test the new permission fix
                 organization_id=org.id,
                 email_verified=True
             )
-            session.add(doctor)
+            session.add(manager)
             await session.flush()
 
         # 3. Create a Patient
@@ -50,7 +50,7 @@ async def seed_database():
         if not patient:
             patient = Patient(
                 organization_id=org.id,
-                full_name=pii_encryption.encrypt("John Doe"),
+                full_name=pii_encryption.encrypt("John Von"),
                 date_of_birth=pii_encryption.encrypt("1980-01-01"),
                 mrn="MRN-12345",
                 gender="Male"
@@ -58,45 +58,42 @@ async def seed_database():
             session.add(patient)
             await session.flush()
 
-        # 4. Create Consultations (Approval Queue & Metrics)
         now = datetime.now(timezone.utc)
         
-        # Pending Review
+        # 4. Create Consultations (Approval Queue)
         session.add(Consultation(
-            doctor_id=doctor.id, patient_id=patient.id, organization_id=org.id,
+            doctor_id=manager.id, patient_id=patient.id, organization_id=org.id,
             scheduled_at=now - timedelta(hours=2),
             visit_state="Needs Review", urgency_level="high", status="completed"
         ))
-        # Cleared Today
-        session.add(Consultation(
-            doctor_id=doctor.id, patient_id=patient.id, organization_id=org.id,
-            scheduled_at=now - timedelta(hours=4), completion_time=now,
-            visit_state="Signed", urgency_level="normal", status="completed"
-        ))
         
-        # 5. Create Task (Unsigned Orders)
-        session.add(Task(
-            doctor_id=doctor.id, title="Sign Lab Order", priority="urgent", status="pending"
-        ))
-
-        # 6. Create Staff Shift (Calendar Event)
+        # 5. Create Staff Shift (Calendar Event for the Organization)
         session.add(CalendarEvent(
-            user_id=doctor.id, organization_id=org.id, event_type="custom",
-            title="Morning Shift", start_time=now.replace(hour=8, minute=0),
+            user_id=manager.id, organization_id=org.id, event_type="custom",
+            title="Morning Shift - Cardiology", start_time=now.replace(hour=8, minute=0),
             end_time=now.replace(hour=16, minute=0), all_day=False, status="scheduled"
         ))
 
-        # 7. Create Pending Invite
-        random_id = uuid.uuid4().hex[:8] # Generate a short random string
+        # 6. Create Pending Invite
+        random_id = uuid.uuid4().hex[:8]
         session.add(Invitation(
-            email=f"nurse_{random_id}@saramedico.com", 
-            role="patient", 
-            department_role="Head Nurse",
-            token_hash=f"hash_{random_id}", # Ensures this is always unique
+            email=f"dr.von_{random_id}@saramedico.com", 
+            role="doctor", 
+            department_role="Senior Physician",
+            token_hash=f"hash_{random_id}",
             expires_at=now + timedelta(hours=48),
             organization_id=org.id, 
-            created_by_id=doctor.id, 
+            created_by_id=manager.id, 
             status="pending"
+        ))
+
+        # 7. Create an Audit/Activity Log to test the Audit Endpoint
+        session.add(ActivityLog(
+            user_id=manager.id,
+            organization_id=org.id,
+            activity_type="Role Permission Updated",
+            description="Updated permissions for Dr. Rex Hex",
+            status="success"
         ))
 
         await session.commit()
@@ -116,54 +113,40 @@ async def test_endpoints():
             
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        print("Authenticated successfully.")
+        print("Authenticated successfully as Hospital Manager.")
 
-        # --- Test 1: Queue Metrics ---
-        print("\n--- 2. GET /consultations/queue/metrics ---")
-        resp = await client.get(f"{BASE_URL}/consultations/queue/metrics", headers=headers)
-        print(f"Status: {resp.status_code}")
-        print(json.dumps(resp.json(), indent=2) if resp.status_code == 200 else resp.text)
-
-        # --- Test 2: Doctor Dashboard Metrics ---
-        print("\n--- 3. GET /doctor/me/dashboard ---")
-        resp = await client.get(f"{BASE_URL}/doctor/me/dashboard", headers=headers)
-        print(f"Status: {resp.status_code}")
-        print(json.dumps(resp.json(), indent=2) if resp.status_code == 200 else resp.text)
-
-        # --- Test 3: Filtered Approval Queue List ---
-        print("\n--- 4. GET /consultations (Approval Queue Filtered) ---")
-        resp = await client.get(f"{BASE_URL}/consultations?visit_state=Needs Review", headers=headers)
-        print(f"Status: {resp.status_code}")
-        print(json.dumps(resp.json(), indent=2) if resp.status_code == 200 else resp.text)
-
-        # --- Test 4: Staff Roster ---
-        print("\n--- 5. GET /team/staff ---")
+        # --- Test 1: Staff Roster ---
+        print("\n--- 2. GET /team/staff (Roles & Permissions UI) ---")
         resp = await client.get(f"{BASE_URL}/team/staff", headers=headers)
         print(f"Status: {resp.status_code}")
         print(json.dumps(resp.json(), indent=2) if resp.status_code == 200 else resp.text)
 
-        # --- Test 5: Pending Invites ---
-        print("\n--- 6. GET /team/invites/pending ---")
+        # --- Test 2: Pending Invites ---
+        print("\n--- 3. GET /team/invites/pending (Invite Staff UI) ---")
         resp = await client.get(f"{BASE_URL}/team/invites/pending", headers=headers)
         print(f"Status: {resp.status_code}")
         print(json.dumps(resp.json(), indent=2) if resp.status_code == 200 else resp.text)
 
-        # --- Test 6: Shift Schedule ---
-        print("\n--- 7. GET /calendar/organization/events (Shifts) ---")
+        # --- Test 3: Organization Schedule (The newly added endpoint) ---
+        print("\n--- 4. GET /calendar/organization/events (Shift Schedule UI) ---")
         now = datetime.now(timezone.utc)
-        start_str = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_str = (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_str = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_str = (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
         resp = await client.get(
-            f"{BASE_URL}/calendar/organization/events?start_date={start_str}&end_date={end_str}&event_type=custom", 
+            f"{BASE_URL}/calendar/organization/events?start_date={start_str}&end_date={end_str}", 
             headers=headers
         )
-        print(f"Status: {resp.status_code}")
+        print(f"Status: {resp.status_code} (Should be 200 now)")
+        print(json.dumps(resp.json()[:2], indent=2) if resp.status_code == 200 else resp.text)
+
+        # --- Test 4: Audit Logs (The newly fixed permissions) ---
+        print("\n--- 5. GET /audit/logs (Audit Logs UI) ---")
+        resp = await client.get(f"{BASE_URL}/audit/logs?limit=5", headers=headers)
+        print(f"Status: {resp.status_code} (Should be 200, not 403 Forbidden)")
         print(json.dumps(resp.json(), indent=2) if resp.status_code == 200 else resp.text)
 
 async def main():
-    # 1. Seed the data
     await seed_database()
-    # 2. Test the endpoints
     await test_endpoints()
 
 if __name__ == "__main__":

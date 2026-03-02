@@ -42,5 +42,5 @@ class AppointmentApproval(BaseModel):
     doctor_notes: Optional[str] = None
 
 class AppointmentStatusUpdate(BaseModel):
-    status: str = Field(..., pattern="^(accepted|declined)$")
+    status: str = Field(..., pattern="^(accepted|declined|cancelled|completed)$")
     doctor_notes: Optional[str] = None

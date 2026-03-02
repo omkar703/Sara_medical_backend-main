@@ -2,8 +2,9 @@
 
 from typing import AsyncGenerator
 
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
 
@@ -24,6 +25,27 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
     autocommit=False,
     autoflush=False,
+)
+
+# ── Synchronous session factory for Celery tasks ──────────────────────────────
+# Celery workers run in greenlets (gevent) whose asyncpg connections carry event
+# loop references. Creating a fresh asyncio loop in a background thread causes
+#   RuntimeError: <loop> is attached to a different loop
+# Solution: use a standard psycopg2 (sync) engine exclusively for Celery.
+_sync_db_url = settings.DATABASE_URL.replace(
+    "postgresql+asyncpg://", "postgresql+psycopg2://"
+)
+_sync_engine = create_engine(
+    _sync_db_url,
+    pool_size=5,
+    max_overflow=2,
+    pool_pre_ping=True,
+)
+SyncSessionLocal = sessionmaker(
+    bind=_sync_engine,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
 )
 
 # Base class for all models
@@ -52,9 +74,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
     """Initialize database tables (for development only)"""
+    from app import models  # Ensure all models are loaded
     async with engine.begin() as conn:
         # This will create all tables defined in models
-        # In production, use Alembic migrations instead
         await conn.run_sync(Base.metadata.create_all)
 
 

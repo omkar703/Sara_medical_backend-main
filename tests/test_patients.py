@@ -26,8 +26,9 @@ async def patient_payload():
         "fullName": "John Doe",
         "dateOfBirth": "1980-05-15",
         "gender": "male",
-        "phoneNumber": "+1234567890",
+        "phoneNumber": "+16502531111",
         "email": "john@example.com",
+        "password": "Password123!",
         "address": {
             "street": "123 Main St",
             "city": "Boston",
@@ -164,7 +165,7 @@ async def test_audit_logging(
     result = await db_session.execute(
         select(AuditLog).where(
             AuditLog.resource_id == patient_id,
-            AuditLog.action == "create"
+            AuditLog.action == "onboard"
         )
     )
     log_entry = result.scalar_one_or_none()
@@ -187,6 +188,7 @@ async def test_search_patients(
     
     payload2 = patient_payload.copy()
     payload2["fullName"] = "Another Patient"
+    payload2["email"] = "another@example.com"
     res2 = await client.post(
         "/api/v1/patients",
         json=payload2,

@@ -37,6 +37,7 @@ minio==7.2.3
 # Celery & Background Tasks
 celery==5.3.6
 kombu==5.3.5
+gevent==23.9.1
 
 # Email
 aiosmtplib==3.0.1

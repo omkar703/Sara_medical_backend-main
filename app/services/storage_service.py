@@ -22,14 +22,6 @@ class StorageService:
             secure=settings.MINIO_USE_SSL
         )
         
-        # External client for presigned URLs accessible from outside Docker
-        self.external_client = Minio(
-            settings.minio_presigned_endpoint,
-            access_key=settings.MINIO_ROOT_USER,
-            secret_key=settings.MINIO_ROOT_PASSWORD,
-            secure=settings.MINIO_USE_SSL
-        )
-        
         self.bucket_name = settings.MINIO_BUCKET_DOCUMENTS
     
     async def generate_upload_url(
@@ -40,23 +32,20 @@ class StorageService:
     ) -> str:
         """
         Generate a presigned PUT URL for uploading a file
-        
-        Args:
-            storage_path: Full storage path (e.g., org_id/patient_id/doc_id/filename)
-            content_type: MIME type of the file
-            expires_in: URL expiration time in seconds (default: 1 hour)
-        
-        Returns:
-            Presigned upload URL
         """
         from datetime import timedelta
         try:
-            url = self.external_client.presigned_put_object(
+            # Use internal client for generation
+            url = self.client.presigned_put_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
-                expires=timedelta(seconds=expires_in)
+                expires=timedelta(seconds=expires_in),
+                content_type=content_type
             )
-            return url
+            # Robustly swap internal netloc for external netloc using urlparse
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(url)
+            return urlunparse(parsed._replace(netloc=settings.minio_presigned_endpoint))
         except S3Error as e:
             raise Exception(f"Failed to generate upload URL: {str(e)}")
     
@@ -67,22 +56,19 @@ class StorageService:
     ) -> str:
         """
         Generate a presigned GET URL for downloading a file
-        
-        Args:
-            storage_path: Full storage path
-            expires_in: URL expiration time in seconds (default: 1 hour)
-        
-        Returns:
-            Presigned download URL
         """
         from datetime import timedelta
         try:
-            url = self.external_client.presigned_get_object(
+            # Use internal client for generation
+            url = self.client.presigned_get_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
                 expires=timedelta(seconds=expires_in)
             )
-            return url
+            # Robustly swap internal netloc for external netloc using urlparse
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(url)
+            return urlunparse(parsed._replace(netloc=settings.minio_presigned_endpoint))
         except S3Error as e:
             raise Exception(f"Failed to generate download URL: {str(e)}")
     

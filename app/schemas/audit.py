@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AuditLogResponse(BaseModel):
@@ -19,6 +19,14 @@ class AuditLogResponse(BaseModel):
     user_agent: Optional[str] = None
     metadata: Optional[Dict] = Field(default=None, alias="metadata_")
     timestamp: datetime
+
+    # Add this validator to automatically cast IPv4Address to string
+    @field_validator("ip_address", mode="before")
+    @classmethod
+    def cast_ip_to_string(cls, v):
+        if v is not None:
+            return str(v)
+        return v
 
     class Config:
         from_attributes = True

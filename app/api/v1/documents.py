@@ -38,7 +38,7 @@ async def upload_document(
     file: UploadFile = File(...),
     patient_id: UUID = Form(...),
     notes: Optional[str] = Form(None),
-    current_user: User = Depends(require_role("doctor")),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -60,24 +60,47 @@ async def upload_document(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
-    if patient.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Access Denied: Only the onboarding doctor can upload documents for this patient.")
+    # Permission check: Only onboarding doctor or the patient themselves can upload
+    is_owner = str(current_user.id) == str(patient.id)
+    is_onboarding_doctor = str(current_user.id) == str(patient.created_by)
+    is_admin = str(current_user.role) == "admin"
+    
+    if not (is_owner or is_onboarding_doctor or is_admin):
+        raise HTTPException(status_code=403, detail="Access Denied: You do not have permission to upload documents for this patient.")
 
     if patient.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
 
-    # 3. Save to temp storage (local for this implementation)
+    # 3. Save to temp storage (local)
     upload_dir = "/tmp/saramedico_uploads"
     os.makedirs(upload_dir, exist_ok=True)
     file_id = uuid4()
     ext = os.path.splitext(file.filename)[1]
-    storage_path = f"{upload_dir}/{file_id}{ext}"
+    local_path = f"{upload_dir}/{file_id}{ext}"
+    
+    # Generate proper storage path using StorageService logic
+    storage = StorageService()
+    storage_path = storage.generate_storage_path(
+        organization_id=current_user.organization_id,
+        patient_id=patient.id,
+        document_id=file_id,
+        filename=file.filename
+    )
     
     try:
-        with open(storage_path, "wb") as buffer:
+        with open(local_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+            
+        # Upload to MinIO right after saving locally using the storage service bucket
+        from app.services.minio_service import minio_service
+        minio_service.upload_file(
+            file_path=local_path,
+            bucket_name=storage.bucket_name,
+            object_name=storage_path,
+            content_type=file.content_type
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"File save failed: {e}")
+        raise HTTPException(status_code=500, detail=f"File save/upload failed: {e}")
         
     # 4. Create Document Record
     new_doc = Document(
@@ -97,7 +120,7 @@ async def upload_document(
         }
     )
     # Get file size
-    new_doc.file_size = os.path.getsize(storage_path)
+    new_doc.file_size = os.path.getsize(local_path)
     
     db.add(new_doc)
     await db.commit()
@@ -150,7 +173,7 @@ async def get_document_status(
 @router.post("/upload-url", response_model=DocumentUploadResponse)
 async def request_upload_url(
     request_data: DocumentUploadRequest,
-    current_user: User = Depends(require_role("doctor")),
+    current_user: User = Depends(get_current_active_user),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
@@ -171,8 +194,13 @@ async def request_upload_url(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
-    if patient.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Access Denied: Only the onboarding doctor can upload documents for this patient.")
+    # Permission check: Only onboarding doctor or the patient themselves can upload
+    is_owner = str(current_user.id) == str(patient.id)
+    is_onboarding_doctor = str(current_user.id) == str(patient.created_by)
+    is_admin = str(current_user.role) == "admin"
+    
+    if not (is_owner or is_onboarding_doctor or is_admin):
+        raise HTTPException(status_code=403, detail="Access Denied: You do not have permission to upload documents for this patient.")
 
     if patient.organization_id != organization_id:
         raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
@@ -227,7 +255,7 @@ async def request_upload_url(
 async def confirm_upload(
     document_id: UUID,
     confirm_data: DocumentConfirmRequest,
-    current_user: User = Depends(require_role("doctor")),
+    current_user: User = Depends(get_current_active_user),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
@@ -370,7 +398,7 @@ async def get_document(
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: UUID,
-    current_user: User = Depends(require_role("doctor")),
+    current_user: User = Depends(get_current_active_user),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,

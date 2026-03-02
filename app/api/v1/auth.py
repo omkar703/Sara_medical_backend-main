@@ -170,7 +170,6 @@ async def register(
         status_code=status.HTTP_303_SEE_OTHER
     )
 
-
 @router.post("/verify-email", response_model=MessageResponse)
 async def verify_email(
     request: VerifyEmailRequest,

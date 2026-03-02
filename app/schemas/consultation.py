@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 # ==========================================
@@ -55,8 +55,6 @@ class ConsultationResponse(BaseModel):
     durationMinutes: int
     status: str
     
-    urgency_level: str = "normal"
-    visit_state: str = "scheduled"
     
     # Participants
     doctorId: str
@@ -65,8 +63,8 @@ class ConsultationResponse(BaseModel):
     patientName: Optional[str] = None
     
     # Google Meet Info
-    googleEventId: Optional[str] = Field(None, alias="google_event_id")
-    meetLink: Optional[str] = Field(None, alias="meet_link")
+    googleEventId: Optional[str] = None
+    meetLink: Optional[str] = None
     
     # Medical Data
     notes: Optional[str] = None
@@ -79,14 +77,16 @@ class ConsultationResponse(BaseModel):
     hasTranscript: bool
     hasSoapNote: bool
     
-    urgency_level: str
-    chief_complaint: Optional[str] = None
-    visit_state: str
+    urgencyLevel: str = "normal"
+    chiefComplaint: Optional[str] = None
+    visitState: str = "scheduled"
     checkInTime: Optional[datetime] = None
     completionTime: Optional[datetime] = None 
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )
 
 
 class ConsultationListResponse(BaseModel):

@@ -71,6 +71,31 @@ class PermissionService:
         appointment = appointment_result.scalars().first()
         
         return appointment is not None
+
+    async def check_ai_access(self, doctor_id: UUID, patient_id: UUID) -> bool:
+        """
+        Check if a doctor has explicit AI access permission for a patient.
+        """
+        now = datetime.now(timezone.utc)
+        
+        grant_query = select(DataAccessGrant).where(
+            and_(
+                DataAccessGrant.doctor_id == doctor_id,
+                DataAccessGrant.patient_id == patient_id,
+                DataAccessGrant.status == "active",
+                DataAccessGrant.is_active == True,
+                DataAccessGrant.ai_access_permission == True,
+                or_(
+                    DataAccessGrant.expires_at.is_(None),
+                    DataAccessGrant.expires_at > now
+                )
+            )
+        )
+        
+        grant_result = await self.db.execute(grant_query)
+        grant = grant_result.scalars().first()
+        
+        return grant is not None
     
     async def request_access(
         self,

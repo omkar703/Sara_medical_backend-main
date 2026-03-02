@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_active_user, get_organization_id, require_role
+from app.core.deps import get_current_active_user, get_organization_id, require_any_role
 from app.database import get_db
 from app.models.user import User
 from app.schemas.audit import AuditLogListResponse, AuditLogResponse, ComplianceReport
@@ -26,7 +26,7 @@ async def list_audit_logs(
     action: Optional[str] = Query(None),
     limit: int = 100,
     offset: int = 0,
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_any_role("admin", "hospital")),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -48,7 +48,7 @@ async def list_audit_logs(
 
 @audit_router.get("/export")
 async def export_audit_logs(
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_any_role("admin", "hospital")),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -74,7 +74,7 @@ async def export_audit_logs(
 
 @audit_router.get("/stats", response_model=ComplianceReport)
 async def get_stats(
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_any_role("admin", "hospital")),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
 ):

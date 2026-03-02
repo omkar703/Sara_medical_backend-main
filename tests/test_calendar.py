@@ -238,11 +238,12 @@ class TestAppointmentSync:
             "doctor_notes": "Emergency conflict"
         }
         
-        await test_client.put(
+        cancel_resp = await test_client.put(
             f"/api/v1/appointments/{appointment_id}/status",
             json=status_update,
             headers={"Authorization": f"Bearer {doctor_token}"}
         )
+        assert cancel_resp.status_code == 200, f"Cancel failed: {cancel_resp.status_code} {cancel_resp.text}"
         
         # Check patient's calendar - event should be cancelled
         start = appointment_time - timedelta(hours=1)
@@ -255,6 +256,7 @@ class TestAppointmentSync:
         
         patient_events = patient_calendar.json()
         patient_apt_event = next((e for e in patient_events if e["appointment_id"] == appointment_id), None)
+        assert patient_apt_event is not None, "Appointment event not found in patient calendar"
         assert patient_apt_event["status"] == "cancelled"
     
     @pytest.mark.asyncio

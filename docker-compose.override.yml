@@ -1,0 +1,13 @@
+services:
+  backend:
+    volumes:
+      - backend_logs:/app/logs
+      - medical_data:/app/medical-records
+  celery_worker:
+    volumes:
+      - medical_data:/app/medical-records
+      - backend_logs:/app/logs
+  celery_beat:
+    volumes:
+      - backend_logs:/app/logs
+      - medical_data:/app/medical-records

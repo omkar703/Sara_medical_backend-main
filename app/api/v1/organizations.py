@@ -3,7 +3,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_active_user, get_organization_id, require_role
@@ -75,6 +75,7 @@ async def list_members(
 @router.post("/invitations", response_model=InvitationResponse)
 async def invite_member(
     invite_data: InvitationCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_role("admin")), # Only admins invite
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
@@ -89,10 +90,13 @@ async def invite_member(
         organization_id=organization_id,
         email=invite_data.email,
         role=invite_data.role,
-        created_by_id=current_user.id
+        created_by_id=current_user.id,
+        background_tasks=background_tasks
     )
     
     await db.commit()
+    
+    
     
     # Audit
     await log_action(

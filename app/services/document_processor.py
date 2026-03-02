@@ -56,40 +56,69 @@ class DocumentProcessor:
         # Based on medical_history.py, it is "saramedico-medical-records".
         # bucket_name = "saramedico-medical-records" # Replaced by settings.MINIO_BUCKET_DOCUMENTS
         
+        temp_path = None
         try:
             # Step 1: Download from MinIO
-            print(f"DOWNLOADING from MinIO: {document.storage_path}")
-            file_bytes = minio_service.get_file_bytes(
-                "saramedico-medical-records", 
-                document.storage_path
-            )
+            print(f"DOWNLOADING from MinIO to Tempfile: {document.storage_path}")
             
-            if not file_bytes:
-                print(f"FILE BYTES EMPTY for {document_id}")
+            import tempfile
+            import os
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".file") as tmp:
+                temp_path = tmp.name
+                
+            try:
+                minio_service.client.fget_object(
+                    "saramedico-medical-records", 
+                    document.storage_path,
+                    temp_path
+                )
+            except Exception as e:
+                print(f"CRITICAL: Download Stream from Minio failed: {e}")
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
                 return
 
-            print(f"DOWNLOADED {len(file_bytes)} bytes")
+            print(f"DOWNLOADED properly to stream location {temp_path}")
             
             # --- TIER 1: Text Extraction ---
             print("TIER 1 START")
-            text_chunks = await self._process_tier_1_text(document, file_bytes)
+            text_chunks = await self._process_tier_1_text(document, temp_path)
             print(f"TIER 1 COMPLETE: {len(text_chunks)} chunks")
             document.processing_details["tier_1_text"] = {"status": "completed", "chunks": len(text_chunks)}
             
             # --- TIER 2 & 3: Image Extraction & Vision ---
             print("TIER 2/3 START")
-            image_chunks = await self._process_tier_2_and_3_vision(document, file_bytes)
+            image_chunks = await self._process_tier_2_and_3_vision(document, temp_path)
             print(f"TIER 2/3 COMPLETE: {len(image_chunks)} chunks")
             document.processing_details["tier_2_images"] = {"status": "completed"}
             document.processing_details["tier_3_vision"] = {"status": "completed", "chunks": len(image_chunks)}
 
             # --- Commit Chunks ---
             all_chunks = text_chunks + image_chunks
-            self.db.add_all(all_chunks)
+            
+            # Bulk Insert Optimization
+            if all_chunks:
+                from sqlalchemy import insert
+                import uuid
+                
+                chunk_values = []
+                for c in all_chunks:
+                    chunk_values.append({
+                        "id": uuid.uuid4(),
+                        "document_id": c.document_id,
+                        "patient_id": c.patient_id,
+                        "content": c.content,
+                        "source": c.source,
+                        "chunk_type": c.chunk_type,
+                        "page_number": c.page_number,
+                        "medical_keywords": c.medical_keywords,
+                        "embedding": c.embedding,
+                        "created_at": datetime.utcnow()
+                    })
+                
+                await self.db.execute(insert(Chunk).values(chunk_values))
             
             document.total_chunks = len(all_chunks)
-            # document.status = "indexed" - removed as column doesn't exist
-            
             await self.db.commit()
             
         except Exception as e:
@@ -104,20 +133,30 @@ class DocumentProcessor:
                     await self.db.commit()
                 except:
                     pass
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
 
-    async def _process_tier_1_text(self, document: Document, file_bytes: bytes) -> List[Chunk]:
+    async def _process_tier_1_text(self, document: Document, file_path: str) -> List[Chunk]:
         """Technically Textract or PyPDF for text. Using PyPDF for speed/cost if Textract is not strictly required for partial text, but prompt says Textract."""
         # Implementation: Use PyPDF for text extraction (Tier 1) for reliability in this demo.
         chunks = []
+        if document.file_type != "application/pdf":
+            print(f"Skipping Tier 1 Text Extraction for non-PDF file: {document.file_type}")
+            return chunks
+
         try:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            for i, page in enumerate(reader.pages):
-                text = page.extract_text()
-                if text:
-                    # Generate embedding for semantic search
+            reader = PdfReader(file_path)
+            import asyncio
+            sem = asyncio.Semaphore(5)
+            
+            async def _process_page(i, text):
+                async with sem:
                     embedding = await aws_service.generate_embeddings(text)
-                    
-                    chunk = Chunk(
+                    return Chunk(
                         document_id=document.id,
                         patient_id=document.patient_id,
                         content=text,
@@ -127,33 +166,73 @@ class DocumentProcessor:
                         medical_keywords=[], # placeholder
                         embedding=embedding
                     )
-                    chunks.append(chunk)
+            
+            tasks = []
+            for i, page in enumerate(reader.pages):
+                text = page.extract_text()
+                if text:
+                    tasks.append(_process_page(i, text))
+            
+            if tasks:
+                chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for res in chunk_results:
+                    if isinstance(res, Exception):
+                        print(f"Tier 1 page failed: {res}")
+                    else:
+                        chunks.append(res)
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Tier 1 failed: {e}")
             
         return chunks
 
-    async def _process_tier_2_and_3_vision(self, document: Document, file_bytes: bytes) -> List[Chunk]:
+    async def _process_tier_2_and_3_vision(self, document: Document, file_path: str) -> List[Chunk]:
         chunks = []
         try:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            for i, page in enumerate(reader.pages):
-                # Extract images
-                for img_file_obj in page.images:
-                    image_bytes = img_file_obj.data
+            import asyncio
+            sem = asyncio.Semaphore(3)
+
+            if document.file_type in ["image/png", "image/jpeg"]:
+                print(f"Tier 2/3 Processing raw image file ({document.file_type})...")
+                try:
+                    with open(file_path, "rb") as f:
+                        file_bytes = f.read()
+                    # TIER 3: Send single raw image to Bedrock
+                    analysis = await aws_service.analyze_image_with_bedrock(
+                        file_bytes, 
+                        "Analyze this medical image. Describe findings, type of scan, clinical observations."
+                    )
                     
-                    try:
-                        # TIER 3: Send to Bedrock
+                    # Generate embedding for semantic search
+                    embedding = await aws_service.generate_embeddings(analysis)
+                    
+                    chunk = Chunk(
+                        document_id=document.id,
+                        patient_id=document.patient_id,
+                        content=analysis,
+                        source="TIER_3_IMAGE_ANALYSIS",
+                        chunk_type="image_analysis",
+                        page_number=1,
+                        medical_keywords=[],
+                        embedding=embedding
+                    )
+                    chunks.append(chunk)
+                except Exception as e:
+                    print(f"Bedrock analysis failed for raw image file: {e}")
+
+            elif document.file_type == "application/pdf":
+                reader = PdfReader(file_path)
+
+                async def _process_image(i, image_bytes):
+                    async with sem:
                         analysis = await aws_service.analyze_image_with_bedrock(
                             image_bytes, 
                             "Analyze this medical image. Describe findings, type of scan, clinical observations."
                         )
-                        
-                        # Generate embedding for semantic search
                         embedding = await aws_service.generate_embeddings(analysis)
-                        
-                        chunk = Chunk(
+                        return Chunk(
                             document_id=document.id,
                             patient_id=document.patient_id,
                             content=analysis,
@@ -163,11 +242,23 @@ class DocumentProcessor:
                             medical_keywords=[],
                             embedding=embedding
                         )
-                        chunks.append(chunk)
-                    except Exception as e:
-                        print(f"Bedrock analysis failed for image on page {i+1}: {e}")
-                        
+
+                tasks = []
+                for i, page in enumerate(reader.pages):
+                    for img_file_obj in page.images:
+                        tasks.append(_process_image(i, img_file_obj.data))
+
+                if tasks:
+                    chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for res in chunk_results:
+                        if isinstance(res, Exception):
+                            print(f"Bedrock analysis failed for PDF image: {res}")
+                        else:
+                            chunks.append(res)
+                            
         except Exception as e:
+             import traceback
+             traceback.print_exc()
              print(f"Tier 2/3 failed: {e}")
              
         return chunks

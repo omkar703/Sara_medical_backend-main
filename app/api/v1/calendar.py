@@ -47,7 +47,7 @@ def _map_event_to_response(event) -> CalendarEventResponse:
     if event.event_type == "appointment" and hasattr(event, "appointment") and event.appointment:
         event_dict["metadata"] = {
             "appointment_status": event.appointment.status,
-            "zoom_link": event.appointment.join_url
+            "zoom_link": getattr(event.appointment, "join_url", None) or getattr(event.appointment, "meet_link", None)
         }
     
     return CalendarEventResponse(**event_dict)
@@ -255,3 +255,32 @@ async def get_month_view(
         total_events=month_data["total_events"]
     )
 
+@router.get("/organization/events", response_model=List[CalendarEventResponse])
+async def get_organization_events(
+    start_date: datetime = Query(..., description="Start of date range"),
+    end_date: datetime = Query(..., description="End of date range"),
+    event_type: Optional[str] = Query(None, pattern="^(appointment|custom|task)$", description="Filter by event type"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """
+    Get all calendar events for the entire organization.
+    Powers the department-wide Shift Schedule UI.
+    """
+    # Ensure only authorized roles can view the entire department's schedule
+    if current_user.role not in ["admin", "hospital", "doctor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not authorized to view organization schedule"
+        )
+        
+    calendar_service = CalendarService(db)
+    events = await calendar_service.get_organization_events(
+        organization_id=organization_id,
+        start_date=start_date,
+        end_date=end_date,
+        event_type=event_type
+    )
+    
+    return [_map_event_to_response(event) for event in events]

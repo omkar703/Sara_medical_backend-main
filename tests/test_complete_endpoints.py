@@ -19,20 +19,22 @@ class TestAuthenticationEndpoints:
         response = await client.post("/api/v1/auth/register", json={
             "email": f"patient_{uuid.uuid4().hex[:8]}@test.com",
             "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
             "full_name": "Test Patient",
             "role": "patient",
-            "phone_number": "+1234567890"
+            "date_of_birth": "1990-01-01",
+            "phone_number": "+16502531111"
         })
-        assert response.status_code in [200, 201]
-        data = response.json()
-        assert "access_token" in data or "id" in data
+        # Patients cannot register themselves
+        assert response.status_code == 403
+        assert "Patients cannot register themselves" in response.json()["detail"]
     
     @pytest.mark.asyncio
     async def test_register_doctor(self, client: AsyncClient, db_session):
         """Test doctor registration"""
         # Create organization first
         from app.models.user import Organization
-        org = Organization(name="Test Hospital")
+        org = Organization(name="Test Hospital " + uuid.uuid4().hex[:4])
         db_session.add(org)
         await db_session.commit()
         await db_session.refresh(org)
@@ -42,22 +44,23 @@ class TestAuthenticationEndpoints:
             "password": "SecurePass123!",
             "full_name": "Dr. Test Doctor",
             "role": "doctor",
-            "organization_id": str(org.id),
-            "phone_number": "+1234567891"
+            "organization_name": org.name, # register uses organization_name, not id
+            "phone_number": "+16502532222"
         })
-        assert response.status_code in [200, 201]
+        # Registration redirects to login
+        assert response.status_code == 303
     
     @pytest.mark.asyncio
-    async def test_login_success(self, client: AsyncClient, test_user):
+    async def test_login_success(self, client: AsyncClient, doctor_user):
         """Test successful login"""
         response = await client.post("/api/v1/auth/login", json={
-            "email": "test@example.com",
-            "password": "TestPass123"
+            "email": doctor_user.email,
+            "password": "DoctorPass123"
         })
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert "token_type" in data
+        assert "refresh_token" in data
     
     @pytest.mark.asyncio
     async def test_login_invalid_credentials(self, client: AsyncClient):
@@ -80,13 +83,21 @@ class TestAuthenticationEndpoints:
         assert "email" in data
     
     @pytest.mark.asyncio
-    async def test_logout(self, client: AsyncClient, doctor_token):
+    async def test_logout(self, client: AsyncClient, doctor_user):
         """Test user logout"""
+        # Login first to get refresh token
+        login_res = await client.post("/api/v1/auth/login", json={
+            "email": doctor_user.email,
+            "password": "DoctorPass123"
+        })
+        tokens = login_res.json()
+        
         response = await client.post(
             "/api/v1/auth/logout",
-            headers={"Authorization": f"Bearer {doctor_token}"}
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+            json={"refresh_token": tokens["refresh_token"]}
         )
-        assert response.status_code in [200, 204]
+        assert response.status_code == 200
 
 
 class TestAppointmentEndpoints:
@@ -105,7 +116,7 @@ class TestAppointmentEndpoints:
             full_name=encryption.encrypt("Test Patient"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502533333"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=test_user.organization_id,
             created_by=test_user.id
@@ -118,9 +129,8 @@ class TestAppointmentEndpoints:
             "/api/v1/appointments",
             headers={"Authorization": f"Bearer {doctor_token}"},
             json={
-                "patient_id": str(patient.id),
                 "doctor_id": str(test_user.id),
-                "appointment_date": (datetime.now() + timedelta(days=1)).isoformat(),
+                "requested_date": (datetime.now() + timedelta(days=1)).isoformat(),
                 "reason": "Regular checkup"
             }
         )
@@ -132,7 +142,7 @@ class TestAppointmentEndpoints:
     async def test_list_appointments(self, client: AsyncClient, doctor_token):
         """Test listing appointments"""
         response = await client.get(
-            "/api/v1/appointments",
+            "/api/v1/doctor/appointments",
             headers={"Authorization": f"Bearer {doctor_token}"}
         )
         assert response.status_code == 200
@@ -140,31 +150,15 @@ class TestAppointmentEndpoints:
         assert isinstance(data, list) or "items" in data
     
     @pytest.mark.asyncio
-    async def test_accept_appointment(self, client: AsyncClient, doctor_token, db_session, test_user):
+    async def test_accept_appointment(self, client: AsyncClient, doctor_token, db_session, test_user, patient_id):
         """Test accepting an appointment"""
         # Create appointment first
         from app.models.appointment import Appointment
-        from app.models.patient import Patient
-        from app.core.security import PIIEncryption
-        from datetime import date
-        
-        encryption = PIIEncryption()
-        patient = Patient(
-            full_name=encryption.encrypt("Test Patient"),
-            date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
-            gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
-            mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
-            organization_id=test_user.organization_id,
-            created_by=test_user.id
-        )
-        db_session.add(patient)
-        await db_session.flush()
         
         appointment = Appointment(
-            patient_id=patient.id,
+            patient_id=uuid.UUID(patient_id),
             doctor_id=test_user.id,
-            appointment_date=datetime.now() + timedelta(days=1),
+            requested_date=datetime.now() + timedelta(days=1),
             status="pending",
             reason="Test appointment"
         )
@@ -172,38 +166,23 @@ class TestAppointmentEndpoints:
         await db_session.commit()
         await db_session.refresh(appointment)
         
-        response = await client.patch(
-            f"/api/v1/appointments/{appointment.id}/accept",
-            headers={"Authorization": f"Bearer {doctor_token}"}
+        response = await client.post(
+            f"/api/v1/appointments/{appointment.id}/approve",
+            headers={"Authorization": f"Bearer {doctor_token}"},
+            json={"appointment_time": (datetime.now() + timedelta(days=1)).isoformat()}
         )
-        assert response.status_code in [200, 204]
+        assert response.status_code in [200, 201]
     
     @pytest.mark.asyncio
-    async def test_reject_appointment(self, client: AsyncClient, doctor_token, db_session, test_user):
+    async def test_reject_appointment(self, client: AsyncClient, doctor_token, db_session, test_user, patient_id):
         """Test rejecting an appointment"""
         # Create appointment first
         from app.models.appointment import Appointment
-        from app.models.patient import Patient
-        from app.core.security import PIIEncryption
-        from datetime import date
-        
-        encryption = PIIEncryption()
-        patient = Patient(
-            full_name=encryption.encrypt("Test Patient"),
-            date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
-            gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
-            mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
-            organization_id=test_user.organization_id,
-            created_by=test_user.id
-        )
-        db_session.add(patient)
-        await db_session.flush()
         
         appointment = Appointment(
-            patient_id=patient.id,
+            patient_id=uuid.UUID(patient_id),
             doctor_id=test_user.id,
-            appointment_date=datetime.now() + timedelta(days=1),
+            requested_date=datetime.now() + timedelta(days=1),
             status="pending",
             reason="Test appointment"
         )
@@ -212,9 +191,9 @@ class TestAppointmentEndpoints:
         await db_session.refresh(appointment)
         
         response = await client.patch(
-            f"/api/v1/appointments/{appointment.id}/reject",
+            f"/api/v1/appointments/{appointment.id}/status",
             headers={"Authorization": f"Bearer {doctor_token}"},
-            json={"reason": "Not available"}
+            json={"status": "declined", "doctor_notes": "Not available"}
         )
         assert response.status_code in [200, 204]
 
@@ -237,99 +216,36 @@ class TestPermissionEndpoints:
         assert response.status_code in [200, 201]
     
     @pytest.mark.asyncio
-    async def test_grant_permission(self, client: AsyncClient, db_session, test_user, patient_id):
+    async def test_grant_permission(self, client: AsyncClient, patient_id, patient_token, test_user):
         """Test patient granting permission to doctor"""
-        # Create patient user
-        from app.models.user import User
-        from app.core.security import hash_password, PIIEncryption, create_access_token
-        
-        encryption = PIIEncryption()
-        patient_user = User(
-            email=f"patient_{uuid.uuid4().hex[:8]}@test.com",
-            password_hash=hash_password("PatientPass123"),
-            role="patient",
-            organization_id=test_user.organization_id,
-            full_name=encryption.encrypt("Patient User"),
-            email_verified=True
-        )
-        db_session.add(patient_user)
-        await db_session.commit()
-        await db_session.refresh(patient_user)
-        
-        patient_token = create_access_token(data={"sub": str(patient_user.id)})
-        
         response = await client.post(
-            "/api/v1/permissions/grant",
+            "/api/v1/permissions/grant-doctor-access",
             headers={"Authorization": f"Bearer {patient_token}"},
             json={
                 "doctor_id": str(test_user.id),
                 "ai_access_permission": True,
-                "expiry_days": 30
+                "reason": "Consent for testing"
             }
         )
         assert response.status_code in [200, 201]
     
     @pytest.mark.asyncio
-    async def test_list_permissions(self, client: AsyncClient, doctor_token):
+    async def test_list_permissions(self, client: AsyncClient, doctor_token, patient_id):
         """Test listing permissions"""
         response = await client.get(
-            "/api/v1/permissions",
+            f"/api/v1/permissions/check?patient_id={patient_id}",
             headers={"Authorization": f"Bearer {doctor_token}"}
         )
         assert response.status_code == 200
     
     @pytest.mark.asyncio
-    async def test_revoke_permission(self, client: AsyncClient, db_session, test_user):
-        """Test revoking permission"""
-        # Create permission first
-        from app.models.permission import DoctorPatientPermission
-        from app.models.patient import Patient
-        from app.core.security import PIIEncryption, create_access_token
-        from datetime import date
-        
-        encryption = PIIEncryption()
-        patient = Patient(
-            full_name=encryption.encrypt("Test Patient"),
-            date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
-            gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
-            mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
-            organization_id=test_user.organization_id,
-            created_by=test_user.id
-        )
-        db_session.add(patient)
-        await db_session.flush()
-        
-        # Create patient user
-        from app.models.user import User
-        from app.core.security import hash_password
-        
-        patient_user = User(
-            email=f"patient_{uuid.uuid4().hex[:8]}@test.com",
-            password_hash=hash_password("PatientPass123"),
-            role="patient",
-            organization_id=test_user.organization_id,
-            full_name=encryption.encrypt("Patient User"),
-            email_verified=True
-        )
-        db_session.add(patient_user)
-        await db_session.flush()
-        
-        permission = DoctorPatientPermission(
-            doctor_id=test_user.id,
-            patient_id=patient.id,
-            ai_access_permission=True,
-            granted_at=datetime.now()
-        )
-        db_session.add(permission)
-        await db_session.commit()
-        await db_session.refresh(permission)
-        
-        patient_token = create_access_token(data={"sub": str(patient_user.id)})
-        
-        response = await client.delete(
-            f"/api/v1/permissions/{test_user.id}",
-            headers={"Authorization": f"Bearer {patient_token}"}
+    async def test_revoke_permission(self, client: AsyncClient, patient_token, test_user):
+        """Test revoking access"""
+        response = await client.request(
+            "DELETE",
+            "/api/v1/permissions/revoke-doctor-access",
+            headers={"Authorization": f"Bearer {patient_token}"},
+            json={"doctor_id": str(test_user.id)}
         )
         assert response.status_code in [200, 204]
 
@@ -346,9 +262,10 @@ class TestDocumentEndpoints:
         }
         
         response = await client.post(
-            f"/api/v1/documents/upload?patient_id={patient_id}",
+            "/api/v1/documents/upload",
             headers={"Authorization": f"Bearer {doctor_token}"},
-            files=files
+            files=files,
+            data={"patient_id": patient_id}
         )
         assert response.status_code in [200, 201]
     
@@ -369,12 +286,12 @@ class TestDocumentEndpoints:
         
         document = Document(
             patient_id=uuid.UUID(patient_id),
-            uploaded_by=test_user.id,
+            organization_id=test_user.organization_id,
             file_name="test.pdf",
+            file_type="application/pdf",
             file_size=1024,
-            mime_type="application/pdf",
-            storage_path="test/path",
-            processing_status="pending"
+            storage_path=f"test/{uuid.uuid4()}.pdf",
+            uploaded_by=test_user.id
         )
         db_session.add(document)
         await db_session.commit()
@@ -397,10 +314,12 @@ class TestPatientEndpoints:
             "/api/v1/patients",
             headers={"Authorization": f"Bearer {doctor_token}"},
             json={
-                "full_name": "New Patient",
-                "date_of_birth": "1990-01-01",
+                "fullName": "New Patient",
+                "dateOfBirth": "1990-01-01",
                 "gender": "male",
-                "phone_number": "+1234567890"
+                "phoneNumber": "+16502535555",
+                "email": f"patient_{uuid.uuid4().hex[:8]}@onboard.com",
+                "password": "Password123!"
             }
         )
         assert response.status_code in [200, 201]
@@ -431,7 +350,7 @@ class TestDoctorEndpoints:
     async def test_list_doctors(self, client: AsyncClient, doctor_token):
         """Test listing doctors"""
         response = await client.get(
-            "/api/v1/doctors",
+            "/api/v1/doctors/directory",
             headers={"Authorization": f"Bearer {doctor_token}"}
         )
         assert response.status_code == 200
@@ -439,11 +358,13 @@ class TestDoctorEndpoints:
     @pytest.mark.asyncio
     async def test_get_doctor_profile(self, client: AsyncClient, doctor_token, test_user):
         """Test getting doctor profile"""
+        # Get current user profile instead of non-existent doctor detail at /doctors/{id}
         response = await client.get(
-            f"/api/v1/doctors/{test_user.id}",
+            "/api/v1/auth/me",
             headers={"Authorization": f"Bearer {doctor_token}"}
         )
         assert response.status_code == 200
+        assert response.json()["id"] == str(test_user.id)
 
 
 class TestAuditEndpoints:
@@ -459,11 +380,11 @@ class TestAuditEndpoints:
         assert response.status_code in [200, 403]
     
     @pytest.mark.asyncio
-    async def test_get_access_logs(self, client: AsyncClient, doctor_token):
-        """Test getting access logs"""
+    async def test_get_audit_stats(self, client: AsyncClient, admin_token):
+        """Test getting audit stats"""
         response = await client.get(
-            "/api/v1/audit/access-logs",
-            headers={"Authorization": f"Bearer {doctor_token}"}
+            "/api/v1/audit/stats",
+            headers={"Authorization": f"Bearer {admin_token}"}
         )
         assert response.status_code == 200
 

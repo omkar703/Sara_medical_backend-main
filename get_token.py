@@ -1,7 +1,11 @@
+
 import os
 from google_auth_oauthlib.flow import InstalledAppFlow
+
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+
+
 # The scopes required to create calendar events
 SCOPES = [
     'https://www.googleapis.com/auth/calendar.events',
@@ -10,7 +14,6 @@ SCOPES = [
 ]
 
 def main():
-    # You can temporarily hardcode your credentials here just to get the token
     client_config = {
         "web": {
             "client_id": GOOGLE_CLIENT_ID,
@@ -21,7 +24,13 @@ def main():
     }
     
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-    creds = flow.run_local_server(port=8080)
+    
+    # FIX: Add access_type='offline' and prompt='consent'
+    creds = flow.run_local_server(
+        port=8080,
+        access_type='offline',
+        prompt='consent'
+    )
     
     print("\nSUCCESS! Add this line to your .env file:\n")
     print(f"GOOGLE_REFRESH_TOKEN=\"{creds.refresh_token}\"")

@@ -6,13 +6,14 @@ import string
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, BackgroundTasks
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.security import hash_password, pii_encryption
 from app.models.user import Invitation, Organization, User
+from app.services.email import send_invitation_email
 
 
 class OrganizationService:
@@ -26,7 +27,8 @@ class OrganizationService:
         organization_id: UUID,
         email: str,
         role: str,
-        created_by_id: UUID
+        created_by_id: UUID,
+        background_tasks: BackgroundTasks
     ) -> Invitation:
         """
         Create an invitation for a new member.
@@ -70,13 +72,17 @@ class OrganizationService:
         self.db.add(invitation)
         await self.db.flush()
         
+        
+        
         # 3. Send Email (Mocked)
         # In production: await email_service.send_invitation_email(email, token)
-        print(f"--- MOCK EMAIL ---")
-        print(f"To: {email}")
-        print(f"Subject: You've been invited to join Saramedico")
-        print(f"Link: http://localhost:3000/accept-invite?token={token}")
-        print(f"------------------")
+        background_tasks.add_task(
+            send_invitation_email,
+            email=email,
+            token=token, # Use the raw token, not the hash
+            role=role,
+            org_name="Saramedico" 
+        )
         
         return invitation
 

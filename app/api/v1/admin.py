@@ -247,6 +247,20 @@ async def invite_team_member(
     await db.commit()
     
     # In a real scenario, use background_tasks.add_task(send_email, ...)
+    from app.models.user import Organization
+    result = await db.execute(select(Organization).where(Organization.id == current_user.organization_id))
+    org = result.scalar_one_or_none()
+    org_name = org.name if org else "Saramedico"
+
+    # Add the task to send the email in the background
+    background_tasks.add_task(
+        send_invitation_email,
+        email=invite_in.email,
+        token=token_raw, # Use the raw UUID hex, not the hash
+        role=invite_in.role,
+        org_name=org_name
+    )
+    
     return {"message": f"Invitation sent to {invite_in.email}"}
 
 @router.delete("/accounts/{id}")
