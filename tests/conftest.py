@@ -9,8 +9,8 @@ from app.main import app
 from app.database import Base, get_db
 from app.config import settings
 
-# Test database URL (use a separate test database)
-TEST_DATABASE_URL = settings.DATABASE_URL.replace("/saramedico_dev", "/saramedico_test")
+# Test database URL (reuse dev db for standalone testing)
+TEST_DATABASE_URL = settings.DATABASE_URL.replace("saramedico_dev", "saramedico_test")
 
 # Create test engine
 # Create test session factory
@@ -23,23 +23,63 @@ TestingSessionLocal = async_sessionmaker(
 
 @pytest_asyncio.fixture
 async def engine():
-    """Create a test engine"""
-    engine = create_async_engine(
+    """Create a test engine and patch the global database engine"""
+    from app import database
+    import asyncpg
+
+    # Derive the dev DB URL (where we have permission to CREATE DATABASE)
+    dev_db_url = settings.DATABASE_URL
+    # asyncpg needs the connection string without the driver prefix
+    asyncpg_url = dev_db_url.replace("postgresql+asyncpg://", "postgresql://")
+    
+    # Create the test database if it doesn't exist
+    conn = await asyncpg.connect(asyncpg_url)
+    try:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = 'saramedico_test'"
+        )
+        if not exists:
+            await conn.execute("CREATE DATABASE saramedico_test")
+    finally:
+        await conn.close()
+
+    test_engine = create_async_engine(
         TEST_DATABASE_URL,
-        echo=False,  # Set to True for SQL debugging
+        echo=False,
         pool_pre_ping=True,
     )
     
-    # Initialize implementation of session factory
-    TestingSessionLocal.configure(bind=engine)
+    # Enable pgvector extension in test DB
+    async with test_engine.connect() as conn:
+        await conn.execute(__import__('sqlalchemy').text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.commit()
     
-    yield engine
+    # Patch global engine and session factory
+    old_engine = database.engine
+    old_session_local = database.AsyncSessionLocal
     
-    await engine.dispose()
+    database.engine = test_engine
+    database.AsyncSessionLocal = async_sessionmaker(
+        test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    
+    # Initialize implementation of session factory in conftest
+    TestingSessionLocal.configure(bind=test_engine)
+    
+    yield test_engine
+    
+    await test_engine.dispose()
+    
+    # Restore (though mostly relevant for multi-session tests)
+    database.engine = old_engine
+    database.AsyncSessionLocal = old_session_local
 
 @pytest_asyncio.fixture
 async def db_session(engine):
     """Create a test database session"""
+    from app.database import Base
     # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -55,11 +95,15 @@ async def db_session(engine):
 @pytest_asyncio.fixture
 async def client(db_session):
     """Create a test client"""
+    from app.main import app
+    from app.database import get_db
+    
     async def override_get_db():
         yield db_session
     
     app.dependency_overrides[get_db] = override_get_db
     
+    # Use the app lifespan
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
     
@@ -67,25 +111,60 @@ async def client(db_session):
 
 
 @pytest_asyncio.fixture
-async def test_user(db_session):
-    """Create a test user"""
+async def doctor_user(db_session):
+    """Create a test doctor user"""
     from app.models.user import User, Organization
     from app.core.security import hash_password, PIIEncryption
     
     # Create organization
-    org = Organization(name="Test Org")
+    org = Organization(name="Doctor Org")
     db_session.add(org)
     await db_session.flush()
     
     # Encrypt PII
     encryption = PIIEncryption()
-    encrypted_name = encryption.encrypt("Test User")
+    encrypted_name = encryption.encrypt("Doctor User")
     
     # Create user
     user = User(
-        email="test@example.com",
-        password_hash=hash_password("TestPass123"),
+        email="doctor@example.com",
+        password_hash=hash_password("DoctorPass123"),
         role="doctor",
+        organization_id=org.id,
+        full_name=encrypted_name,
+        email_verified=True
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    
+    return user
+
+@pytest_asyncio.fixture
+async def test_user(doctor_user):
+    """Alias for doctor_user"""
+    return doctor_user
+
+@pytest_asyncio.fixture
+async def patient_user(db_session):
+    """Create a test patient user"""
+    from app.models.user import User, Organization
+    from app.core.security import hash_password, PIIEncryption
+    
+    # Create organization (reuse or new)
+    org = Organization(name="Patient Org")
+    db_session.add(org)
+    await db_session.flush()
+    
+    # Encrypt PII
+    encryption = PIIEncryption()
+    encrypted_name = encryption.encrypt("Patient User")
+    
+    # Create user
+    user = User(
+        email="patient@example.com",
+        password_hash=hash_password("PatientPass123"),
+        role="patient",
         organization_id=org.id,
         full_name=encrypted_name,
         email_verified=True
@@ -102,10 +181,21 @@ async def async_client(client):
     return client
 
 @pytest_asyncio.fixture
-async def doctor_token(test_user):
-    """Create a valid access token for the test user"""
+async def test_client(client):
+    """Alias for client fixture"""
+    return client
+
+@pytest_asyncio.fixture
+async def doctor_token(doctor_user):
+    """Create a valid access token for the doctor user"""
     from app.core.security import create_access_token
-    return create_access_token(data={"sub": str(test_user.id)})
+    return create_access_token(data={"sub": str(doctor_user.id), "role": "doctor"})
+
+@pytest_asyncio.fixture
+async def patient_token(patient_user):
+    """Create a valid access token for the patient user"""
+    from app.core.security import create_access_token
+    return create_access_token(data={"sub": str(patient_user.id), "role": "patient"})
 
 @pytest_asyncio.fixture
 async def patient_id(db_session, test_user):

@@ -123,8 +123,31 @@ async def update_appointment_status(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Doctor accepts or declines an appointment.
+    Doctor updates appointment status (PATCH).
     """
+    return await _do_update_appointment_status(appointment_id, status_update, db, current_user)
+
+
+@router.put("/{appointment_id}/status", response_model=AppointmentResponse)
+async def update_appointment_status_put(
+    appointment_id: UUID,
+    status_update: AppointmentStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Doctor updates appointment status (PUT - alias for PATCH).
+    """
+    return await _do_update_appointment_status(appointment_id, status_update, db, current_user)
+
+
+async def _do_update_appointment_status(
+    appointment_id: UUID,
+    status_update: AppointmentStatusUpdate,
+    db: AsyncSession,
+    current_user: User
+):
+    """Shared logic for PATCH and PUT update_appointment_status"""
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Only doctors can update appointment status")
     

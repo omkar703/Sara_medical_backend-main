@@ -47,7 +47,7 @@ def _map_event_to_response(event) -> CalendarEventResponse:
     if event.event_type == "appointment" and hasattr(event, "appointment") and event.appointment:
         event_dict["metadata"] = {
             "appointment_status": event.appointment.status,
-            "zoom_link": event.appointment.join_url
+            "zoom_link": getattr(event.appointment, "join_url", None) or getattr(event.appointment, "meet_link", None)
         }
     
     return CalendarEventResponse(**event_dict)

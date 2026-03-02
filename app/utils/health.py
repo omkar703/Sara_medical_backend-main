@@ -11,31 +11,34 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 
 
-async def check_database() -> Dict[str, str]:
+async def check_database(db: AsyncSession = None) -> Dict[str, str]:
     """Check PostgreSQL database connectivity"""
     try:
-        async with AsyncSessionLocal() as session:
-            # Try to execute a simple query
+        async def _run(session: AsyncSession):
             result = await session.execute(text("SELECT 1"))
             result.scalar()
-            
-            # Check for pgvector extension
             ext_result = await session.execute(
                 text("SELECT installed_version FROM pg_available_extensions WHERE name = 'vector'")
             )
             pgvector_version = ext_result.scalar()
-            
             return {
                 "status": "connected",
                 "service": "PostgreSQL",
                 "pgvector": pgvector_version if pgvector_version else "not_installed"
             }
+        
+        if db is not None:
+            return await _run(db)
+        else:
+            async with AsyncSessionLocal() as session:
+                return await _run(session)
     except Exception as e:
         return {
             "status": "error",
             "service": "PostgreSQL",
             "error": str(e)
         }
+
 
 
 async def check_redis() -> Dict[str, str]:

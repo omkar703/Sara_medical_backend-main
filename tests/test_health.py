@@ -34,6 +34,8 @@ async def test_health_check_database(client: AsyncClient):
     response = await client.get("/health/database")
     assert response.status_code == 200
     data = response.json()
+    if data.get("status") != "connected":
+        print(f"Health check error: {data.get('error')}")
     assert data.get("status") == "connected"
     assert data.get("service") == "PostgreSQL"
 

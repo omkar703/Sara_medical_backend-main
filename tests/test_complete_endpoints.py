@@ -19,9 +19,11 @@ class TestAuthenticationEndpoints:
         response = await client.post("/api/v1/auth/register", json={
             "email": f"patient_{uuid.uuid4().hex[:8]}@test.com",
             "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
             "full_name": "Test Patient",
             "role": "patient",
-            "phone_number": "+1234567890"
+            "date_of_birth": "1990-01-01",
+            "phone_number": "+16502531111"
         })
         assert response.status_code in [200, 201]
         data = response.json()
@@ -43,7 +45,7 @@ class TestAuthenticationEndpoints:
             "full_name": "Dr. Test Doctor",
             "role": "doctor",
             "organization_id": str(org.id),
-            "phone_number": "+1234567891"
+            "phone_number": "+16502532222"
         })
         assert response.status_code in [200, 201]
     
@@ -105,7 +107,7 @@ class TestAppointmentEndpoints:
             full_name=encryption.encrypt("Test Patient"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502533333"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=test_user.organization_id,
             created_by=test_user.id
@@ -153,7 +155,7 @@ class TestAppointmentEndpoints:
             full_name=encryption.encrypt("Test Patient"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502534444"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=test_user.organization_id,
             created_by=test_user.id
@@ -397,10 +399,12 @@ class TestPatientEndpoints:
             "/api/v1/patients",
             headers={"Authorization": f"Bearer {doctor_token}"},
             json={
-                "full_name": "New Patient",
-                "date_of_birth": "1990-01-01",
+                "fullName": "New Patient",
+                "dateOfBirth": "1990-01-01",
                 "gender": "male",
-                "phone_number": "+1234567890"
+                "phoneNumber": "+16502535555",
+                "email": f"patient_{uuid.uuid4().hex[:8]}@onboard.com",
+                "password": "Password123!"
             }
         )
         assert response.status_code in [200, 201]

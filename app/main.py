@@ -3,12 +3,13 @@
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import close_db, init_db
+from app.database import close_db, init_db, get_db
 
 
 async def lifespan(app: FastAPI):
@@ -74,11 +75,11 @@ async def health_check() -> Dict[str, Any]:
 
 
 @app.get("/health/database", tags=["Health"])
-async def health_check_database() -> Dict[str, Any]:
+async def health_check_database(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """Database connectivity check"""
     from app.utils.health import check_database
     
-    return await check_database()
+    return await check_database(db)
 
 
 @app.get("/health/redis", tags=["Health"])
@@ -95,6 +96,7 @@ async def health_check_minio() -> Dict[str, Any]:
     from app.utils.health import check_minio
     
     return await check_minio()
+
 
 
 @app.get("/", tags=["Root"])

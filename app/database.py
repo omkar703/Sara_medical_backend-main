@@ -52,9 +52,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
     """Initialize database tables (for development only)"""
+    from app import models  # Ensure all models are loaded
     async with engine.begin() as conn:
         # This will create all tables defined in models
-        # In production, use Alembic migrations instead
         await conn.run_sync(Base.metadata.create_all)
 
 

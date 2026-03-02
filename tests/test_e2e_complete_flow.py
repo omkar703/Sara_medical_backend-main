@@ -30,9 +30,11 @@ class TestCompletePatientJourney:
         register_response = await client.post("/api/v1/auth/register", json={
             "email": patient_email,
             "password": "SecurePass123!",
+            "confirm_password": "SecurePass123!",
             "full_name": "Test Patient Journey",
             "role": "patient",
-            "phone_number": "+1234567890"
+            "date_of_birth": "1990-01-01",
+            "phone_number": "+16502531111"
         })
         assert register_response.status_code in [200, 201], f"Registration failed: {register_response.text}"
         
@@ -113,10 +115,11 @@ class TestCompleteDoctorJourney:
         register_response = await client.post("/api/v1/auth/register", json={
             "email": doctor_email,
             "password": "DoctorPass123!",
+            "confirm_password": "DoctorPass123!",
             "full_name": "Dr. Test Journey",
             "role": "doctor",
             "organization_id": str(org.id),
-            "phone_number": "+1234567891"
+            "phone_number": "+16502532222"
         })
         assert register_response.status_code in [200, 201]
         
@@ -151,7 +154,7 @@ class TestCompleteDoctorJourney:
             full_name=encryption.encrypt("Test Patient"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502533333"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=org.id,
             created_by=patient_user.id
@@ -265,7 +268,7 @@ class TestPermissionFlow:
             full_name=encryption.encrypt("Patient Permission Test"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="female",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502534444"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=org.id,
             created_by=patient_user.id
@@ -391,7 +394,7 @@ class TestAppointmentFlow:
             full_name=encryption.encrypt("Patient Appointment Test"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="male",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502535555"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=org.id,
             created_by=patient_user.id
@@ -496,7 +499,7 @@ class TestCrossHospitalAccess:
             full_name=encryption.encrypt("Patient Hospital B"),
             date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
             gender="female",
-            phone_number=encryption.encrypt("+1234567890"),
+            phone_number=encryption.encrypt("+16502536666"),
             mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
             organization_id=hospital_b.id,
             created_by=patient_user_b.id

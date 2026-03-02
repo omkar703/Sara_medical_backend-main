@@ -1,3 +1,14 @@
+# =====================================================
+# SARAMEDICO STANDALONE TEST ENVIRONMENT
+# Spins up all dependencies + backend for running
+# pytest tests inside the backend container.
+# =====================================================
+# Usage:
+#   docker compose -f docker-compose.standalone_test.yml up -d
+#   docker exec saramedico_backend_test \
+#       /opt/venv/bin/python -m pytest /app/tests -v
+# =====================================================
+
 services:
   postgres:
     build:
@@ -54,22 +65,31 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_backend_test
+    # Run as uvicorn server so APIs are testable
     entrypoint: ["/opt/venv/bin/python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8001:8000"    # Exposed on 8001 to avoid conflict with main stack
     environment:
       - DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_dev
+      - TEST_DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_test
       - REDIS_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/0
+      - CELERY_BROKER_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/2
+      - CELERY_RESULT_BACKEND=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/2
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_EXTERNAL_ENDPOINT=localhost:9010
+      - MINIO_EXTERNAL_ENDPOINT=localhost:9000
       - MINIO_ROOT_USER=saramedico_minio_admin
       - MINIO_ROOT_PASSWORD=SaraMed1c0_Min10_2024!SecurePass
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
-      - APP_SECRET_KEY=test_secret
-      - JWT_SECRET_KEY=test_jwt_secret
+      - APP_SECRET_KEY=test_secret_key_for_tests_only
+      - JWT_SECRET_KEY=test_jwt_secret_key_for_tests_only
       - ENCRYPTION_KEY=NdLa0BJlatLYfvB0TLufRunKgTeEBv5sKfsJnoCwPQ0=
       - FEATURE_AI_ANALYSIS=false
       - FEATURE_VIDEO_CALLS=false
       - FEATURE_SMS_NOTIFICATIONS=false
+      - FEATURE_REAL_EMAIL=false
+      - FEATURE_CLOUD_STORAGE=false
+      - APP_ENV=testing
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,30 +97,14 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      mailhog:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    networks:
-      - saramedico_test_net
-
-  test_runner:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: saramedico_test_runner
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_dev
-      - REDIS_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/0
-      - APP_SECRET_KEY=test_secret
-      - JWT_SECRET_KEY=test_jwt_secret
-      - ENCRYPTION_KEY=NdLa0BJlatLYfvB0TLufRunKgTeEBv5sKfsJnoCwPQ0=
-    depends_on:
-      backend:
-        condition: service_healthy
-    entrypoint: ["/opt/venv/bin/python"]
-    command: ["/app/tests/run_docker_tests.py"]
+      retries: 10
+      start_period: 30s
     networks:
       - saramedico_test_net
 
