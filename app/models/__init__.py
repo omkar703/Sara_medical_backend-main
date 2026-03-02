@@ -12,8 +12,18 @@ from app.models.appointment import Appointment
 from app.models.activity_log import ActivityLog
 from app.models.calendar_event import CalendarEvent
 from app.models.user import Organization, RefreshToken, User
+from app.models.recent_doctors import RecentDoctor
+from app.models.recent_patients import RecentPatient
+from app.models.health_metric import HealthMetric
+from app.models.chat_history import ChatHistory
+from app.models.data_access_grant import DataAccessGrant
 
-__all__ = ["Organization", "User", "RefreshToken", "Patient", "AuditLog", "Document", "Consultation", "Task", "Appointment", "ActivityLog", "CalendarEvent"]
+__all__ = [
+    "Organization", "User", "RefreshToken", "Patient", "AuditLog", 
+    "Document", "Consultation", "Task", "Appointment", "ActivityLog", 
+    "CalendarEvent", "RecentDoctor", "RecentPatient", "HealthMetric", 
+    "ChatHistory", "DataAccessGrant"
+]
 
 # Future imports:
 # from app.models.document import Document

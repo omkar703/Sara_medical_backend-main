@@ -90,6 +90,7 @@ class ConsultationService:
         user_id: UUID,
         role: str,
         status: Optional[str] = None,
+        patient_id: Optional[UUID] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None
     ) -> List[Consultation]:
@@ -119,6 +120,9 @@ class ConsultationService:
         # Filters
         if status:
             query = query.where(Consultation.status == status)
+            
+        if patient_id:
+            query = query.where(Consultation.patient_id == patient_id)
         
         if date_from:
             query = query.where(Consultation.scheduled_at >= date_from)

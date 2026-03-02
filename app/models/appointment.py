@@ -20,9 +20,13 @@ class Appointment(Base):
     
     status = Column(Enum("pending", "accepted", "declined", "completed", "cancelled", name="appointment_status"), default="pending", nullable=False)
     
-    # Google Meet Integration Fields
+    # Google Meet / Zoom Integration Fields
     google_event_id = Column(String(255), nullable=True)
     meet_link = Column(Text, nullable=True)
+    meeting_id = Column(String(255), nullable=True)
+    join_url = Column(Text, nullable=True)
+    start_url = Column(Text, nullable=True)
+    meeting_password = Column(String(255), nullable=True)
     
     doctor_notes = Column(Text, nullable=True)
     

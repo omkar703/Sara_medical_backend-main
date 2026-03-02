@@ -20,7 +20,8 @@ from app.schemas.admin import (
     InviteRequest,
     StorageStats,
     SystemAlert,
-    ActivityFeedItem
+    ActivityFeedItem,
+    AdminDoctorDetailResponse
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -34,9 +35,12 @@ async def get_dashboard_overview(
     Aggregates data for the Admin Dashboard.
     """
     
+    from sqlalchemy.orm import selectinload
+    
     # 1. Fetch Recent Activity (Real Data)
     query = (
         select(ActivityLog)
+        .options(selectinload(ActivityLog.user))
         .where(ActivityLog.organization_id == current_user.organization_id)
         .order_by(desc(ActivityLog.created_at))
         .limit(5)
@@ -44,15 +48,35 @@ async def get_dashboard_overview(
     result = await db.execute(query)
     logs = result.scalars().all()
     
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+        
     recent_activity_items = []
     for log in logs:
+        # Get real user name from relation, default to "System Activity" if no user attached
+        display_name = "System Activity"
+        
+        if log.user:
+            # Prefer full name if available, else email
+            encrypted_val = log.user.full_name or log.user.email
+            if encrypted_val:
+                if pii_encryption:
+                    try:
+                        display_name = pii_encryption.decrypt(encrypted_val)
+                    except Exception:
+                        display_name = "Unknown User"
+                else:
+                    display_name = encrypted_val
+                
         recent_activity_items.append(ActivityFeedItem(
             id=log.id,
-            user_name=getattr(log, "user_email", "System User"),
+            user_name=display_name,
             user_avatar=None,
-            event_description=log.action,
+            event_description=log.activity_type or "System Event",
             timestamp=log.created_at,
-            status="completed"
+            status=log.status or "completed"
         ))
 
     # 2. Storage Stats (Mocked to match Schema)
@@ -165,14 +189,30 @@ async def get_admin_accounts(
     result = await db.execute(select(User).limit(100))
     users = result.scalars().all()
     
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+        
     account_list = []
     for user in users:
+        # Decrypt PII data
+        full_name = user.full_name
+        email = user.email
+        if pii_encryption:
+            try:
+                if full_name: full_name = pii_encryption.decrypt(full_name)
+            except Exception: pass
+            try:
+                if email: email = pii_encryption.decrypt(email)
+            except Exception: pass
+            
         account_list.append(AccountListItem(
             id=user.id,
-            name=user.full_name,
-            email=user.email,
+            name=full_name or "Unknown User",
+            email=email or "No Email",
             role=user.role,
-            status="active" if user.is_active else "inactive",
+            status="active" if user.deleted_at is None else "inactive",
             last_login=user.last_login.strftime("%Y-%m-%d") if user.last_login else None,
             type="user"
         ))
@@ -247,4 +287,166 @@ async def remove_team_member(
         await db.commit()
         return {"status": "deactivated_user", "id": str(id)}
 
+        return {"status": "deactivated_user", "id": str(id)}
+
     raise HTTPException(404, "Account or Invitation not found")
+
+@router.get("/doctors/{doctor_id}/details", response_model=AdminDoctorDetailResponse)
+async def get_admin_doctor_details(
+    doctor_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Fetch comprehensive profile data, stats, upcoming appointments, 
+    and recent patients for a specific doctor.
+    """
+    from app.core.security import pii_encryption
+    from app.models.appointment import Appointment
+    from app.schemas.admin import AdminDoctorDetailResponse, DoctorStats, DoctorApptItem, DoctorPatientItem
+    from sqlalchemy.orm import selectinload
+
+    # 1. Fetch Doctor
+    result = await db.execute(select(User).where(User.id == doctor_id, User.role == "doctor"))
+    doctor = result.scalar_one_or_none()
+    
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+        
+    full_name_decrypted = "Unknown"
+    email_decrypted = "No Email"
+    try:
+        full_name_decrypted = pii_encryption.decrypt(doctor.full_name) if doctor.full_name else "Unknown"
+        email_decrypted = pii_encryption.decrypt(doctor.email) if doctor.email else "No Email"
+    except Exception:
+        pass
+        
+    first_name = full_name_decrypted.split(" ")[0]
+    last_name = " ".join(full_name_decrypted.split(" ")[1:]) if " " in full_name_decrypted else ""
+
+    # 2. Fetch Appointments & Compute Stats
+    # For stats, we count total distinct patients and total appointments.
+    appt_result = await db.execute(
+        select(Appointment)
+        .options(selectinload(Appointment.patient))
+        .where(Appointment.doctor_id == doctor_id)
+        .order_by(Appointment.requested_date.desc())
+    )
+    all_appts = appt_result.scalars().all()
+    
+    total_consultations = len(all_appts)
+    patient_ids = set()
+    upcoming_appts = []
+    recent_patients = []
+    
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    
+    patient_map = {} # patient_id -> Patient model
+
+    for appt in all_appts:
+        patient_ids.add(appt.patient_id)
+        if appt.patient:
+            patient_map[appt.patient_id] = appt.patient
+            
+        # Upcoming
+        # Ensure comparable datetimes by making requested_date aware if it isn't, 
+        # or replacing tzinfo for naive comparison
+        req_date = appt.requested_date
+        if req_date.tzinfo is None:
+            req_date = req_date.replace(tzinfo=timezone.utc)
+
+        if req_date > now and len(upcoming_appts) < 5:
+            pat_name = "Unknown Patient"
+            if appt.patient:
+                try: pat_name = pii_encryption.decrypt(appt.patient.full_name)
+                except: pass
+                
+            upcoming_appts.append(DoctorApptItem(
+                id=appt.id,
+                patientName=pat_name,
+                time=appt.requested_date.strftime("%b %d, %Y %I:%M %p"),
+                status=appt.status.capitalize()
+            ))
+
+    # Derive recent patients from the 5 most recent appointments
+    for pat_id, pat_obj in list(patient_map.items())[:5]:
+        pat_name = "Unknown Patient"
+        try: pat_name = pii_encryption.decrypt(pat_obj.full_name)
+        except: pass
+        
+        recent_patients.append(DoctorPatientItem(
+            id=pat_obj.id,
+            name=pat_name,
+            condition="Unknown Condition", # Real condition from medical history if available later
+            lastVisit="Recently" # Derive from latest appointment if needed
+        ))
+
+    stats = DoctorStats(
+        totalPatients=len(patient_ids),
+        consultations=total_consultations,
+        rating=4.9 # Mocked until feedback system exists
+    )
+
+    return AdminDoctorDetailResponse(
+        id=doctor.id,
+        first_name=first_name,
+        last_name=last_name,
+        email=email_decrypted,
+        specialty=doctor.specialty or "General Practice",
+        status="active" if doctor.deleted_at is None else "inactive",
+        phone=None,
+        license=None,
+        joinedDate=doctor.created_at.strftime("%b %d, %Y") if doctor.created_at else "Unknown",
+        stats=stats,
+        appointments=upcoming_appts,
+        patients=recent_patients
+    )
+
+@router.get("/audit-logs")
+async def get_audit_logs(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Fetch the last 50 activity logs for the admin's organization.
+    """
+    from sqlalchemy.orm import selectinload
+    
+    query = (
+        select(ActivityLog)
+        .options(selectinload(ActivityLog.user))
+        .where(ActivityLog.organization_id == current_user.organization_id)
+        .order_by(desc(ActivityLog.created_at))
+        .limit(50)
+    )
+    result = await db.execute(query)
+    logs = result.scalars().all()
+    
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+        
+    formatted_logs = []
+    for log in logs:
+        display_name = "System Activity"
+        if log.user:
+            encrypted_val = log.user.full_name or log.user.email
+            if encrypted_val:
+                if pii_encryption:
+                    try:
+                        display_name = pii_encryption.decrypt(encrypted_val)
+                    except Exception:
+                        display_name = "Unknown User"
+                else:
+                    display_name = encrypted_val
+                    
+        formatted_logs.append({
+            "id": str(log.id),
+            "action": log.activity_type or "System Event",
+            "user": display_name,
+            "timestamp": log.created_at.isoformat() if log.created_at else None
+        })
+
+    return {"logs": formatted_logs}
