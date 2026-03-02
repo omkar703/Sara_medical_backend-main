@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from sqlalchemy import Column, ForeignKey, String, Text, Integer, Float, DateTime
+from sqlalchemy import Column, ForeignKey, String, Text, Integer, Float, DateTime, Index
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -22,7 +22,7 @@ class Chunk(Base):
     
     # Relationships
     document_id = Column(PG_UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
-    patient_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    patient_id = Column(PG_UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Chunk Content
     content = Column(Text, nullable=False)
@@ -39,7 +39,17 @@ class Chunk(Base):
     
     # Relationships
     document = relationship("Document", backref="chunks")
-    patient = relationship("User", foreign_keys=[patient_id])
+    patient = relationship("Patient", foreign_keys=[patient_id])
+
+    __table_args__ = (
+        Index(
+            'ix_chunk_embedding',
+            'embedding',
+            postgresql_using='hnsw',
+            postgresql_with={'m': 16, 'ef_construction': 64},
+            postgresql_ops={'embedding': 'vector_cosine_ops'}
+        ),
+    )
 
     def __repr__(self):
         return f"<Chunk {self.id} Doc:{self.document_id} Type:{self.chunk_type}>"

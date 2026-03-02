@@ -66,59 +66,38 @@ async def upload_document(
     if patient.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
 
-    # 3. Save to temp storage (local for this implementation)
+    # 3. Save to temp storage (local)
     upload_dir = "/tmp/saramedico_uploads"
     os.makedirs(upload_dir, exist_ok=True)
     file_id = uuid4()
     ext = os.path.splitext(file.filename)[1]
-    temp_path = f"{upload_dir}/{file_id}{ext}"
+    local_path = f"{upload_dir}/{file_id}{ext}"
+    storage_path = f"tmp/saramedico_uploads/{file_id}{ext}"  # MinIO object name
     
     try:
-        with open(temp_path, "wb") as buffer:
+        with open(local_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        file_size = os.path.getsize(temp_path)
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(status_code=500, detail=f"File save failed: {e}")
-        
-    # 4. Upload to MinIO
-    from app.services.storage_service import StorageService
-    from app.services.minio_service import minio_service
-    storage_service = StorageService()
-    
-    # Generate structured storage path for MinIO
-    minio_key = storage_service.generate_storage_path(
-        organization_id=current_user.organization_id,
-        patient_id=patient.id,
-        document_id=file_id,
-        filename=file.filename
-    )
-    
-    try:
-        upload_success = minio_service.upload_file(
-            file_path=temp_path,
-            bucket_name=storage_service.bucket_name,
-            object_name=minio_key,
+            
+        # Upload to MinIO right after saving locally
+        from app.services.minio_service import minio_service
+        minio_service.upload_file(
+            file_path=local_path,
+            bucket_name="saramedico-medical-records",
+            object_name=storage_path,
             content_type=file.content_type
         )
-    finally:
-        # Cleanup temp local file
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            
-    if not upload_success:
-        raise HTTPException(status_code=500, detail="Failed to upload document to MinIO")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File save/upload failed: {e}")
         
-    # 5. Create Document Record
+    # 4. Create Document Record
     new_doc = Document(
         id=file_id,
         patient_id=patient.id,
         organization_id=current_user.organization_id,
         file_name=file.filename,
         file_type=file.content_type,
-        file_size=file_size,
-        storage_path=minio_key,
+        file_size=0, # Updated below
+        storage_path=storage_path,
         uploaded_by=current_user.id,
         notes=notes,
         processing_details={
@@ -127,12 +106,14 @@ async def upload_document(
             "tier_3_vision": {"status": "pending"}
         }
     )
+    # Get file size
+    new_doc.file_size = os.path.getsize(local_path)
     
     db.add(new_doc)
     await db.commit()
     
-    # 4. Trigger Processing via Mock
-    from app.workers.mock_tasks import process_document_task
+    # 4. Trigger Processing via Celery
+    from app.workers.tasks import process_document_task
     process_document_task.delay(str(new_doc.id))
 
     # Audit log
@@ -144,7 +125,7 @@ async def upload_document(
         action="upload",
         resource_type="document",
         resource_id=new_doc.id,
-        metadata={"file_name": file.filename, "file_size": file_size}
+        metadata={"file_name": file.filename, "file_size": new_doc.file_size}
     )
 
     return {

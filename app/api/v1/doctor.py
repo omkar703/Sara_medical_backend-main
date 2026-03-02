@@ -61,13 +61,28 @@ async def get_doctor_patients(
         raise HTTPException(status_code=403, detail="Only doctors can access this directory")
 
 
-    # Fetch patients in the organization
-    query = select(Patient).where(Patient.organization_id == organization_id, Patient.deleted_at == None)
+    # Fetch patients and their latest completed consultation date in a single query
+    lv_subquery = (
+        select(Consultation.scheduled_at)
+        .where(
+            Consultation.patient_id == Patient.id,
+            Consultation.status == "completed"
+        )
+        .order_by(Consultation.scheduled_at.desc())
+        .limit(1)
+        .correlate(Patient)
+        .scalar_subquery()
+    )
+
+    query = select(Patient, lv_subquery.label("last_visit_at")).where(
+        Patient.organization_id == organization_id, 
+        Patient.deleted_at == None
+    )
     result = await db.execute(query)
-    patients = result.scalars().all()
+    rows = result.all()
 
     response = []
-    for p in patients:
+    for p, last_visit_at in rows:
         # Decrypt fields
         try:
             name = pii_encryption.decrypt(p.full_name)
@@ -76,14 +91,7 @@ async def get_doctor_patients(
             name = "Encrypted"
             dob = "Unknown"
 
-        # Fetch last visit from consultations
-        visit_query = select(Consultation).where(
-            Consultation.patient_id == p.id,
-            Consultation.status == "completed"
-        ).order_by(Consultation.scheduled_at.desc()).limit(1)
-        visit_result = await db.execute(visit_query)
-        last_visit_obj = visit_result.scalar_one_or_none()
-        last_visit_str = last_visit_obj.scheduled_at.strftime("%d/%m/%y") if last_visit_obj else "No visits"
+        last_visit_str = last_visit_at.strftime("%d/%m/%y") if last_visit_at else "No visits"
 
         response.append(DoctorPatientListItem(
             id=p.id,

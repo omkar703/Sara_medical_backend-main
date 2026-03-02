@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models.consultation import Consultation
 from app.models.patient import Patient
 from app.models.user import User
-from app.services.mock_google_meet import google_meet_service
+from app.services.google_meet_service import google_meet_service
 from app.core.security import pii_encryption
 from app.models.recent_doctors import RecentDoctor  
 from app.models.recent_patients import RecentPatient
@@ -53,17 +53,19 @@ class ConsultationService:
             
         meeting_topic = f"Consultation: Dr. {doc_name} - {patient.mrn}"
         
-        # Pass the dynamic emails fetched directly from the database models
-        attendees_list = [doctor.email, patient.email]
-        
         # Call Google Meet Service
-        google_event_id, meet_link = await google_meet_service.create_meeting(
-            start_time=scheduled_at,
-            duration_minutes=duration_minutes,
-            summary=meeting_topic,
-            description=f"Medical consultation for {patient.mrn}",
-            attendees=attendees_list
-        )
+        google_event_id, meet_link = None, None
+        try:
+            from app.services.google_meet_service import google_meet_service
+            google_event_id, meet_link = await google_meet_service.create_meeting(
+                start_time=scheduled_at,
+                duration_minutes=duration_minutes,
+                summary=meeting_topic,
+                description=f"Medical consultation for {patient.mrn}",
+                attendees=[doctor.email, patient.email] 
+            )
+        except Exception as e:
+            print(f"[Consultation Service] ⚠ Skipped Google Meet creation: {e}")
         
         # 3. Create Database Record (Using the new Google fields)
         consultation = Consultation(
@@ -93,7 +95,6 @@ class ConsultationService:
         user_id: UUID,
         role: str,
         status: Optional[str] = None,
-        patient_id: Optional[UUID] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None
     ) -> List[Consultation]:
@@ -123,9 +124,6 @@ class ConsultationService:
         # Filters
         if status:
             query = query.where(Consultation.status == status)
-            
-        if patient_id:
-            query = query.where(Consultation.patient_id == patient_id)
         
         if date_from:
             query = query.where(Consultation.scheduled_at >= date_from)
@@ -228,9 +226,14 @@ class ConsultationService:
             if hasattr(consultation, field) and value is not None:
                 setattr(consultation, field, value)
         
-        # Trigger the sync
+        # Trigger the sync and SOAP note generation on completion
         if is_completing:
             await self._sync_recent_connections(consultation)
+            # Dispatch background task: fetch transcript + generate SOAP note via Bedrock
+            # Added a slight delay (countdown=3) to prevent Race Conditions 
+            # where the celery task fires before the DB commits its status.
+            from app.workers.tasks import generate_soap_note
+            generate_soap_note.apply_async(args=[str(consultation.id)], countdown=3)
         
         await self.db.flush()
         return consultation

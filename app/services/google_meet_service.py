@@ -8,23 +8,40 @@ from app.config import settings
 
 class GoogleMeetService:
     def __init__(self):
-        # Update scopes here as well
         scopes = [
             'https://www.googleapis.com/auth/calendar.events',
             'https://www.googleapis.com/auth/calendar.readonly',
             'https://www.googleapis.com/auth/drive.readonly'
         ]
-        self.creds = Credentials(
-            token=None,
-            refresh_token=settings.GOOGLE_REFRESH_TOKEN,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=settings.GOOGLE_CLIENT_ID,
-            client_secret=settings.GOOGLE_CLIENT_SECRET,
-            scopes=scopes
-        )
-        # Build both Calendar and Drive services
-        self.calendar_service = build('calendar', 'v3', credentials=self.creds)
-        self.drive_service = build('drive', 'v3', credentials=self.creds)
+        try:
+            self.creds = Credentials(
+                token=None,
+                refresh_token=settings.GOOGLE_REFRESH_TOKEN,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=settings.GOOGLE_CLIENT_ID,
+                client_secret=settings.GOOGLE_CLIENT_SECRET,
+                scopes=scopes
+            )
+            # Build both Calendar and Drive services
+            self.calendar_service = build('calendar', 'v3', credentials=self.creds)
+            self.drive_service    = build('drive', 'v3', credentials=self.creds)
+            self._available = True
+        except Exception as e:
+            print(f"[GoogleMeetService] ⚠ Could not initialize Google API services: {e}")
+            print("[GoogleMeetService] Calendar/Meet features will be unavailable until credentials are configured.")
+            self.calendar_service = None
+            self.drive_service    = None
+            self._available = False
+
+    def _require_service(self):
+        """Raise a clear error if Google API is not configured."""
+        if not self._available:
+            raise RuntimeError(
+                "Google API credentials are not configured. "
+                "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "
+                "and GOOGLE_REFRESH_TOKEN in your .env file."
+            )
+
 
     async def get_meeting_transcript(self, google_event_id: str) -> Optional[str]:
         """

@@ -270,42 +270,107 @@ async def update_consultation(
 @router.post("/{consultation_id}/analyze", response_model=MessageResponse)
 async def analyze_consultation(
     consultation_id: UUID,
+    scenario: Optional[str] = None,
     current_user: User = Depends(require_role("doctor")),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Fetch Google Meet transcript and trigger AI analysis.
+    Trigger SOAP note generation for a consultation.
+
+    Uses a mock transcript (simulating Google Meet Transcript API) and sends it
+    to AWS Bedrock (Claude) for SOAP note generation via a background Celery task.
+
+    Query params:
+        scenario (optional): One of 'chest_pain', 'diabetes', 'pediatric_fever',
+                             'hypertension', 'anxiety'. Picks randomly if not set.
     """
+    from app.services.mock_transcript_service import mock_transcript_service, SCENARIOS
+    from app.workers.tasks import generate_soap_note as soap_task
+
     service = ConsultationService(db)
     consultation = await service.get_consultation(consultation_id, organization_id)
-    
+
     if not consultation:
         raise HTTPException(status_code=404, detail="Consultation not found")
-        
-    if getattr(consultation, 'google_event_id', None) is None:
-        raise HTTPException(status_code=400, detail="No Google Meet linked to this consultation")
 
-    # Fetch the transcript text
-    transcript_text = await google_meet_service.get_meeting_transcript(consultation.google_event_id)
-    
-    if not transcript_text:
+    # Validate optional scenario key
+    if scenario and scenario not in SCENARIOS:
         raise HTTPException(
-            status_code=404, 
-            detail="Transcript not found. If the meeting just ended, Google may still be processing it."
+            status_code=400,
+            detail=f"Invalid scenario '{scenario}'. Available: {list(SCENARIOS.keys())}"
         )
-        
-    # Save it to the database
-    consultation.transcript = transcript_text
+
+    # Mark as processing immediately so the caller knows something is happening
     consultation.ai_status = "processing"
     await db.commit()
-    
-    # TODO: Pass `transcript_text` to your AI LLM here to generate the SOAP note!
-    # e.g., soap_note = await ai_service.generate_soap_note(transcript_text)
-    
+
+    # Dispatch the background Celery task
+    # The task will: get mock transcript → call Bedrock → save soap_note to DB
+    soap_task.delay(str(consultation_id))
+
+    available_scenarios = list(SCENARIOS.keys())
     return MessageResponse(
-        message="Transcript fetched successfully. AI analysis initiated."
+        message=(
+            f"SOAP note generation queued for consultation {consultation_id}. "
+            f"Processing in background. Poll GET /consultations/{consultation_id}/soap-note for results. "
+            f"Available test scenarios: {available_scenarios}"
+        )
     )
+
+
+@router.get("/{consultation_id}/soap-note")
+async def get_soap_note(
+    consultation_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve the generated SOAP note for a consultation.
+
+    Returns:
+        200 + SOAP note JSON if generation is complete.
+        202 if still processing.
+        404 if consultation not found or SOAP note not yet generated.
+    """
+    from fastapi.responses import JSONResponse
+
+    service = ConsultationService(db)
+    consultation = await service.get_consultation(consultation_id, organization_id)
+
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    ai_status = getattr(consultation, 'ai_status', 'pending')
+
+    if ai_status == "processing":
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "processing",
+                "message": "SOAP note is being generated. Please check back shortly.",
+                "consultation_id": str(consultation_id),
+            }
+        )
+
+    soap_note = getattr(consultation, 'soap_note', None)
+    if not soap_note:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"SOAP note not yet available (ai_status='{ai_status}'). "
+                "Trigger generation via POST /analyze first."
+            )
+        )
+
+    return {
+        "consultation_id": str(consultation_id),
+        "status": consultation.status,       # consultation status (e.g. completed)
+        "ai_status": ai_status,
+        "transcript_available": bool(getattr(consultation, 'transcript', None)),
+        "soap_note": soap_note,
+    }
 
 @router.get("/queue/metrics", response_model=QueueMetricsResponse)
 async def get_queue_metrics(

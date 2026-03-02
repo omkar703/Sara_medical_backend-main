@@ -155,13 +155,10 @@ async def chat_doctor(
         if not has_perm:
              raise HTTPException(status_code=403, detail="No access to this patient's data")
 
-    # Check for AI permission specifically (needs update to PermissionService to check new column)
-    # For now assuming general permission implies AI OR we query DB directly here.
-    # Let's query DB to be safe as per requirement.
-    
-    # ... query DataAccessGrant where ai_access_permission=True ...
-    # skipping for brevity/MVP, assuming check_doctor_access was updated or we rely on basic access.
-    # ideally: await perm_service.check_ai_access(...)
+    # Check for AI permission specifically
+    has_ai_access = await perm_service.check_ai_access(current_user.id, request.patient_id)
+    if not has_ai_access:
+        raise HTTPException(status_code=403, detail="No AI access to this patient's data")
 
     service = AIChatService(db)
     

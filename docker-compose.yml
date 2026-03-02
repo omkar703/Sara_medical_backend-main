@@ -14,13 +14,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"    # Standard PostgreSQL port
+      - "5435:5432"
+
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${DATABASE_USER:-saramedico_user} -d ${DATABASE_NAME:-saramedico_dev}",
-        ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DATABASE_USER:-saramedico_user} -d ${DATABASE_NAME:-saramedico_dev}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,16 +35,9 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"    # Standard Redis port
+      - "6382:6379"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "redis-cli",
-          "-a",
-          "${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}",
-          "ping",
-        ]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,8 +47,6 @@ services:
 
   # ============================================
   # MinIO (S3-Compatible Local Object Storage)
-  # MinIO API:     localhost:9000
-  # MinIO Console: localhost:9001
   # ============================================
   minio:
     image: minio/minio:latest
@@ -70,10 +58,10 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"    # MinIO S3 API (standard)
-      - "9001:9001"    # MinIO Web Console
+      - "9010:9000"
+      - "9011:9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -82,7 +70,7 @@ services:
       - saramedico_network
 
   # ============================================
-  # MinIO Client (Bucket Setup - one-shot)
+  # MinIO Client (Bucket Setup)
   # ============================================
   minio-setup:
     image: minio/mc:latest
@@ -91,41 +79,21 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c "
-      sleep 3;
-      /usr/bin/mc alias set saramedico http://minio:9000 ${MINIO_ROOT_USER:-saramedico_minio_admin} ${MINIO_ROOT_PASSWORD:-SaraMed1c0_Min10_2024!SecurePass};
-      /usr/bin/mc mb --ignore-existing saramedico/saramedico-uploads;
-      /usr/bin/mc mb --ignore-existing saramedico/saramedico-documents;
-      /usr/bin/mc mb --ignore-existing saramedico/saramedico-audio-logs;
-      /usr/bin/mc mb --ignore-existing saramedico/saramedico-avatars;
-      /usr/bin/mc mb --ignore-existing saramedico/saramedico-medical-records;
-      echo 'Buckets created successfully';
-      exit 0;
-      "
+      /bin/sh -c " sleep 5; /usr/bin/mc alias set saramedico http://minio:9000 ${MINIO_ROOT_USER:-saramedico_minio_admin} ${MINIO_ROOT_PASSWORD:-SaraMed1c0_Min10_2024!SecurePass}; /usr/bin/mc mb --ignore-existing saramedico/saramedico-uploads; /usr/bin/mc mb --ignore-existing saramedico/saramedico-documents; /usr/bin/mc mb --ignore-existing saramedico/saramedico-audio; /usr/bin/mc mb --ignore-existing saramedico/saramedico-avatars; echo 'Buckets created successfully'; exit 0; "
     networks:
       - saramedico_network
 
   # ============================================
   # MailHog (Email Testing Server)
-  # SMTP:    localhost:1025
-  # Web UI:  localhost:8025
   # ============================================
   mailhog:
     image: mailhog/mailhog:latest
     container_name: saramedico_mailhog
     ports:
-      - "1025:1025"    # SMTP (standard)
-      - "8025:8025"    # Web UI (standard)
+      - "1030:1025" # SMTP
+      - "8030:8025" # Web UI
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8025",
-        ]
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -135,36 +103,30 @@ services:
 
   # ============================================
   # Backend API (FastAPI)
-  # API:  localhost:8000
-  # Docs: localhost:8000/docs
   # ============================================
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_backend
-    entrypoint: ["bash", "scripts/entrypoint.sh"]
+    entrypoint: [ "bash", "scripts/entrypoint.sh" ]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - .:/app
       - backend_logs:/app/logs
       - medical_data:/app/medical-records
+
     ports:
-      - "8000:8000"    # FastAPI (standard)
+      - "8000:8000"
     env_file:
       - .env
     environment:
-      # Override URLs to use Docker internal hostnames
       - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/${DATABASE_NAME:-saramedico_dev}
       - TEST_DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-saramedico_user}:${DATABASE_PASSWORD:-SaraMed1c0_Dev_2024!Secure}@postgres:5432/saramedico_test
       - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
-      # MinIO: internal for API calls, external for presigned URLs returned to browser
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_EXTERNAL_ENDPOINT=localhost:9000
-      - SMTP_HOST=mailhog
-      - SMTP_PORT=1025
     depends_on:
       postgres:
         condition: service_healthy
@@ -175,11 +137,10 @@ services:
       mailhog:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 3
     restart: unless-stopped
     networks:
       - saramedico_network
@@ -192,12 +153,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_celery_worker
-    entrypoint: ["bash", "scripts/entrypoint.sh"]
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    entrypoint: [ "bash", "scripts/entrypoint.sh" ]
+    command: celery -A app.workers.celery_app worker -P gevent -c 100 --loglevel=info
     volumes:
       - .:/app
       - medical_data:/app/medical-records
       - backend_logs:/app/logs
+
     env_file:
       - .env
     environment:
@@ -206,7 +168,6 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_EXTERNAL_ENDPOINT=localhost:9000
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,12 +187,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saramedico_celery_beat
-    entrypoint: ["bash", "scripts/entrypoint.sh"]
+    entrypoint: [ "bash", "scripts/entrypoint.sh" ]
     command: celery -A app.workers.celery_app beat --loglevel=info
     volumes:
       - .:/app
       - backend_logs:/app/logs
       - medical_data:/app/medical-records
+
     env_file:
       - .env
     environment:
@@ -239,6 +201,7 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/0
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
+      - MINIO_ENDPOINT=minio:9000
     depends_on:
       celery_worker:
         condition: service_started
@@ -255,7 +218,6 @@ volumes:
   redis_data:
     driver: local
   minio_data:
-    driver: local
   medical_data:
     driver: local
   backend_logs:
