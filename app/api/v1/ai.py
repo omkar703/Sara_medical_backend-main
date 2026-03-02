@@ -1,6 +1,6 @@
 """AI Integration API - Queue patient data for future AI processing"""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -112,10 +112,10 @@ class ChatRequest(BaseModel):
     conversation_id: str = None
 
 class DoctorChatRequest(BaseModel):
-    patient_id: UUID
-    document_id: UUID = None
+    patient_id: Optional[UUID] = None
+    document_id: Optional[UUID] = None
     query: str = Field(..., min_length=2, max_length=2000, description="Chat query")
-    conversation_id: str = None
+    conversation_id: Optional[str] = None
 
 
 @router.post("/chat/patient")
@@ -149,10 +149,11 @@ async def chat_doctor(
         raise HTTPException(status_code=403, detail="Only doctors can use this endpoint")
 
     # Permission Check
-    perm_service = PermissionService(db)
-    has_perm = await perm_service.check_doctor_access(current_user.id, request.patient_id)
-    if not has_perm:
-         raise HTTPException(status_code=403, detail="No access to this patient's data")
+    if request.patient_id:
+        perm_service = PermissionService(db)
+        has_perm = await perm_service.check_doctor_access(current_user.id, request.patient_id)
+        if not has_perm:
+             raise HTTPException(status_code=403, detail="No access to this patient's data")
 
     # Check for AI permission specifically (needs update to PermissionService to check new column)
     # For now assuming general permission implies AI OR we query DB directly here.
@@ -192,26 +193,29 @@ async def get_patient_history(
 
 @router.get("/chat-history/doctor")
 async def get_doctor_history(
-    patient_id: UUID, 
-    doctor_id: UUID, 
+    patient_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "doctor" or current_user.id != doctor_id:
+    if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Access denied")
         
-    perm_service = PermissionService(db)
-    has_perm = await perm_service.check_doctor_access(doctor_id, patient_id)
-    if not has_perm:
-         raise HTTPException(status_code=403, detail="No access")
+    doctor_id = current_user.id
+    if patient_id:
+        perm_service = PermissionService(db)
+        has_perm = await perm_service.check_doctor_access(doctor_id, patient_id)
+        if not has_perm:
+             raise HTTPException(status_code=403, detail="No access")
 
     from app.models.chat_history import ChatHistory
-    stmt = select(ChatHistory).where(
-        and_(
-            ChatHistory.patient_id == patient_id,
-            ChatHistory.doctor_id == doctor_id
-        )
-    ).order_by(ChatHistory.created_at.desc())
+    
+    stmt = select(ChatHistory).where(ChatHistory.doctor_id == doctor_id)
+    if patient_id:
+        stmt = stmt.where(ChatHistory.patient_id == patient_id)
+    else:
+        stmt = stmt.where(ChatHistory.patient_id.is_(None))
+        
+    stmt = stmt.order_by(ChatHistory.created_at.desc())
     
     result = await db.execute(stmt)
     history = result.scalars().all()

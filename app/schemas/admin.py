@@ -93,3 +93,34 @@ class RecentActivity(BaseModel):
     action: str
     timestamp: datetime
     status: str
+
+class DoctorApptItem(BaseModel):
+    id: UUID
+    patientName: str
+    time: str
+    status: str
+
+class DoctorPatientItem(BaseModel):
+    id: UUID
+    name: str
+    condition: str
+    lastVisit: str
+
+class DoctorStats(BaseModel):
+    totalPatients: int
+    consultations: int
+    rating: float
+
+class AdminDoctorDetailResponse(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    email: str
+    specialty: str
+    status: str
+    phone: Optional[str] = None
+    license: Optional[str] = None
+    joinedDate: str
+    stats: DoctorStats
+    appointments: List[DoctorApptItem]
+    patients: List[DoctorPatientItem]

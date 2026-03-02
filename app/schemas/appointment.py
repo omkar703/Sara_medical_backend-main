@@ -21,10 +21,15 @@ class AppointmentResponse(AppointmentBase):
     patient_id: UUID
     status: str
     doctor_notes: Optional[str] = None
+    doctor_name: Optional[str] = None
     
-    # Google Meet Implementation
+    # Google Meet / Zoom Implementation
     google_event_id: Optional[str] = None
     meet_link: Optional[str] = None
+    meeting_id: Optional[str] = None
+    join_url: Optional[str] = None
+    start_url: Optional[str] = None
+    meeting_password: Optional[str] = None
     
     created_at: datetime
     updated_at: datetime

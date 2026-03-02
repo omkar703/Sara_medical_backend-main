@@ -50,17 +50,15 @@ class AIChatService:
         result = await self.db.execute(stmt)
         chunks = result.scalars().all()
         
-        if not chunks:
-            yield "I couldn't find any processed information to answer your question. Please ensure the documents are fully processed."
-            return
-
         # 2. Construct Prompt
-        context_text = "\n\n".join([f"Source ({c.source}, Page {c.page_number}): {c.content}" for c in chunks])
+        context_text = ""
+        if chunks:
+            context_text = "\n\n".join([f"Source ({c.source}, Page {c.page_number}): {c.content}" for c in chunks])
         
         system_prompt = f"""You are a helpful medical assistant AI. 
         You are answering a question for a {'Patient' if requesting_user.role == 'patient' else 'Doctor'}.
         
-        Context from medical records:
+        Context from medical records (if any):
         {context_text}
         
         Question: {query}

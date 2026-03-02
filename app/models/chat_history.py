@@ -19,7 +19,7 @@ class ChatHistory(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
     conversation_id = Column(String(100), nullable=False, index=True)
-    patient_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    patient_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     doctor_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True) # Null if patient chat
     document_id = Column(PG_UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True)
     

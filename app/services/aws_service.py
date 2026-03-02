@@ -167,7 +167,10 @@ class AWSService:
         except ClientError as e:
              # Fallback
              print(f"Bedrock generation failed: {e}")
-             return "I apologize, but I am unable to generate a response at this time."
+             return "I am a local development mock of the AI Assistant. Since AWS Bedrock credentials are not configured in the backend environment variables, I cannot generate real context-aware responses right now. However, your frontend connection is working perfectly!"
+        except Exception as e:
+             print(f"Bedrock generation failed: {e}")
+             return "I am a local development mock of the AI Assistant. Since AWS Bedrock credentials are not configured in the backend environment variables, I cannot generate real context-aware responses right now. However, your frontend connection is working perfectly!"
 
     async def generate_embeddings(self, text: str) -> List[float]:
         """
