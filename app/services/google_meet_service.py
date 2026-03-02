@@ -92,7 +92,7 @@ class GoogleMeetService:
             event_body['attendees'] = [{'email': email} for email in attendees if email]
 
         # The conferenceDataVersion=1 parameter is REQUIRED to generate the Meet link
-        event = self.service.events().insert(
+        event = self.calendar_service.events().insert(
             calendarId='primary', 
             body=event_body, 
             conferenceDataVersion=1

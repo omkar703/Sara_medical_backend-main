@@ -2,14 +2,17 @@ import os
 from google_auth_oauthlib.flow import InstalledAppFlow
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-
 # The scopes required to create calendar events
-SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+SCOPES = [
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/drive.readonly'
+]
 
 def main():
     # You can temporarily hardcode your credentials here just to get the token
     client_config = {
-        "installed": {
+        "web": {
             "client_id": GOOGLE_CLIENT_ID,
             "client_secret": GOOGLE_CLIENT_SECRET,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",

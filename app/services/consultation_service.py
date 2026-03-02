@@ -59,7 +59,8 @@ class ConsultationService:
             duration_minutes=duration_minutes,
             summary=meeting_topic,
             description=f"Medical consultation for {patient.mrn}",
-            attendees=[doctor.email, patient.email] 
+            # attendees=[doctor.email, patient.email] 
+            attendees=["nikhilhegde1011@gmail.com", "hegdenikhil101@gmail.com"]
         )
         
         # 3. Create Database Record (Using the new Google fields)
