@@ -198,8 +198,8 @@ async def patient_token(patient_user):
     return create_access_token(data={"sub": str(patient_user.id), "role": "patient"})
 
 @pytest_asyncio.fixture
-async def patient_id(db_session, test_user):
-    """Create a test patient and return ID"""
+async def patient_id(db_session, test_user, patient_user):
+    """Create a test patient and return ID (linked to patient_user)"""
     from app.models.patient import Patient
     from app.core.security import PIIEncryption
     from datetime import date
@@ -207,11 +207,14 @@ async def patient_id(db_session, test_user):
     
     encryption = PIIEncryption()
     
+    # Use patient_user.id for the Patient record to satisfy foreign key constraints 
+    # and maintain consistency between User and Patient models
     patient = Patient(
+        id=patient_user.id,
         full_name=encryption.encrypt("John Doe"),
         date_of_birth=encryption.encrypt(date(1990, 1, 1).isoformat()),
         gender="male",
-        phone_number=encryption.encrypt("+1234567890"),
+        phone_number=encryption.encrypt("+16502531111"),
         mrn=f"ORG-{uuid.uuid4().hex[:6].upper()}",
         organization_id=test_user.organization_id,
         created_by=test_user.id
