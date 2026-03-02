@@ -53,14 +53,16 @@ class ConsultationService:
             
         meeting_topic = f"Consultation: Dr. {doc_name} - {patient.mrn}"
         
+        # Pass the dynamic emails fetched directly from the database models
+        attendees_list = [doctor.email, patient.email]
+        
         # Call Google Meet Service
         google_event_id, meet_link = await google_meet_service.create_meeting(
             start_time=scheduled_at,
             duration_minutes=duration_minutes,
             summary=meeting_topic,
             description=f"Medical consultation for {patient.mrn}",
-            # attendees=[doctor.email, patient.email] 
-            attendees=["nikhilhegde1011@gmail.com", "hegdenikhil101@gmail.com"]
+            attendees=attendees_list
         )
         
         # 3. Create Database Record (Using the new Google fields)

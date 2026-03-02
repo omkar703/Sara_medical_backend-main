@@ -89,7 +89,16 @@ class GoogleMeetService:
 
         # NEW: Add the attendees to the event body
         if attendees:
-            event_body['attendees'] = [{'email': email} for email in attendees if email]
+            cleaned_attendees = []
+            for email in attendees:
+                if email:
+                    # Strip spaces, newlines, and hidden characters
+                    clean_email = str(email).strip().replace("\u200b", "").replace(" ", "")
+                    if "@" in clean_email:
+                        cleaned_attendees.append({'email': clean_email})
+            
+            if cleaned_attendees:
+                event_body['attendees'] = cleaned_attendees
 
         # The conferenceDataVersion=1 parameter is REQUIRED to generate the Meet link
         event = self.calendar_service.events().insert(
