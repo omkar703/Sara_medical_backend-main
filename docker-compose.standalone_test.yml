@@ -59,6 +59,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_dev
       - REDIS_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/0
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_EXTERNAL_ENDPOINT=localhost:9010
       - MINIO_ROOT_USER=saramedico_minio_admin
       - MINIO_ROOT_PASSWORD=SaraMed1c0_Min10_2024!SecurePass
       - SMTP_HOST=mailhog
