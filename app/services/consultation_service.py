@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models.consultation import Consultation
 from app.models.patient import Patient
 from app.models.user import User
-from app.services.google_meet_service import google_meet_service
+from app.services.mock_google_meet import google_meet_service
 from app.core.security import pii_encryption
 from app.models.recent_doctors import RecentDoctor  
 from app.models.recent_patients import RecentPatient

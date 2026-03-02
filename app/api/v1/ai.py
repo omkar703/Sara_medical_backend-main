@@ -90,7 +90,7 @@ async def process_document(
     await db.refresh(queue_entry)
     
     # Trigger Background Task
-    from app.workers.tasks import process_document_task
+    from app.workers.mock_tasks import process_document_task
     process_document_task.delay(str(request.document_id))
     
     return DocumentProcessResponse(

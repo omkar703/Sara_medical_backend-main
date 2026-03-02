@@ -102,8 +102,8 @@ async def upload_document(
     db.add(new_doc)
     await db.commit()
     
-    # 4. Trigger Processing via Celery
-    from app.workers.tasks import process_document_task
+    # 4. Trigger Processing via Mock
+    from app.workers.mock_tasks import process_document_task
     process_document_task.delay(str(new_doc.id))
 
     # Audit log

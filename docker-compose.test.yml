@@ -1,0 +1,27 @@
+services:
+  test_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saramedico_test_runner
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_dev
+      - REDIS_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/0
+      - APP_SECRET_KEY=test_secret
+      - JWT_SECRET_KEY=test_jwt_secret
+      - ENCRYPTION_KEY=NdLa0BJlatLYfvB0TLufRunKgTeEBv5sKfsJnoCwPQ0=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    entrypoint: ["/opt/venv/bin/python"]
+    command: ["/app/tests/run_docker_tests.py"]
+    networks:
+      - saramedico_network
+
+networks:
+  saramedico_network:
+    driver: bridge

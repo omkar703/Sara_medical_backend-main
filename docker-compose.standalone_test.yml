@@ -1,0 +1,108 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: postgres.Dockerfile
+    container_name: saramedico_postgres_test
+    environment:
+      POSTGRES_DB: saramedico_dev
+      POSTGRES_USER: saramedico_user
+      POSTGRES_PASSWORD: SaraMed1c0_Dev_2024!Secure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saramedico_user -d saramedico_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saramedico_test_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: saramedico_redis_test
+    command: redis-server --requirepass SaraMed1c0_Redis_2024!SecurePass --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "SaraMed1c0_Redis_2024!SecurePass", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saramedico_test_net
+
+  minio:
+    image: minio/minio:latest
+    container_name: saramedico_minio_test
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: saramedico_minio_admin
+      MINIO_ROOT_PASSWORD: SaraMed1c0_Min10_2024!SecurePass
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - saramedico_test_net
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: saramedico_mailhog_test
+    networks:
+      - saramedico_test_net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saramedico_backend_test
+    entrypoint: ["/opt/venv/bin/python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_dev
+      - REDIS_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=saramedico_minio_admin
+      - MINIO_ROOT_PASSWORD=SaraMed1c0_Min10_2024!SecurePass
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - APP_SECRET_KEY=test_secret
+      - JWT_SECRET_KEY=test_jwt_secret
+      - ENCRYPTION_KEY=NdLa0BJlatLYfvB0TLufRunKgTeEBv5sKfsJnoCwPQ0=
+      - FEATURE_AI_ANALYSIS=false
+      - FEATURE_VIDEO_CALLS=false
+      - FEATURE_SMS_NOTIFICATIONS=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saramedico_test_net
+
+  test_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: saramedico_test_runner
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://saramedico_user:SaraMed1c0_Dev_2024!Secure@postgres:5432/saramedico_dev
+      - REDIS_URL=redis://:SaraMed1c0_Redis_2024!SecurePass@redis:6379/0
+      - APP_SECRET_KEY=test_secret
+      - JWT_SECRET_KEY=test_jwt_secret
+      - ENCRYPTION_KEY=NdLa0BJlatLYfvB0TLufRunKgTeEBv5sKfsJnoCwPQ0=
+    depends_on:
+      backend:
+        condition: service_healthy
+    entrypoint: ["/opt/venv/bin/python"]
+    command: ["/app/tests/run_docker_tests.py"]
+    networks:
+      - saramedico_test_net
+
+networks:
+  saramedico_test_net:
+    driver: bridge
