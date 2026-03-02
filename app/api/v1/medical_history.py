@@ -21,6 +21,8 @@ from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/doctor/medical-history", tags=["Medical History"])
 
+from app.config import settings
+
 # Allowed file extensions for medical documents
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".dicom", ".dcm"}
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
@@ -117,7 +119,7 @@ async def upload_medical_history(
     # Upload to MinIO (medical-records bucket)
     upload_success = minio_service.upload_bytes(
         file_content,
-        "saramedico-medical-records",
+        settings.MINIO_BUCKET_DOCUMENTS,
         storage_path,
         content_type=file.content_type or "application/octet-stream"
     )
@@ -167,7 +169,7 @@ async def upload_medical_history(
     
     # Generate presigned URL (15-minute expiration)
     presigned_url = minio_service.generate_presigned_url(
-        "saramedico-medical-records",
+        settings.MINIO_BUCKET_DOCUMENTS,
         storage_path,
         expiry_seconds=900  # 15 minutes
     )

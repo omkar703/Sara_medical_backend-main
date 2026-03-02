@@ -71,23 +71,54 @@ async def upload_document(
     os.makedirs(upload_dir, exist_ok=True)
     file_id = uuid4()
     ext = os.path.splitext(file.filename)[1]
-    storage_path = f"{upload_dir}/{file_id}{ext}"
+    temp_path = f"{upload_dir}/{file_id}{ext}"
     
     try:
-        with open(storage_path, "wb") as buffer:
+        with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        file_size = os.path.getsize(temp_path)
     except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         raise HTTPException(status_code=500, detail=f"File save failed: {e}")
         
-    # 4. Create Document Record
+    # 4. Upload to MinIO
+    from app.services.storage_service import StorageService
+    from app.services.minio_service import minio_service
+    storage_service = StorageService()
+    
+    # Generate structured storage path for MinIO
+    minio_key = storage_service.generate_storage_path(
+        organization_id=current_user.organization_id,
+        patient_id=patient.id,
+        document_id=file_id,
+        filename=file.filename
+    )
+    
+    try:
+        upload_success = minio_service.upload_file(
+            file_path=temp_path,
+            bucket_name=storage_service.bucket_name,
+            object_name=minio_key,
+            content_type=file.content_type
+        )
+    finally:
+        # Cleanup temp local file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+    if not upload_success:
+        raise HTTPException(status_code=500, detail="Failed to upload document to MinIO")
+        
+    # 5. Create Document Record
     new_doc = Document(
         id=file_id,
         patient_id=patient.id,
         organization_id=current_user.organization_id,
         file_name=file.filename,
         file_type=file.content_type,
-        file_size=0, # Updated below
-        storage_path=storage_path,
+        file_size=file_size,
+        storage_path=minio_key,
         uploaded_by=current_user.id,
         notes=notes,
         processing_details={
@@ -96,8 +127,6 @@ async def upload_document(
             "tier_3_vision": {"status": "pending"}
         }
     )
-    # Get file size
-    new_doc.file_size = os.path.getsize(storage_path)
     
     db.add(new_doc)
     await db.commit()
@@ -115,7 +144,7 @@ async def upload_document(
         action="upload",
         resource_type="document",
         resource_id=new_doc.id,
-        metadata={"file_name": file.filename, "file_size": new_doc.file_size}
+        metadata={"file_name": file.filename, "file_size": file_size}
     )
 
     return {

@@ -94,10 +94,11 @@ async def get_patient_documents(
     await db.commit()
     
     # Generate presigned URLs for each document
+    from app.config import settings
     response_documents = []
     for doc in documents:
         presigned_url = minio_service.generate_presigned_url(
-            "saramedico-medical-records",
+            settings.MINIO_BUCKET_DOCUMENTS,
             doc.storage_path,
             expiry_seconds=900  # 15 minutes
         )
