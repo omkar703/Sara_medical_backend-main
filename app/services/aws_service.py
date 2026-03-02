@@ -13,9 +13,11 @@ class AWSService:
         self.region_name = os.getenv("AWS_REGION", "us-east-1")
         self.access_key = os.getenv("AWS_ACCESS_KEY_ID")
         self.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-        
+        # Bedrock-specific settings — read from env so .env drives the model
+        self.bedrock_region = os.getenv("BEDROCK_REGION", self.region_name)
+        self.bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")
+
         if not self.access_key or not self.secret_key:
-            # warn or just allow init to fail later if not needed immediately
             pass
 
     def _get_client(self, service_name: str):
@@ -49,7 +51,7 @@ class AWSService:
 
         try:
             response = client.invoke_model_with_response_stream(
-                modelId="anthropic.claude-3-sonnet-20240229-v1:0", 
+                modelId=self.bedrock_model_id,
                 body=body
             )
             stream = response.get('body')
@@ -132,7 +134,7 @@ class AWSService:
 
         try:
             response = client.invoke_model(
-                modelId="anthropic.claude-3-sonnet-20240229-v1:0", 
+                modelId=self.bedrock_model_id,
                 body=body
             )
             response_body = json.loads(response.get('body').read())
@@ -159,7 +161,7 @@ class AWSService:
 
         try:
             response = client.invoke_model(
-                modelId="anthropic.claude-3-sonnet-20240229-v1:0", 
+                modelId=self.bedrock_model_id,
                 body=body
             )
             response_body = json.loads(response.get('body').read())
