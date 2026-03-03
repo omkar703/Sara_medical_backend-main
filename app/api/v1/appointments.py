@@ -266,3 +266,88 @@ async def approve_appointment(
     await db.commit()
     
     return appointment
+
+
+@router.get("/{appointment_id}", response_model=AppointmentResponse)
+async def get_appointment(
+    appointment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get a single appointment by its ID.
+    Accessible if current user is the doctor or patient of the appointment.
+    """
+    from sqlalchemy.orm import selectinload
+    from app.core.security import pii_encryption
+    
+    query = select(Appointment).options(
+        selectinload(Appointment.doctor)
+    ).where(Appointment.id == appointment_id)
+    
+    result = await db.execute(query)
+    appointment = result.scalar_one_or_none()
+    
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+        
+    if current_user.id not in [appointment.patient_id, appointment.doctor_id] and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to view this appointment")
+
+    doc_name = "Unknown Doctor"
+    if appointment.doctor:
+        try:
+            doc_name = pii_encryption.decrypt(appointment.doctor.full_name)
+        except Exception:
+            doc_name = appointment.doctor.full_name or "Unknown Doctor"
+            
+    response_dict = {
+        "id": appointment.id,
+        "doctor_id": appointment.doctor_id,
+        "patient_id": appointment.patient_id,
+        "requested_date": appointment.requested_date,
+        "reason": appointment.reason,
+        "status": appointment.status,
+        "doctor_notes": appointment.doctor_notes,
+        "google_event_id": appointment.google_event_id,
+        "meet_link": appointment.meet_link,
+        "meeting_id": getattr(appointment, 'meeting_id', None),
+        "join_url": getattr(appointment, 'join_url', None),
+        "start_url": getattr(appointment, 'start_url', None),
+        "meeting_password": getattr(appointment, 'meeting_password', None),
+        "created_at": appointment.created_at,
+        "updated_at": appointment.updated_at,
+        "doctor_name": doc_name
+    }
+    return AppointmentResponse(**response_dict)
+
+
+@router.delete("/{appointment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_appointment(
+    appointment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Cancel/delete an appointment.
+    Accessible if current user is the doctor or patient of the appointment.
+    """
+    query = select(Appointment).where(Appointment.id == appointment_id)
+    result = await db.execute(query)
+    appointment = result.scalar_one_or_none()
+    
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+        
+    if current_user.id not in [appointment.patient_id, appointment.doctor_id] and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to delete this appointment")
+
+    # Sync to calendar (cancel)
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    await calendar_service.sync_appointment_to_calendar(appointment, "cancel")
+    
+    await db.delete(appointment)
+    await db.commit()
+    
+    return None

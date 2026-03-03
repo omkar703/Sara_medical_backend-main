@@ -165,9 +165,25 @@ async def register(
     
     frontend_base_url = settings.cors_origins_list[0]
 
-    return RedirectResponse(
-        url=f"{frontend_base_url}/auth/login",
-        status_code=status.HTTP_303_SEE_OTHER
+    # return RedirectResponse(
+    #     url=f"{frontend_base_url}/auth/login",
+    #     status_code=status.HTTP_303_SEE_OTHER
+    # )
+    return UserResponse(
+        email=user_data.email.lower(),
+        password_hash=password_hash,
+        full_name=encrypted_full_name,
+        phone_number=encrypted_phone,
+        role=user_data.role,
+        organization_id=organization.id,
+        email_verification_token=None,
+        email_verification_expires=None,
+        email_verified=True,
+        mfa_enabled=False,
+        
+        # Social Auth Fields
+        google_id=user_data.google_id,
+        apple_id=user_data.apple_id
     )
 
 @router.post("/verify-email", response_model=MessageResponse)

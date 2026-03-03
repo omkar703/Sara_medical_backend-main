@@ -460,3 +460,167 @@ async def get_doctor_dashboard_metrics(
         scheduled_today=16, # Stub based on UI "12 / 16 Scheduled"
         unsigned_orders=orders_res.scalar() or 0
     )
+
+
+class DoctorProfileResponse(BaseModel):
+    id: UUID
+    full_name: str
+    email: str
+    role: str
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    organization_id: Optional[UUID] = None
+    
+    class Config:
+        from_attributes = True
+
+@router.get("/me", response_model=DoctorProfileResponse)
+async def get_doctor_me(
+    current_user: User = Depends(get_current_user)
+):
+    """Get the currently logged-in doctor's own full profile."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    full_name = current_user.full_name
+    license_no = current_user.license_number
+    
+    try:
+        full_name = pii_encryption.decrypt(current_user.full_name)
+    except:
+        pass
+        
+    if current_user.license_number:
+        try:
+            license_no = pii_encryption.decrypt(current_user.license_number)
+        except:
+            pass
+
+    return DoctorProfileResponse(
+        id=current_user.id,
+        full_name=full_name,
+        email=current_user.email,
+        role=current_user.role,
+        specialty=current_user.specialty,
+        license_number=license_no,
+        organization_id=current_user.organization_id
+    )
+
+
+from app.schemas.patient import PatientDetailResponse, PatientUpdate
+
+@router.get("/patients/{patient_id}", response_model=PatientDetailResponse)
+async def get_single_patient(
+    patient_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """Get a single patient's profile as a doctor."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    query = select(Patient).where(
+        Patient.id == patient_id,
+        Patient.organization_id == organization_id,
+        Patient.deleted_at == None
+    )
+    result = await db.execute(query)
+    patient = result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    try:
+        full_name = pii_encryption.decrypt(patient.full_name)
+    except:
+        full_name = patient.full_name or "Unknown"
+        
+    try:
+        dob_str = pii_encryption.decrypt(patient.date_of_birth)
+        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+        today = date.today()
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    except:
+        age = None
+        
+    try:
+        phone = pii_encryption.decrypt(patient.phone_number) if patient.phone_number else None
+    except:
+        phone = patient.phone_number
+        
+    last_visit_q = (
+        select(Consultation)
+        .where(
+            Consultation.patient_id == patient.id,
+            Consultation.status == "completed"
+        )
+        .order_by(Consultation.scheduled_at.desc())
+        .limit(1)
+    )
+    lv_res = await db.execute(last_visit_q)
+    last_visit_obj = lv_res.scalar_one_or_none()
+    
+    last_consultation = None
+    if last_visit_obj:
+        last_consultation = {
+            "date": last_visit_obj.scheduled_at.strftime("%Y-%m-%d"),
+            "diagnosis": last_visit_obj.diagnosis
+        }
+
+    return PatientDetailResponse(
+        id=patient.id,
+        mrn=patient.mrn,
+        full_name=full_name,
+        age=age,
+        gender=patient.gender,
+        phone_number=phone,
+        email=patient.email,
+        address=patient.address,
+        emergency_contact=patient.emergency_contact,
+        medical_history=patient.medical_history,
+        allergies=patient.allergies or [],
+        medications=patient.medications or [],
+        latest_vitals=None,
+        last_consultation=last_consultation
+    )
+
+@router.put("/patients/{patient_id}", response_model=Dict)
+async def update_patient_details(
+    patient_id: UUID,
+    patient_in: PatientUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """Update a patient's details as a doctor."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    query = select(Patient).where(
+        Patient.id == patient_id,
+        Patient.organization_id == organization_id,
+        Patient.deleted_at == None
+    )
+    result = await db.execute(query)
+    patient = result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    update_data = patient_in.dict(exclude_unset=True)
+    
+    for field, value in update_data.items():
+        if field == "full_name" and value:
+            patient.full_name = pii_encryption.encrypt(value)
+        elif field == "date_of_birth" and value:
+            patient.date_of_birth = pii_encryption.encrypt(value.strftime("%Y-%m-%d"))
+        elif field == "phone_number" and value:
+            patient.phone_number = pii_encryption.encrypt(value)
+        elif hasattr(patient, field):
+            setattr(patient, field, value)
+            
+    patient.updated_at = datetime.utcnow()
+    await db.commit()
+    
+    return {"message": "Patient updated successfully"}
