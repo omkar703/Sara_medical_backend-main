@@ -39,8 +39,7 @@ class StorageService:
             url = self.client.presigned_put_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
-                expires=timedelta(seconds=expires_in),
-                content_type=content_type
+                expires=timedelta(seconds=expires_in)
             )
             # Robustly swap internal netloc for external netloc using urlparse
             from urllib.parse import urlparse, urlunparse
