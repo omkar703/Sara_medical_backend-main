@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000, http://127.0.0.1:3000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    FRONTEND_URL: str = "http://localhost:3000"  # Used in email links
     
     @property
     def cors_origins_list(self) -> List[str]:

@@ -163,8 +163,11 @@ async def register(
         )
         await db.commit()
     
-    frontend_base_url = settings.cors_origins_list[0]
+    pii_encryption2 = PIIEncryption()
+    decrypted_full_name = pii_encryption2.decrypt(user.full_name)
+    name_parts = decrypted_full_name.split(" ", 1)
 
+<<<<<<< HEAD
     # return RedirectResponse(
     #     url=f"{frontend_base_url}/auth/login",
     #     status_code=status.HTTP_303_SEE_OTHER
@@ -184,6 +187,21 @@ async def register(
         # Social Auth Fields
         google_id=user_data.google_id,
         apple_id=user_data.apple_id
+=======
+    return UserResponse(
+        id=user.id,
+        name=decrypted_full_name,
+        email=user.email,
+        first_name=name_parts[0],
+        last_name=name_parts[1] if len(name_parts) > 1 else "",
+        phone_number=pii_encryption2.decrypt(user.phone_number) if user.phone_number else None,
+        role=user.role,
+        organization_id=user.organization_id,
+        email_verified=user.email_verified,
+        mfa_enabled=user.mfa_enabled,
+        created_at=user.created_at,
+        updated_at=user.updated_at
+>>>>>>> 8d5ce0a (feat: AI chat RAG + SOAP context, calendar tests, auth & storage fixes)
     )
 
 @router.post("/verify-email", response_model=MessageResponse)

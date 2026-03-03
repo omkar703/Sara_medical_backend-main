@@ -61,7 +61,17 @@ class AWSService:
                         if chunk_json.get('type') == 'content_block_delta':
                             yield chunk_json['delta']['text']
         except Exception as e:
-            yield f"Error generating response: {str(e)}"
+            # Fallback: show that context was received even if Bedrock is not configured
+            context_preview = context[:300] + "..." if len(context) > 300 else context
+            if context and context != "No medical document context available for this patient.":
+                yield (
+                    f"[MOCK — Bedrock unavailable: {str(e)[:80]}]\n\n"
+                    f"Document context WAS retrieved and passed:\n\n{context_preview}\n\n"
+                    f"In production with valid AWS credentials, Claude would answer: '{messages[-1]['content']}' "
+                    f"using the above context."
+                )
+            else:
+                yield f"[MOCK — Bedrock unavailable] No document context found. Error: {str(e)[:80]}"
 
     async def extract_text_from_document(self, file_bytes: bytes) -> Dict[str, Any]:
         """

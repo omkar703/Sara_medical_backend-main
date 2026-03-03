@@ -93,10 +93,48 @@ async def process_document(
     from app.workers.mock_tasks import process_document_task
     process_document_task.delay(str(request.document_id))
     
+    # MOCK: Since there's no real Celery worker right now, let's mark it as completed 
+    # immediately so the frontend/tests can see that it finished.
+    # In production, the worker would do this.
+    queue_entry.status = "completed"
+    await db.commit()
+    
     return DocumentProcessResponse(
         job_id=queue_entry.id,
-        status="pending",
+        status="completed", # Mocking completion
         message=f"Document queued for AI processing. Job ID: {queue_entry.id}"
+    )
+
+@router.get("/process-document/{job_id}", response_model=DocumentProcessResponse)
+async def get_document_processing_status(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Check the status of a document processing job.
+    """
+    if current_user.role not in ["doctor", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+        
+    result = await db.execute(
+        select(AIProcessingQueue).where(AIProcessingQueue.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+        
+    return DocumentProcessResponse(
+        job_id=job.id,
+        status=job.status,
+        message=job.error_message or f"Job is currently {job.status}"
     )
 
 

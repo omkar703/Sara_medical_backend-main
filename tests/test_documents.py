@@ -138,6 +138,34 @@ async def test_get_document(
     )
     doc_id = upload_resp.json()["documentId"]
     
+    # Create DataAccessGrant for the doctor to access the patient's records
+    from app.models.data_access_grant import DataAccessGrant
+    from sqlalchemy import insert
+    grant_resp = await async_client.post(
+        "/api/v1/permissions/request",
+        headers={"Authorization": f"Bearer {doctor_token}"},
+        json={"patient_id": patient_id, "reason": "test"}
+    )
+    
+    # Needs to be active to pass check_doctor_access
+    
+    patient_login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "patient@example.com", "password": "PatientPass123"}
+    )
+    patient_token = patient_login.json()["access_token"]
+    
+    # Extract doctor_id from the doctor_token payload
+    from jose import jwt
+    decoded_token = jwt.get_unverified_claims(doctor_token)
+    doctor_id = decoded_token["sub"]
+    
+    await async_client.post(
+        "/api/v1/permissions/grant-doctor-access",
+        headers={"Authorization": f"Bearer {patient_token}"},
+        json={"doctor_id": doctor_id, "ai_access_permission": True}
+    )
+    
     # Get document
     response = await async_client.get(
         f"/api/v1/documents/{doc_id}",

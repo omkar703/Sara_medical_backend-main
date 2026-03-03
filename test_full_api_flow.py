@@ -513,7 +513,8 @@ def main():
         # Use path relative to this script for portability
         script_dir = os.path.dirname(os.path.abspath(__file__))
         filepaths = [
-            os.path.join(script_dir, "medical-records", "png2pdf.pdf")
+            os.path.join(script_dir, "medical-records", "img1.png"),
+            os.path.join(script_dir, "medical-records", "img3.png")
         ]
         all_uploaded = True
         

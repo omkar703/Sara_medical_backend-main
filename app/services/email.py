@@ -66,7 +66,7 @@ async def send_verification_email(to_email: str, verification_token: str, user_n
 """
     from typing import Optional
         
-    verification_url = f"http://localhost:3000/auth/verify-email?token={verification_token}"
+    verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={verification_token}"
     
     html_template = """
     <!DOCTYPE html>
@@ -121,7 +121,7 @@ async def send_password_reset_email(to_email: str, reset_token: str, user_name: 
     """
     Send password reset email
     """
-    reset_url = f"http://localhost:3000/auth/reset-password?token={reset_token}"
+    reset_url = f"{settings.FRONTEND_URL}/auth/reset-password?token={reset_token}"
     
     html_template = """
     <!DOCTYPE html>
@@ -180,7 +180,7 @@ async def send_invitation_email(email: str, token: str, role: str, org_name: str
     """
     Send team invitation email
     """
-    invite_url = f"http://localhost:3000/auth/invite?token={token}"
+    invite_url = f"{settings.FRONTEND_URL}/auth/invite?token={token}"
     
     html_template = """
     <!DOCTYPE html>
