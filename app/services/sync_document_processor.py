@@ -79,8 +79,9 @@ class SyncDocumentProcessor:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".file") as tmp:
                 temp_path = tmp.name
 
+            from app.config import settings
             minio_service.client.fget_object(
-                "saramedico-medical-records",
+                settings.MINIO_BUCKET_DOCUMENTS,
                 document.storage_path,
                 temp_path,
             )

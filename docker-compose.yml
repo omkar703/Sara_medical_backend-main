@@ -112,7 +112,6 @@ services:
     entrypoint: [ "bash", "scripts/entrypoint.sh" ]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - .:/app
       - backend_logs:/app/logs
       - medical_data:/app/medical-records
 
@@ -156,7 +155,6 @@ services:
     entrypoint: [ "bash", "scripts/entrypoint.sh" ]
     command: celery -A app.workers.celery_app worker -P gevent -c 100 --loglevel=info
     volumes:
-      - .:/app
       - medical_data:/app/medical-records
       - backend_logs:/app/logs
 
@@ -190,7 +188,6 @@ services:
     entrypoint: [ "bash", "scripts/entrypoint.sh" ]
     command: celery -A app.workers.celery_app beat --loglevel=info
     volumes:
-      - .:/app
       - backend_logs:/app/logs
       - medical_data:/app/medical-records
 

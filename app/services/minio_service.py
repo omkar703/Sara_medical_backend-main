@@ -85,7 +85,7 @@ class MinIOService:
             url = self.client.presigned_get_object(
                 bucket_name,
                 object_name,
-                expires=timedelta(seconds=expiry_seconds)
+                expires=expiry_seconds
             )
             # Robustly swap internal netloc for external netloc using urlparse
             from urllib.parse import urlparse, urlunparse

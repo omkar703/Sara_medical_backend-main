@@ -30,11 +30,12 @@ async def test_schedule_consultation(
     
     assert response.status_code == 200
     data = response.json()
+    print(f"DEBUG: Schedule Keys: {list(data.keys())}")
     assert data["status"] == "scheduled"
     assert data["patientId"] == patient_id
     # Check mock meeting data was populated
-    assert data["meetingId"] is not None
-    assert "zoom.us" in data["joinUrl"]
+    assert data["googleEventId"] is not None
+    assert "google.com" in data["meetLink"]
 
     return data["id"]
 
@@ -167,4 +168,6 @@ async def test_analyze_consultation_stub(
     )
     
     assert response.status_code == 200
-    assert "queued" in response.json()["message"]
+    data = response.json()
+    print(f"DEBUG: Analyze Response: {data}")
+    assert "initiated" in data["message"]

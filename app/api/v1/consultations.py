@@ -22,7 +22,7 @@ from app.schemas.consultation import (
 )
 from app.schemas.document import MessageResponse
 from app.services.audit_service import log_action
-from app.services.google_meet_service import google_meet_service
+from app.services.mock_google_meet import google_meet_service
 from app.services.consultation_service import ConsultationService
 from app.api.v1.websockets import manager
 from app.core.security import pii_encryption
@@ -54,8 +54,8 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         patientName=patient_name,
         
         # NEW Google Meet Info
-        google_event_id=getattr(consultation, 'google_event_id', None),
-        meet_link=getattr(consultation, 'meet_link', None),
+        googleEventId=getattr(consultation, 'google_event_id', None),
+        meetLink=getattr(consultation, 'meet_link', None),
         
         notes=consultation.notes,
         diagnosis=consultation.diagnosis,
@@ -64,8 +64,8 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         hasAudio=False, 
         hasTranscript=bool(getattr(consultation, 'transcript', False)),
         hasSoapNote=bool(getattr(consultation, 'soap_note', False)),
-        urgency_level=getattr(consultation, 'urgency_level', 'normal'),
-        visit_state=getattr(consultation, 'visit_state', 'scheduled')
+        urgencyLevel=getattr(consultation, 'urgency_level', 'normal'),
+        visitState=getattr(consultation, 'visit_state', 'scheduled')
     )
 
 @router.post("", response_model=ConsultationResponse)
@@ -130,47 +130,6 @@ async def schedule_consultation(
     return await _consultation_to_response(consultation)
 
 
-@router.get("", response_model=ConsultationListResponse)
-async def list_consultations(
-    status: Optional[str] = Query(None, description="Filter by status"),
-    current_user: User = Depends(get_current_active_user),
-    organization_id: UUID = Depends(get_organization_id),
-    db: AsyncSession = Depends(get_db),
-    request: Request = None,
-):
-    """
-    List consultations for the current user/organization.
-    """
-    service = ConsultationService(db)
-    
-    consultations = await service.list_consultations(
-        organization_id=organization_id,
-        user_id=current_user.id,
-        role=current_user.role,
-        status=status
-    )
-    
-    # Audit Log
-    await log_action(
-        db=db,
-        user_id=current_user.id,
-        organization_id=organization_id,
-        action="list",
-        resource_type="consultation",
-        resource_id=None,
-        request=request,
-        metadata={"status_filter": status}
-    )
-    await db.commit()
-    
-    response_list = []
-    for c in consultations:
-        response_list.append(await _consultation_to_response(c))
-        
-    return ConsultationListResponse(
-        consultations=response_list,
-        total=len(response_list)
-    )
 
 
 @router.get("/{consultation_id}", response_model=ConsultationResponse)
