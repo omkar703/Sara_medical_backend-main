@@ -402,47 +402,218 @@ async def get_patient_details_for_dashboard(
 
     # 4. Decrypt & Calculate (The "UI Logic")
     from app.core.security import pii_encryption
-    
+    import json
+
+    def try_decrypt(value):
+        """Attempt to decrypt a value; if it looks like JSON, parse it.
+        If decryption fails, return the original value (best-effort non-destructive)."""
+        if value is None:
+            return None
+        try:
+            decrypted = pii_encryption.decrypt(value)
+            if isinstance(decrypted, str):
+                s = decrypted.strip()
+                if s.startswith("{") or s.startswith("["):
+                    try:
+                        return json.loads(decrypted)
+                    except Exception:
+                        return decrypted
+            return decrypted
+        except Exception:
+            return value
+
     # Decrypt Basics
+    decrypted_name = try_decrypt(patient.full_name)
+    decrypted_phone = try_decrypt(patient.phone_number)
+    dob_str = try_decrypt(patient.date_of_birth)
+
+    # Calculate Age
     try:
-        decrypted_name = pii_encryption.decrypt(patient.full_name)
-        decrypted_phone = pii_encryption.decrypt(patient.phone_number)
-        dob_str = pii_encryption.decrypt(patient.date_of_birth)
-        
-        # Calculate Age
-        dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
-        today = date.today()
-        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    except:
-        decrypted_name = "Error Decrypting"
-        decrypted_phone = None
+        if dob_str:
+            dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+            today = date.today()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        else:
+            age = 0
+    except Exception:
         age = 0
 
-    # Decrypt Medical Data (Lists are stored as JSON)
-    # Assuming 'allergies' and 'medications' are JSONB, they don't need decryption if not encrypted.
-    # If they are encrypted strings, decrypt them. Based on your model, they are JSONB.
+    # Decrypt other PII / medical fields (best-effort)
+    decrypted_email = try_decrypt(patient.email)
+    decrypted_address = try_decrypt(patient.address)
+    decrypted_emergency_contact = try_decrypt(patient.emergency_contact)
+    decrypted_medical_history = try_decrypt(patient.medical_history)
+
+    # Normalize address into fields (street, city, state, postal_code, full)
+    def parse_address(addr):
+        if addr is None:
+            return {
+                "full": None,
+                "street": None,
+                "city": None,
+                "state": None,
+                "postal_code": None,
+            }
+
+        # If already a dict-like structure, attempt to decrypt each field
+        if isinstance(addr, dict):
+            def _get_dec(k, alt=None):
+                v = addr.get(k, None)
+                if v is None and alt:
+                    v = addr.get(alt, None)
+                return try_decrypt(v) if v is not None else None
+
+            full = _get_dec("full", "formatted")
+            street = _get_dec("street", "address_line")
+            city = _get_dec("city")
+            state = _get_dec("state")
+            postal = _get_dec("postal_code", "zip")
+
+            return {
+                "full": full,
+                "street": street,
+                "city": city,
+                "state": state,
+                "postal_code": postal,
+            }
+
+        # If a string: try to decrypt first, then parse JSON or comma-separated
+        if isinstance(addr, str):
+            # try to decrypt the string value
+            decrypted_addr = try_decrypt(addr)
+            # If decryption produced a dict, recurse
+            if isinstance(decrypted_addr, dict):
+                return parse_address(decrypted_addr)
+            # If decryption produced a list, try to use first element if dict-like
+            if isinstance(decrypted_addr, list) and decrypted_addr:
+                first = decrypted_addr[0]
+                if isinstance(first, dict):
+                    return parse_address(first)
+            # If decrypted string looks like JSON, parse
+            if isinstance(decrypted_addr, str):
+                s = decrypted_addr.strip()
+                if s.startswith("{") or s.startswith("["):
+                    try:
+                        parsed = json.loads(s)
+                        if isinstance(parsed, dict):
+                            return parse_address(parsed)
+                        if isinstance(parsed, list) and parsed:
+                            if isinstance(parsed[0], dict):
+                                return parse_address(parsed[0])
+                    except Exception:
+                        pass
+                # fallback: treat decrypted string as comma-separated address
+                parts = [p.strip() for p in decrypted_addr.split(",") if p.strip()]
+            else:
+                # decrypted_addr may be non-str (e.g. numeric) -> stringify fallback
+                parts = [str(decrypted_addr)]
+
+            street = parts[0] if len(parts) > 0 else None
+            city = parts[1] if len(parts) > 1 else None
+            state = parts[2] if len(parts) > 2 else None
+            postal = parts[3] if len(parts) > 3 else None
+            return {
+                "full": decrypted_addr if isinstance(decrypted_addr, str) else str(decrypted_addr),
+                "street": street,
+                "city": city,
+                "state": state,
+                "postal_code": postal,
+            }
+
+        # Fallback for other types
+        return {
+            "full": str(addr),
+            "street": None,
+            "city": None,
+            "state": None,
+            "postal_code": None,
+        }
+
+    address_components = parse_address(decrypted_address)
+
+    # Allergies / medications might already be lists (JSONB) or encrypted strings
+    def normalize_list_field(field):
+        if field is None:
+            return []
+        result = []
+
+        # If field is a list/tuple, decrypt each item
+        if isinstance(field, (list, tuple)):
+            for item in field:
+                d = try_decrypt(item)
+                # if decrypted item is a list/dict, try to normalize further
+                if isinstance(d, list):
+                    for sub in d:
+                        result.append(sub)
+                elif isinstance(d, dict):
+                    result.append(d)
+                elif isinstance(d, str):
+                    s = d.strip()
+                    if s.startswith("[") or s.startswith("{"):
+                        try:
+                            parsed = json.loads(s)
+                            if isinstance(parsed, list):
+                                result.extend(parsed)
+                            else:
+                                result.append(parsed)
+                        except Exception:
+                            result.append(d)
+                    else:
+                        # comma separated inside an item
+                        result.extend([it.strip() for it in d.split(",") if it.strip()])
+                else:
+                    result.append(d)
+            return result
+
+        # If field is not a list: try decrypt + parse
+        decrypted = try_decrypt(field)
+        if isinstance(decrypted, (list, tuple)):
+            return normalize_list_field(list(decrypted))
+        if isinstance(decrypted, str):
+            s = decrypted.strip()
+            if s.startswith("[") or s.startswith("{"):
+                try:
+                    parsed = json.loads(s)
+                    if isinstance(parsed, list):
+                        return parsed
+                    return [parsed]
+                except Exception:
+                    return [decrypted]
+            return [item.strip() for item in decrypted.split(",") if item.strip()]
+        return [decrypted]
     
+    allergies = normalize_list_field(patient.allergies)
+    medications = normalize_list_field(patient.medications)
+    
+    # Decrypt last consultation fields if present
+    last_cons_date = None
+    last_cons_diagnosis = "No history"
+    if last_cons:
+        last_cons_date = last_cons.scheduled_at
+        last_cons_diagnosis = try_decrypt(last_cons.diagnosis) or last_cons.diagnosis or "No history"
+
+    # latest_vitals keep as-is (not encrypted), fallbacks handled below
     return PatientDetailResponse(
         id=patient.id,
         mrn=patient.mrn,
-        full_name=decrypted_name,
+        full_name=decrypted_name or "Unknown",
         age=age,
-        gender=patient.gender,
+        gender=try_decrypt(patient.gender) or patient.gender,
         phone_number=decrypted_phone,
-        email=patient.email, # Email usually plain or hashed in User table, but mapped here if synced
-        address=patient.address,
-        emergency_contact=patient.emergency_contact,
-        
-        medical_history=patient.medical_history, # Decrypt if this field is encrypted in your model
-        allergies=patient.allergies or [],
-        medications=patient.medications or [],
-        
+        email=decrypted_email,
+        address=address_components,  # structured decrypted address
+        emergency_contact=decrypted_emergency_contact,
+
+        medical_history=decrypted_medical_history or patient.medical_history,
+        allergies=allergies,
+        medications=medications,
+
         latest_vitals={
             "bp": latest_bp or "N/A",
             "hr": latest_hr or "N/A"
         },
         last_consultation={
-            "date": last_cons.scheduled_at if last_cons else None,
-            "diagnosis": last_cons.diagnosis if last_cons else "No history"
+            "date": last_cons_date,
+            "diagnosis": last_cons_diagnosis
         }
     )
