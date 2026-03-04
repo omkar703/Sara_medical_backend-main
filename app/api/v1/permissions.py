@@ -19,7 +19,7 @@ router = APIRouter(prefix="/permissions", tags=["Permissions"])
 # Schemas
 class GrantAccessRequest(BaseModel):
     doctor_id: UUID
-    ai_access_permission: bool
+    ai_access_permission: bool = True
     access_level: str = "read_analyze" # read_only, read_analyze
     expiry_days: int = 90
     reason: Optional[str] = None

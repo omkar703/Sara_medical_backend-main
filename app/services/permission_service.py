@@ -129,7 +129,8 @@ class PermissionService:
             patient_id=patient_id,
             grant_reason=reason or "Doctor requested access",
             status="pending", # Default is active in model, we set pending here
-            is_active=True
+            is_active=True,
+            ai_access_permission=True
         )
         self.db.add(grant)
         await self.db.flush()
@@ -143,7 +144,7 @@ class PermissionService:
         grant_reason: Optional[str] = None,
         expires_at: Optional[datetime] = None,
         access_level: str = "read_analyze",
-        ai_access_permission: bool = False
+        ai_access_permission: bool = True
     ) -> DataAccessGrant:
         """
         Create (or Approve) a data access grant.
