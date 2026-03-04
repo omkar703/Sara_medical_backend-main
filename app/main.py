@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,6 +80,18 @@ async def health_check_database(db: AsyncSession = Depends(get_db)) -> Dict[str,
     from app.utils.health import check_database
     
     return await check_database(db)
+
+@app.get("/debug/cors", tags=["Debug"])
+async def debug_cors(request: Request):
+    """Debug endpoint to check CORS configuration"""
+    return {
+        "configured_origins": settings.cors_origins_list,
+        "request_origin": request.headers.get("origin", "No origin header"),
+        "request_host": request.headers.get("host"),
+        "request_referer": request.headers.get("referer"),
+        "environment": settings.APP_ENV,
+        "cors_origins_raw": settings.CORS_ORIGINS
+    }
 
 
 @app.get("/health/redis", tags=["Health"])
