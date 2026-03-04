@@ -167,27 +167,6 @@ async def register(
     decrypted_full_name = pii_encryption2.decrypt(user.full_name)
     name_parts = decrypted_full_name.split(" ", 1)
 
-<<<<<<< HEAD
-    # return RedirectResponse(
-    #     url=f"{frontend_base_url}/auth/login",
-    #     status_code=status.HTTP_303_SEE_OTHER
-    # )
-    return UserResponse(
-        email=user_data.email.lower(),
-        password_hash=password_hash,
-        full_name=encrypted_full_name,
-        phone_number=encrypted_phone,
-        role=user_data.role,
-        organization_id=organization.id,
-        email_verification_token=None,
-        email_verification_expires=None,
-        email_verified=True,
-        mfa_enabled=False,
-        
-        # Social Auth Fields
-        google_id=user_data.google_id,
-        apple_id=user_data.apple_id
-=======
     return UserResponse(
         id=user.id,
         name=decrypted_full_name,
@@ -201,7 +180,6 @@ async def register(
         mfa_enabled=user.mfa_enabled,
         created_at=user.created_at,
         updated_at=user.updated_at
->>>>>>> 8d5ce0a (feat: AI chat RAG + SOAP context, calendar tests, auth & storage fixes)
     )
 
 @router.post("/verify-email", response_model=MessageResponse)
