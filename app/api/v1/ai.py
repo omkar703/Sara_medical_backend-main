@@ -186,17 +186,16 @@ async def chat_doctor(
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Only doctors can use this endpoint")
 
-    # Permission Check
+    # Permission Check — only applies when a patient_id is provided
     if request.patient_id:
         perm_service = PermissionService(db)
         has_perm = await perm_service.check_doctor_access(current_user.id, request.patient_id)
         if not has_perm:
-             raise HTTPException(status_code=403, detail="No access to this patient's data")
+            raise HTTPException(status_code=403, detail="No access to this patient's data")
 
-    # Check for AI permission specifically
-    has_ai_access = await perm_service.check_ai_access(current_user.id, request.patient_id)
-    if not has_ai_access:
-        raise HTTPException(status_code=403, detail="No AI access to this patient's data")
+        has_ai_access = await perm_service.check_ai_access(current_user.id, request.patient_id)
+        if not has_ai_access:
+            raise HTTPException(status_code=403, detail="No AI access to this patient's data")
 
     service = AIChatService(db)
     
