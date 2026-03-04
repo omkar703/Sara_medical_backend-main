@@ -386,16 +386,19 @@ async def verify_mfa(
     
     # Decrypt PII for response
     pii_encryption = PIIEncryption()
-    
+    decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    name_parts = decrypted_full_name.split(" ", 1)
+
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token_value,
         token_type="bearer",
         user=UserResponse(
             id=user.id,
+            name=decrypted_full_name,
             email=user.email,
-            first_name=pii_encryption.decrypt(user.first_name),
-            last_name=pii_encryption.decrypt(user.last_name),
+            first_name=name_parts[0],
+            last_name=name_parts[1] if len(name_parts) > 1 else "",
             phone_number=pii_encryption.decrypt(user.phone_number) if user.phone_number else None,
             role=user.role,
             organization_id=user.organization_id,

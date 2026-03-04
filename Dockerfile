@@ -58,6 +58,9 @@ RUN groupadd -r saramedico && \
 # Copy application code (including tests for now, so they are available in EC2)
 COPY --chown=saramedico:saramedico . .
 
+# Fix Windows CRLF line endings in shell scripts (safe on Linux too)
+RUN sed -i 's/\r//' scripts/*.sh
+
 # Copy and set permissions for scripts
 RUN chmod +x scripts/*.sh
 
