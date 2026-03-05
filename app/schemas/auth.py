@@ -195,3 +195,10 @@ class ErrorResponse(BaseModel):
     """Error response schema"""
     error: str
     detail: Optional[str] = None
+    
+class HospitalRegistrationRequest(BaseModel):
+    organization_name: str = Field(..., description="The name of the hospital/clinic")
+    admin_name: str = Field(..., description="Full name of the hospital administrator")
+    email: EmailStr = Field(..., description="Login email for the hospital admin")
+    phone_number: str = Field(..., description="Contact phone number")
+    password: str = Field(..., min_length=8, description="Secure password")

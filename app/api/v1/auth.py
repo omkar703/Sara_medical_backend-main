@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.schemas.auth import HospitalRegistrationRequest
 import json
 from datetime import date
 from typing import Union
@@ -18,6 +19,7 @@ from app.models.patient import Patient
 from app.models.consultation import Consultation
 from app.schemas.patient import PatientDetailResponse
 from app.services.minio_service import minio_service
+from pydantic import BaseModel, EmailStr, Field
 
 from app.config import settings
 from app.core.deps import get_current_user
@@ -290,7 +292,12 @@ async def login(
     
     # Decrypt PII for response
     pii_encryption = PIIEncryption()
-    decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    try:
+        decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    except Exception:
+        # Fallback if the data is unencrypted or encrypted with an old key
+        decrypted_full_name = user.full_name if user.full_name else "Unknown User"
+        
     name_parts = decrypted_full_name.split(" ", 1)
     
     return LoginResponse(
@@ -851,7 +858,12 @@ async def get_current_user_info(
     # Fallback to standard response if the user is a doctor/admin 
     # (or if the patient record somehow doesn't exist)
     # ==========================================
-    decrypted_full_name = pii_encryption.decrypt(current_user.full_name)
+    try:
+        decrypted_full_name = pii_encryption.decrypt(current_user.full_name)
+    except Exception:
+        # Fallback if the data is unencrypted or encrypted with an old key
+        decrypted_full_name = current_user.full_name if current_user.full_name else "Unknown User"
+        
     name_parts = decrypted_full_name.split(" ", 1)
     
     return UserResponse(
@@ -1050,3 +1062,63 @@ async def google_callback(
 #             updated_at=user.updated_at
 #         )
 #     )
+
+@router.post("/register/hospital", status_code=status.HTTP_201_CREATED)
+async def register_hospital(
+    data: HospitalRegistrationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Registers a new Hospital Organization and its root administrator account.
+    """
+    # 1. Check if the email is already registered
+    existing_user_query = select(User).where(User.email == data.email)
+    result = await db.execute(existing_user_query)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A user with this email already exists."
+        )
+
+    pii_encryption = PIIEncryption()
+
+    try:
+        # 2. Create the Organization
+        new_org = Organization(
+            name=data.organization_name,
+            subscription_tier="free-trial", # Set default tier
+            subscription_status="trialing"
+        )
+        db.add(new_org)
+        await db.flush() # Flush to generate the new_org.id
+
+        # 3. Create the Root Hospital Admin User
+        new_admin = User(
+            email=data.email,
+            password_hash=hash_password(data.password),
+            full_name=pii_encryption.encrypt(data.admin_name),
+            phone_number=pii_encryption.encrypt(data.phone_number),
+            role="hospital", # Assign the root hospital role
+            organization_id=new_org.id,
+            email_verified=False # Standard security practice
+        )
+        db.add(new_admin)
+        
+        # 4. Commit the transaction
+        await db.commit()
+        await db.refresh(new_admin)
+
+        return {
+            "message": "Hospital registered successfully",
+            "organization_id": str(new_org.id),
+            "admin_id": str(new_admin.id),
+            "email": new_admin.email
+        }
+
+    except Exception as e:
+        await db.rollback()
+        print(f"[Hospital Registration Error] {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while registering the hospital. Please try again."
+        )
