@@ -54,14 +54,33 @@ async def create_task(
     # Notify Doctor if task is urgent
     if task.priority == "urgent":
         notification_service = NotificationService(db)
-        await notification_service.create_notification(
-            user_id=task.doctor_id,
-            organization_id=current_user.organization_id,
-            type="urgent_task",
-            title="Urgent Task Assigned",
-            message=f"Urgent task: {task.title}",
-            action_url=f"/tasks/{task.id}"
+        # 1. Notify the specific doctor
+        if task.doctor_id:
+            await notification_service.create_notification(
+                user_id=task.doctor_id,
+                organization_id=current_user.organization_id, # Keep organization_id
+                type="urgent_task",
+                title="URGENT Task Created",
+                message=f"Urgent task assigned: {task.title}",
+                action_url=f"/doctor/tasks/{task.id}"
+            )
+        
+        # 2. Notify hospital/admin users of the organization
+        stmt = select(User).where(
+            User.organization_id == current_user.organization_id,
+            User.role.in_(["hospital", "admin"])
         )
+        org_admins = (await db.execute(stmt)).scalars().all()
+        for admin_user in org_admins:
+            if admin_user.id != current_user.id: # Don't notify self
+                await notification_service.create_notification(
+                    user_id=admin_user.id,
+                    organization_id=current_user.organization_id, # Add organization_id
+                    type="urgent_task",
+                    title=f"URGENT Task in Org: {task.title}",
+                    message=f"A new urgent task was created by {current_user.full_name}",
+                    action_url=f"/doctor/tasks/{task.id}"
+                )
     
     return task
 
