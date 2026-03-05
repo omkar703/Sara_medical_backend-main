@@ -50,11 +50,11 @@ Creates a new blank conversation thread. If `title` is not provided, the databas
 **Sample Output Data (Response Body):**
 ```json
 {
-  "session_id": "6811c91e-0de9-417d-84a7-5114aee11c4f",
-  "title": "Initial Lab Review",
+  "session_id": "8c2726b1-0509-48e2-b61d-c7754ed92313",
+  "title": "Checkup Review",
   "patient_id": "4855ed79-e3bb-4187-82b2-a8bc046113b8",
-  "created_at": "2026-03-05T11:25:35.160123+00:00",
-  "updated_at": "2026-03-05T11:25:35.160123+00:00"
+  "created_at": "2026-03-05T11:35:02.018398+00:00",
+  "updated_at": "2026-03-05T11:35:02.018398+00:00"
 }
 ```
 
@@ -72,14 +72,14 @@ Fetches all past conversation sessions a doctor has had regarding a specific pat
 ```json
 [
   {
-    "session_id": "6811c91e-0de9-417d-84a7-5114aee11c4f",
-    "title": "Allergy Investigation",
-    "updated_at": "2026-03-05T11:28:45.334000+00:00"
+    "session_id": "8c2726b1-0509-48e2-b61d-c7754ed92313",
+    "title": "Checkup Review",
+    "updated_at": "2026-03-05T11:35:08.449171+00:00"
   },
   {
-    "session_id": "11abf922-3c2f-4a11-b1e1-12de9a1b92c4",
-    "title": "Post-op Follow up",
-    "updated_at": "2026-03-04T09:15:00.000000+00:00"
+    "session_id": "6811c91e-0de9-417d-84a7-5114aee11c4f",
+    "title": "Allergy Investigation",
+    "updated_at": "2026-03-05T11:25:45.094765+00:00"
   }
 ]
 ```
@@ -92,30 +92,30 @@ Fetches all past conversation sessions a doctor has had regarding a specific pat
 Loads the entire stored message history of a specific session (useful when opening a historical chat window). 
 
 **Sample Input Data (Path Parameter):**
-- `session_id` = `6811c91e-0de9-417d-84a7-5114aee11c4f`
+- `session_id` = `8c2726b1-0509-48e2-b61d-c7754ed92313`
 
 **Sample Output Data (Response Body):**
 ```json
 {
-  "session_id": "6811c91e-0de9-417d-84a7-5114aee11c4f",
-  "title": "Allergy Investigation",
+  "session_id": "8c2726b1-0509-48e2-b61d-c7754ed92313",
+  "title": "Checkup Review",
   "patient_id": "4855ed79-e3bb-4187-82b2-a8bc046113b8",
   "messages": [
     {
-      "id": "c1f7b0f1-432a-43cf-8302-12a8bdf139a0",
+      "id": "47018177-39de-42dc-8435-2e202f5bc620",
       "role": "doctor",
-      "content": "What allergies does this patient have?",
+      "content": "Please summarize the latest lab results.",
       "sources": null,
       "confidence": null,
-      "created_at": "2026-03-05T11:26:00.000Z"
+      "created_at": "2026-03-05T11:35:02.064923+00:00"
     },
     {
-      "id": "e4f8d2b7-a3bc-42dd-901d-53caefd394b1",
+      "id": "9ecef98f-253e-4283-9ddb-bd30dc15e496",
       "role": "assistant",
-      "content": "**Patient Summary:** Patient admitted for minor surgery...\n**Key Findings:**\n- Allergic to Penicillin.\n**Confidence:** High",
-      "sources": ["IntakeRecord.pdf", "LabResults.pdf"],
+      "content": "**Patient Summary:** Patient shows improved laboratory values between April and November 2025 during treatment for community-acquired pneumonia.\n\n**Key Findings:**\n- Current glucose: 158 (improved from 198)\n- Current CRP: 4.3 (improved from 12.4)\n\n**Clinical Evidence:**\n- [Source: Synthetic_Patient_02_es.pdf | Page: 13]\n\n**Answer:** The most recent labs show improvement in both glucose and CRP levels.\n\n**Confidence:** High",
+      "sources": ["TIER_1_TEXT"],
       "confidence": "high",
-      "created_at": "2026-03-05T11:26:05.000Z"
+      "created_at": "2026-03-05T11:35:02.064923+00:00"
     }
   ]
 }
@@ -131,9 +131,9 @@ Processes the message dynamically, retrieves RAG context, and responds increment
 **Sample Input Data (Request Body):**
 ```json
 {
-  "session_id": "6811c91e-0de9-417d-84a7-5114aee11c4f",
+  "session_id": "8c2726b1-0509-48e2-b61d-c7754ed92313",
   "patient_id": "4855ed79-e3bb-4187-82b2-a8bc046113b8",
-  "message": "When was the last time their blood pressure was recorded?",
+  "message": "Please summarize the latest lab results.",
   "document_id": null 
 }
 ```
@@ -144,18 +144,20 @@ Processes the message dynamically, retrieves RAG context, and responds increment
 
 ```markdown
 **Patient Summary:** 
-Patient has a history of mild hypertension.
+Patient shows improved laboratory values between April and November 2025 during treatment for community-acquired pneumonia.
 
 **Key Findings:**
-- Blood pressure was 120/80 on Jan 14.
-- Heart rate was normal.
+- Current glucose: 158 (improved from 198)
+- Current CRP: 4.3 (improved from 12.4)
+- Previous values from 2025-04-30:
+  * Glucose: 198
+  * CRP: 12.4
 
 **Clinical Evidence:**
-- Routine Checkup (2024.pdf)
-- Intake Form (2023.pdf)
+- [Source: Synthetic_Patient_02_es.pdf | Page: 13] - Contains lab value comparisons
 
-**Answer:**
-Their blood pressure was last recorded as 120/80 on January 14th, 2024.
+**Answer:** 
+The most recent labs from November 2025 show improvement in both glucose and CRP levels compared to April 2025, with glucose decreasing from 198 to 158 and CRP decreasing from 12.4 to 4.3.
 
 **Confidence:** High
 ```
