@@ -1,8 +1,12 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from app.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, case
 from datetime import datetime, timedelta, time, timezone
 import uuid
+from app.services.minio_service import minio_service
 from sqlalchemy.orm import selectinload
 from typing import List
 import hashlib
@@ -28,7 +32,10 @@ from app.schemas.admin import (
     AdminInvitationItem,         # NEW
     AdminOrgAppointmentItem,      # NEW
     AdminAccountUpdate,
-    AdminGlobalAppointmentItem
+    AdminGlobalAppointmentItem,
+    AdminClinicStatsItem,
+    AdminProfileSchema,
+    AdminProfileUpdate
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -332,6 +339,56 @@ async def remove_team_member(
 
     raise HTTPException(404, "Account or Invitation not found")
 
+@router.get("/organizations/stats", response_model=List[AdminClinicStatsItem])
+async def get_clinic_management_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Fetch active staff counts and total patient counts for every organization.
+    Active staff includes non-deleted users with doctor, admin, or hospital roles.
+    """
+    # Use conditional aggregation to count roles per organization efficiently
+    query = (
+        select(
+            Organization.id.label("organization_id"),
+            Organization.name.label("organization_name"),
+            func.count(
+                case(
+                    (
+                        (User.role.in_(["doctor", "admin", "hospital"])) & 
+                        (User.deleted_at.is_(None)), 
+                        User.id
+                    )
+                )
+            ).label("active_staff_count"),
+            func.count(
+                case(
+                    (
+                        User.role == "patient", 
+                        User.id
+                    )
+                )
+            ).label("total_patient_count")
+        )
+        .outerjoin(User, Organization.id == User.organization_id)
+        .group_by(Organization.id, Organization.name)
+        .order_by(Organization.name)
+    )
+    
+    result = await db.execute(query)
+    stats_rows = result.all()
+    
+    # Convert SQLAlchemy Row objects to the Pydantic schema
+    return [
+        AdminClinicStatsItem(
+            organization_id=row.organization_id,
+            organization_name=row.organization_name,
+            active_staff_count=row.active_staff_count,
+            total_patient_count=row.total_patient_count
+        ) for row in stats_rows
+    ]
+
 @router.get("/appointments/all", response_model=List[AdminGlobalAppointmentItem])
 async def get_all_appointments_dump(
     db: AsyncSession = Depends(get_db),
@@ -407,28 +464,103 @@ async def get_admin_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
+    # 1. Fetch Organization Info
     result = await db.execute(select(Organization).where(Organization.id == current_user.organization_id))
     org = result.scalar_one_or_none()
     
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
+    # 2. Prepare Profile Info (Decrypted)
+    try:
+        from app.core.security import pii_encryption
+        display_name = pii_encryption.decrypt(current_user.full_name) if current_user.full_name else "Admin"
+    except Exception:
+        display_name = current_user.full_name or "Admin"
+
+    # Generate a preview URL for the avatar if it exists
+    avatar_preview = None
+    if current_user.avatar_url:
+        avatar_preview = minio_service.generate_presigned_url(
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=current_user.avatar_url
+        )
+
     return AllSettingsResponse(
+        profile=AdminProfileSchema(
+            name=display_name,
+            email=current_user.email,
+            avatar_url=avatar_preview
+        ),
         organization={
             "name": org.name,
-            "org_email": "admin@some.ai", # Mocked or fetch from DB if exists
+            "org_email": "admin@clinic.ai",
             "timezone": getattr(org, "timezone", "UTC"),
             "date_format": getattr(org, "date_format", "DD/MM/YYYY")
         },
-        integrations=[], # Empty list for now
-        developer={
-            "api_key_name": "Standard Key",
-            "webhook_url": "https://api.some.ai/webhook"
-        },
-        backup={
-            "backup_frequency": "daily"
-        }
+        integrations=[],
+        developer={"api_key_name": "Standard Key", "webhook_url": "https://api.clinic.ai/webhook"},
+        backup={"backup_frequency": "daily"}
     )
+
+@router.patch("/settings/profile")
+async def update_admin_profile(
+    profile_in: AdminProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Update the logged-in admin's personal information"""
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+
+    if profile_in.name:
+        current_user.full_name = pii_encryption.encrypt(profile_in.name) if pii_encryption else profile_in.name
+    
+    if profile_in.email:
+        # Check for email conflicts
+        conflict = await db.execute(select(User).where(User.email == profile_in.email, User.id != current_user.id))
+        if conflict.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already in use")
+        current_user.email = profile_in.email
+
+    await db.commit()
+    return {"message": "Profile updated successfully"}
+
+@router.post("/settings/avatar")
+async def upload_admin_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Upload and set the admin's profile picture"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"admin_{current_user.id}_{uuid.uuid4().hex}{file_extension}"
+    
+    file_content = await file.read()
+    success = minio_service.upload_bytes(
+        file_data=file_content,
+        bucket_name=settings.MINIO_BUCKET_AVATARS,
+        object_name=unique_filename,
+        content_type=file.content_type
+    )
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to upload to storage")
+        
+    current_user.avatar_url = unique_filename
+    await db.commit()
+
+    preview_url = minio_service.generate_presigned_url(
+        bucket_name=settings.MINIO_BUCKET_AVATARS,
+        object_name=unique_filename
+    )
+    
+    return {"message": "Avatar updated", "preview_url": preview_url}
 
 @router.patch("/settings/organization", response_model=dict)
 async def update_organization_settings(

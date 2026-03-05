@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, EmailStr
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
@@ -186,3 +186,34 @@ class AdminGlobalAppointmentItem(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class AdminClinicStatsItem(BaseModel):
+    """
+    Statistics for the Clinic Management table.
+    """
+    organization_id: UUID
+    organization_name: str
+    active_staff_count: int
+    total_patient_count: int
+
+    class Config:
+        from_attributes = True
+        
+class AdminProfileSchema(BaseModel):
+    """Admin's own profile information"""
+    name: str
+    email: str
+    avatar_url: Optional[str] = None
+
+class AllSettingsResponse(BaseModel):
+    """Loads all settings forms at once (UPDATED)"""
+    profile: AdminProfileSchema  # NEW
+    organization: dict 
+    integrations: List[dict]
+    developer: dict
+    backup: dict 
+
+class AdminProfileUpdate(BaseModel):
+    """Payload for updating admin's own profile"""
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
