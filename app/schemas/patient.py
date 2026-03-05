@@ -158,6 +158,7 @@ class PatientDetailResponse(BaseModel):
     email: Optional[str] = None
     address: Optional[Dict[str, Any]] = None
     emergency_contact: Optional[Dict[str, Any]] = None
+    avatar_url: Optional[str] = None
     
     # Medical Profile
     medical_history: Optional[str] = None

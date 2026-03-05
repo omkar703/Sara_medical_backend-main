@@ -11,6 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
+from datetime import date
+from typing import Union
+from app.models.patient import Patient
+from app.models.consultation import Consultation
+from app.schemas.patient import PatientDetailResponse
+from app.services.minio_service import minio_service
 
 from app.config import settings
 from app.core.deps import get_current_user
@@ -686,13 +693,164 @@ async def logout(
     return MessageResponse(message="Logged out successfully")
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=Union[PatientDetailResponse, UserResponse])
 async def get_current_user_info(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Get current user information"""
+    """Get current user information. Returns detailed profile if the user is a patient."""
     pii_encryption = PIIEncryption()
     
+    # Check if the logged-in user is a patient
+    user_role_str = str(current_user.role).split('.')[-1] if hasattr(current_user.role, 'value') else str(current_user.role)
+    
+    if user_role_str == "patient":
+        # Fetch the full Patient record
+        query = select(Patient).where(
+            Patient.id == current_user.id,
+            Patient.deleted_at == None
+        )
+        result = await db.execute(query)
+        patient = result.scalar_one_or_none()
+        
+        if patient:
+            # 1. Decrypt Basic Info
+            try:
+                full_name = pii_encryption.decrypt(patient.full_name)
+            except:
+                full_name = patient.full_name or "Unknown"
+                
+            try:
+                dob_str = pii_encryption.decrypt(patient.date_of_birth)
+                dob = datetime.strptime(dob_str, "%Y-%m-%d").date()
+                today = date.today()
+                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            except:
+                dob_str = None
+                age = None
+                
+            try:
+                phone = pii_encryption.decrypt(patient.phone_number) if patient.phone_number else None
+            except:
+                phone = patient.phone_number
+
+            try:
+                email = pii_encryption.decrypt(patient.email) if patient.email else None
+            except:
+                email = patient.email
+
+            try:
+                medical_history = pii_encryption.decrypt(patient.medical_history) if patient.medical_history else None
+            except:
+                medical_history = patient.medical_history
+
+            # 2. Decrypt JSON Dictionaries (Address, Emergency Contact)
+            address_dict = None
+            if patient.address:
+                addr_data = patient.address
+                if isinstance(addr_data, str):
+                    try:
+                        addr_data = json.loads(addr_data)
+                    except Exception:
+                        addr_data = {}
+                
+                if isinstance(addr_data, dict):
+                    address_dict = {
+                        k: pii_encryption.decrypt(v) if isinstance(v, str) else v 
+                        for k, v in addr_data.items()
+                    }
+
+            emergency_contact_dict = None
+            if patient.emergency_contact:
+                ec_data = patient.emergency_contact
+                if isinstance(ec_data, str):
+                    try:
+                        ec_data = json.loads(ec_data)
+                    except Exception:
+                        ec_data = {}
+                        
+                if isinstance(ec_data, dict):
+                    emergency_contact_dict = {
+                        k: pii_encryption.decrypt(v) if isinstance(v, str) else v
+                        for k, v in ec_data.items()
+                    }
+
+            # 3. Decrypt Arrays (Allergies, Medications)
+            allergies_list = []
+            if patient.allergies:
+                alg_data = patient.allergies
+                if isinstance(alg_data, str):
+                    try:
+                        alg_data = json.loads(alg_data)
+                    except Exception:
+                        alg_data = []
+                
+                if isinstance(alg_data, list):
+                    allergies_list = [pii_encryption.decrypt(i) for i in alg_data]
+                
+            medications_list = []
+            if patient.medications:
+                med_data = patient.medications
+                if isinstance(med_data, str):
+                    try:
+                        med_data = json.loads(med_data)
+                    except Exception:
+                        med_data = []
+                        
+                if isinstance(med_data, list):
+                    medications_list = [pii_encryption.decrypt(i) for i in med_data]
+                    
+            # 4. Last Consultation logic
+            last_visit_q = (
+                select(Consultation)
+                .where(
+                    Consultation.patient_id == patient.id,
+                    Consultation.status == "completed"
+                )
+                .order_by(Consultation.scheduled_at.desc())
+                .limit(1)
+            )
+            lv_res = await db.execute(last_visit_q)
+            last_visit_obj = lv_res.scalar_one_or_none()
+            
+            last_consultation = None
+            if last_visit_obj:
+                last_consultation = {
+                    "date": last_visit_obj.scheduled_at.strftime("%Y-%m-%d"),
+                    "diagnosis": last_visit_obj.diagnosis
+                }
+
+            # 5. Fetch temporary Avatar URL from the current user
+            avatar_link = None
+            if current_user.avatar_url:
+                avatar_link = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=current_user.avatar_url
+                )
+
+            return PatientDetailResponse(
+                id=patient.id,
+                mrn=patient.mrn,
+                full_name=full_name,
+                age=age,
+                date_of_birth=dob_str,
+                gender=patient.gender,
+                avatar_url=avatar_link,
+                phone_number=phone,
+                email=email,
+                address=address_dict,
+                emergency_contact=emergency_contact_dict,
+                medical_history=medical_history,
+                allergies=allergies_list,
+                medications=medications_list,
+                latest_vitals=None,
+                last_consultation=last_consultation
+            )
+
+    # ==========================================
+    # Fallback to standard response if the user is a doctor/admin 
+    # (or if the patient record somehow doesn't exist)
+    # ==========================================
     decrypted_full_name = pii_encryption.decrypt(current_user.full_name)
     name_parts = decrypted_full_name.split(" ", 1)
     

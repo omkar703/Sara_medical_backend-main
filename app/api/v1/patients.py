@@ -285,6 +285,10 @@ async def get_patient_health_metrics(
     Fetch patient's health metrics (Vitals like BP, Heart Rate).
     Returns the most recent metrics first.
     """
+    # SECURITY FIX: Ensure patients can only view their own vitals
+    if current_user.role == "patient" and current_user.id != patient_id:
+        raise HTTPException(status_code=403, detail="Access denied: You can only view your own health metrics.")
+
     # 1. Verify Patient Exists & Access
     service = PatientService(db)
     patient = await service.get_patient(patient_id, organization_id)

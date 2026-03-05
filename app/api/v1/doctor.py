@@ -29,6 +29,8 @@ from app.schemas.recent_patients import RecentPatientResponse
 from typing import List
 from app.schemas.consultation import DoctorConsultationHistoryRow
 from app.core.security import pii_encryption
+from app.models.health_metric import HealthMetric
+from app.schemas.health_metric import HealthMetricCreate, HealthMetricResponse
 
 from sqlalchemy import cast, String, or_
 import json
@@ -48,20 +50,24 @@ class DoctorPatientListItem(BaseModel):
 
     class Config:
         populate_by_name = True
+        
+class DoctorPatientListResponse(BaseModel):
+    all_patients: List[DoctorPatientListItem]
+    recent_patients: List[DoctorPatientListItem]
+    
 
-@router.get("/patients", response_model=List[DoctorPatientListItem])
+@router.get("/patients", response_model=DoctorPatientListResponse)
 async def get_doctor_patients(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     organization_id: UUID = Depends(get_organization_id)
 ):
     """
-    Retrieve patients associated with the doctor's organization.
-    Assumes doctors see all patients in their clinic/organization.
+    Retrieve all patients associated with the doctor's organization, 
+    as well as a separate list of recently visited patients.
     """
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Only doctors can access this directory")
-
 
     # Fetch patients and their latest completed consultation date in a single query
     lv_subquery = (
@@ -83,7 +89,9 @@ async def get_doctor_patients(
     result = await db.execute(query)
     rows = result.all()
 
-    response = []
+    all_patients = []
+    recent_patients_with_dates = []
+
     for p, last_visit_at in rows:
         # Decrypt fields
         try:
@@ -95,17 +103,33 @@ async def get_doctor_patients(
 
         last_visit_str = last_visit_at.strftime("%d/%m/%y") if last_visit_at else "No visits"
 
-        response.append(DoctorPatientListItem(
+        item = DoctorPatientListItem(
             id=p.id,
             name=name,
-            statusTag="Analysis Ready", # Dummy tag as seen in UI
+            statusTag="Analysis Ready",
             dob=dob,
             mrn=p.mrn,
             lastVisit=last_visit_str,
             problem=p.medical_history or "General"
-        ))
+        )
+        
+        all_patients.append(item)
+        
+        # If the patient has a recorded visit, keep track of them for the 'recent' list
+        if last_visit_at:
+            recent_patients_with_dates.append((item, last_visit_at))
 
-    return response
+    # Sort the recent patients list by their actual datetime object (newest first)
+    recent_patients_with_dates.sort(key=lambda x: x[1], reverse=True)
+    
+    # Extract just the Pydantic models (you can limit this to the top 10 if you want using [:10])
+    recent_patients = [item for item, date in recent_patients_with_dates]
+
+    # Return the combined response
+    return DoctorPatientListResponse(
+        all_patients=all_patients,
+        recent_patients=recent_patients
+    )
 
 @router.get("/appointments", response_model=List[AppointmentResponse])
 async def get_doctor_appointments(
@@ -472,10 +496,12 @@ class DoctorProfileResponse(BaseModel):
     specialty: Optional[str] = None
     license_number: Optional[str] = None
     organization_id: Optional[UUID] = None
+    avatar_url: Optional[str] = None
     
     class Config:
         from_attributes = True
 
+@router.get("/me", response_model=DoctorProfileResponse)
 @router.get("/me", response_model=DoctorProfileResponse)
 async def get_doctor_me(
     current_user: User = Depends(get_current_user)
@@ -487,6 +513,7 @@ async def get_doctor_me(
     full_name = current_user.full_name
     license_no = current_user.license_number
     
+    from app.core.security import pii_encryption
     try:
         full_name = pii_encryption.decrypt(current_user.full_name)
     except:
@@ -498,6 +525,16 @@ async def get_doctor_me(
         except:
             pass
 
+    # Generate the temporary 15-minute VIP pass for the avatar
+    avatar_link = None
+    if current_user.avatar_url:
+        from app.services.minio_service import minio_service
+        from app.config import settings
+        avatar_link = minio_service.generate_presigned_url(
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=current_user.avatar_url
+        )
+
     return DoctorProfileResponse(
         id=current_user.id,
         full_name=full_name,
@@ -505,7 +542,8 @@ async def get_doctor_me(
         role=current_user.role,
         specialty=current_user.specialty,
         license_number=license_no,
-        organization_id=current_user.organization_id
+        organization_id=current_user.organization_id,
+        avatar_url=avatar_link  # Include the generated link
     )
 
 
@@ -641,6 +679,21 @@ async def get_single_patient(
             "diagnosis": last_visit_obj.diagnosis
         }
 
+    # 5. Fetch Avatar URL from the User table
+    # Since Patient ID == User ID, we can look them up directly
+    user_query = select(User).where(User.id == patient.id)
+    user_result = await db.execute(user_query)
+    patient_user = user_result.scalar_one_or_none()
+
+    avatar_link = None
+    if patient_user and patient_user.avatar_url:
+        from app.services.minio_service import minio_service
+        from app.config import settings
+        avatar_link = minio_service.generate_presigned_url(
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=patient_user.avatar_url
+        )
+
     return PatientDetailResponse(
         id=patient.id,
         mrn=patient.mrn,
@@ -648,6 +701,7 @@ async def get_single_patient(
         age=age,
         date_of_birth=dob_str,
         gender=patient.gender,
+        avatar_url=avatar_link,  # Send the generated link to the frontend
         phone_number=phone,
         email=email,
         address=address_dict,
@@ -731,3 +785,80 @@ async def update_patient_details(
     await db.commit()
     
     return {"message": "Patient updated successfully"}
+
+@router.post("/patients/{patient_id}/health", response_model=HealthMetricResponse)
+async def add_patient_health_metric(
+    patient_id: UUID,
+    metric_in: HealthMetricCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """Add a new health metric (vital sign) for a patient."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    # Verify patient exists and belongs to the doctor's organization
+    query = select(Patient).where(
+        Patient.id == patient_id,
+        Patient.organization_id == organization_id,
+        Patient.deleted_at == None
+    )
+    result = await db.execute(query)
+    patient = result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    # Add new metric
+    new_metric = HealthMetric(
+        patient_id=patient.id,
+        metric_type=metric_in.metric_type,
+        value=metric_in.value,
+        unit=metric_in.unit,
+        notes=metric_in.notes,
+        recorded_at=metric_in.recorded_at
+    )
+    
+    db.add(new_metric)
+    await db.commit()
+    await db.refresh(new_metric)
+    
+    return new_metric
+
+
+@router.put("/patients/{patient_id}/health/{metric_id}", response_model=HealthMetricResponse)
+async def edit_patient_health_metric(
+    patient_id: UUID,
+    metric_id: UUID,
+    metric_in: HealthMetricCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """Edit an existing health metric for a patient (e.g. fixing a typo)."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    # Verify the specific metric exists and belongs to the patient
+    query = select(HealthMetric).where(
+        HealthMetric.id == metric_id,
+        HealthMetric.patient_id == patient_id
+    )
+    result = await db.execute(query)
+    metric = result.scalar_one_or_none()
+    
+    if not metric:
+        raise HTTPException(status_code=404, detail="Health metric not found")
+        
+    # Update fields
+    metric.metric_type = metric_in.metric_type
+    metric.value = metric_in.value
+    metric.unit = metric_in.unit
+    metric.notes = metric_in.notes
+    metric.recorded_at = metric_in.recorded_at
+    
+    await db.commit()
+    await db.refresh(metric)
+    
+    return metric
