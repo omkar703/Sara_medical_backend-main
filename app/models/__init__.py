@@ -18,12 +18,14 @@ from app.models.health_metric import HealthMetric
 from app.models.chat_history import ChatHistory
 from app.models.data_access_grant import DataAccessGrant
 from app.models.chat_session import ChatSession, ChatMessage
+from app.models.notification import Notification
 
 __all__ = [
     "Organization", "User", "RefreshToken", "Patient", "AuditLog", 
     "Document", "Consultation", "Task", "Appointment", "ActivityLog", 
     "CalendarEvent", "RecentDoctor", "RecentPatient", "HealthMetric", 
-    "ChatHistory", "DataAccessGrant", "ChatSession", "ChatMessage"
+    "ChatHistory", "DataAccessGrant", "ChatSession", "ChatMessage",
+    "Notification"
 ]
 
 # Future imports:

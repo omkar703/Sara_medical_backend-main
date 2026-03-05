@@ -1,5 +1,4 @@
-"""WebSocket Endpoint for Real-time Signaling"""
-
+import logging
 from collections import defaultdict
 from typing import Dict, List
 from uuid import UUID
@@ -85,7 +84,6 @@ async def websocket_endpoint(
             manager.disconnect(websocket, organization_id, user_id)
             
     except Exception as e:
-        print(f"WebSocket Error: {e}")
         # Try to close if not already closed
         try:
             await websocket.close(code=4000)

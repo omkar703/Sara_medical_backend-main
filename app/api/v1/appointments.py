@@ -18,6 +18,7 @@ from app.schemas.appointment import (
     AppointmentApproval
 )
 from app.services.zoom_service import zoom_service
+from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
@@ -60,6 +61,16 @@ async def create_appointment(
     
     await db.commit()
     await db.refresh(appointment)
+    
+    # Notify Doctor
+    notification_service = NotificationService(db)
+    await notification_service.create_notification(
+        user_id=appointment.doctor_id,
+        type="appointment_requested",
+        title="New Appointment Request",
+        message=f"A patient has requested an appointment for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
+        action_url=f"/appointments/{appointment.id}"
+    )
     
     return appointment
 
@@ -179,6 +190,17 @@ async def _do_update_appointment_status(
     await db.commit()
     await db.refresh(appointment)
     
+    # Notify Patient of cancellation/decline
+    if status_update.status in ["declined", "cancelled"]:
+        notification_service = NotificationService(db)
+        await notification_service.create_notification(
+            user_id=appointment.patient_id,
+            type=f"appointment_{status_update.status}",
+            title=f"Appointment {status_update.status.capitalize()}",
+            message=f"Your appointment scheduled for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')} has been {status_update.status}.",
+            action_url=f"/appointments/{appointment.id}"
+        )
+    
     return appointment
 
 
@@ -251,6 +273,16 @@ async def approve_appointment(
     
     await db.commit()
     await db.refresh(appointment)
+    
+    # Notify Patient of approval
+    notification_service = NotificationService(db)
+    await notification_service.create_notification(
+        user_id=appointment.patient_id,
+        type="appointment_approved",
+        title="Appointment Approved",
+        message=f"Your appointment has been approved for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
+        action_url=f"/appointments/{appointment.id}"
+    )
     
     # Create Activity Log for approval
     from app.models.activity_log import ActivityLog

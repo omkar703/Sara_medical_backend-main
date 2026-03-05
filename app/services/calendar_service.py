@@ -9,6 +9,7 @@ from app.models.calendar_event import CalendarEvent
 from app.models.appointment import Appointment
 from app.models.task import Task
 from app.schemas.calendar import CalendarEventCreate
+from app.services.notification_service import NotificationService
 
 
 class CalendarService:
@@ -114,6 +115,17 @@ class CalendarService:
         self.db.add(event)
         await self.db.flush()
         await self.db.refresh(event)
+        
+        # Notify User of custom event
+        notification_service = NotificationService(self.db)
+        await notification_service.create_notification(
+            user_id=user_id,
+            organization_id=organization_id,
+            type="calendar_event",
+            title="Calendar Event Created",
+            message=f"Event '{event.title}' has been added to your calendar.",
+            action_url=f"/calendar?date={event.start_time.strftime('%Y-%m-%d')}"
+        )
         
         return event
     

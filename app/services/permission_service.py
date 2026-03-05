@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.data_access_grant import DataAccessGrant
 from app.models.appointment import Appointment
+from app.services.notification_service import NotificationService
 
 
 class PermissionService:
@@ -134,6 +135,17 @@ class PermissionService:
         )
         self.db.add(grant)
         await self.db.flush()
+        
+        # Notify Patient of access request
+        notification_service = NotificationService(self.db)
+        await notification_service.create_notification(
+            user_id=patient_id,
+            type="access_requested",
+            title="Data Access Request",
+            message="A doctor has requested access to your medical records for AI analysis.",
+            action_url="/settings/permissions"
+        )
+        
         return grant
 
     async def create_access_grant(
@@ -182,6 +194,16 @@ class PermissionService:
         
         self.db.add(grant)
         await self.db.flush()
+        
+        # Notify Doctor of access grant
+        notification_service = NotificationService(self.db)
+        await notification_service.create_notification(
+            user_id=doctor_id,
+            type="access_granted",
+            title="Access Granted",
+            message="You have been granted access to a patient's medical records.",
+            action_url="/settings/permissions"
+        )
         
         return grant
     
