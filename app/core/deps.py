@@ -1,5 +1,4 @@
-"""FastAPI Dependencies for authentication and authorization"""
-
+import logging
 from typing import Optional
 from uuid import UUID
 
@@ -174,17 +173,18 @@ async def get_current_active_user_ws(token: str, db: AsyncSession = None) -> Use
         if not payload:
             return None
             
-        # Assuming TokenPayload is a simple object that can be created from a dict
-        # If TokenPayload is a Pydantic model, it should be imported from app.core.security
-        TokenPayload = SimpleNamespace # Using SimpleNamespace as a placeholder for TokenPayload
-        token_data = TokenPayload(**payload)
+        payload = decode_token(token)
+        if not payload:
+            return None
+            
+        from types import SimpleNamespace
+        token_data = SimpleNamespace(**payload)
         
         user_result = await db.execute(select(User).where(User.id == getattr(token_data, "sub", None)))
         user = user_result.scalar_one_or_none()
         
-        # The original get_current_active_user checks email_verified, but this WS version checks is_active
-        # Assuming 'is_active' is the intended check for WS context.
-        if not user or not user.is_active:
+        # Check if user exists and is not soft-deleted
+        if not user or user.deleted_at is not None:
             return None
             
         return user

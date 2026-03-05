@@ -12,6 +12,7 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/doctor/tasks", tags=["Doctor Tasks"])
 
@@ -49,6 +50,19 @@ async def create_task(
     
     await db.commit()
     await db.refresh(task)
+    
+    # Notify Doctor if task is urgent
+    if task.priority == "urgent":
+        notification_service = NotificationService(db)
+        await notification_service.create_notification(
+            user_id=task.doctor_id,
+            organization_id=current_user.organization_id,
+            type="urgent_task",
+            title="Urgent Task Assigned",
+            message=f"Urgent task: {task.title}",
+            action_url=f"/tasks/{task.id}"
+        )
+    
     return task
 
 @router.get("", response_model=List[TaskResponse])
