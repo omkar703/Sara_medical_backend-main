@@ -121,7 +121,8 @@ class GoogleMeetService:
         event = self.calendar_service.events().insert(
             calendarId='primary', 
             body=event_body, 
-            conferenceDataVersion=1
+            conferenceDataVersion=1,
+            sendUpdates="all"
         ).execute()
 
         # Extract the ID and the Meet Link from the response
