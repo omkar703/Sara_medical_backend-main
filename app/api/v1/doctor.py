@@ -31,6 +31,8 @@ from app.schemas.consultation import DoctorConsultationHistoryRow
 from app.core.security import pii_encryption
 
 from sqlalchemy import cast, String, or_
+import json
+import re
 from app.schemas.consultation import ConsultationSearchRow
 
 router = APIRouter(prefix="/doctor", tags=["Doctor Dashboard"])
@@ -531,6 +533,7 @@ async def get_single_patient(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
+    # 1. Decrypt Basic Info
     try:
         full_name = pii_encryption.decrypt(patient.full_name)
     except:
@@ -542,13 +545,83 @@ async def get_single_patient(
         today = date.today()
         age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     except:
+        dob_str = None
         age = None
         
     try:
         phone = pii_encryption.decrypt(patient.phone_number) if patient.phone_number else None
     except:
         phone = patient.phone_number
+
+    try:
+        email = pii_encryption.decrypt(patient.email) if patient.email else None
+    except:
+        email = patient.email
+
+    try:
+        medical_history = pii_encryption.decrypt(patient.medical_history) if patient.medical_history else None
+    except:
+        medical_history = patient.medical_history
+
+    # 2. Decrypt JSON Dictionaries (Address, Emergency Contact)
+    address_dict = None
+    if patient.address:
+        addr_data = patient.address
+        # Parse if it came back as a string
+        if isinstance(addr_data, str):
+            try:
+                addr_data = json.loads(addr_data)
+            except Exception:
+                addr_data = {}
         
+        if isinstance(addr_data, dict):
+            address_dict = {
+                k: pii_encryption.decrypt(v) if isinstance(v, str) else v 
+                for k, v in addr_data.items()
+            }
+
+    emergency_contact_dict = None
+    if patient.emergency_contact:
+        ec_data = patient.emergency_contact
+        # Parse if it came back as a string
+        if isinstance(ec_data, str):
+            try:
+                ec_data = json.loads(ec_data)
+            except Exception:
+                ec_data = {}
+                
+        if isinstance(ec_data, dict):
+            emergency_contact_dict = {
+                k: pii_encryption.decrypt(v) if isinstance(v, str) else v
+                for k, v in ec_data.items()
+            }
+
+    # 3. Decrypt Arrays (Allergies, Medications)
+    allergies_list = []
+    if patient.allergies:
+        alg_data = patient.allergies
+        if isinstance(alg_data, str):
+            try:
+                alg_data = json.loads(alg_data)
+            except Exception:
+                alg_data = []
+        
+        if isinstance(alg_data, list):
+            allergies_list = [pii_encryption.decrypt(i) for i in alg_data]
+        
+    medications_list = []
+    if patient.medications:
+        med_data = patient.medications
+        if isinstance(med_data, str):
+            try:
+                med_data = json.loads(med_data)
+            except Exception:
+                med_data = []
+                
+        if isinstance(med_data, list):
+            medications_list = [pii_encryption.decrypt(i) for i in med_data]
+        
+    # 4. Last Consultation logic
     last_visit_q = (
         select(Consultation)
         .where(
@@ -573,14 +646,15 @@ async def get_single_patient(
         mrn=patient.mrn,
         full_name=full_name,
         age=age,
+        date_of_birth=dob_str,
         gender=patient.gender,
         phone_number=phone,
-        email=patient.email,
-        address=patient.address,
-        emergency_contact=patient.emergency_contact,
-        medical_history=patient.medical_history,
-        allergies=patient.allergies or [],
-        medications=patient.medications or [],
+        email=email,
+        address=address_dict,
+        emergency_contact=emergency_contact_dict,
+        medical_history=medical_history,
+        allergies=allergies_list,
+        medications=medications_list,
         latest_vitals=None,
         last_consultation=last_consultation
     )
@@ -608,15 +682,48 @@ async def update_patient_details(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
+    # Convert the Pydantic model to a dict, excluding fields the user didn't send
     update_data = patient_in.dict(exclude_unset=True)
     
     for field, value in update_data.items():
-        if field == "full_name" and value:
+        # Handle explicitly nulling out a field
+        if value is None:
+            if hasattr(patient, field):
+                setattr(patient, field, None)
+            continue
+
+        # Encrypt standard string/date fields
+        if field == "full_name":
             patient.full_name = pii_encryption.encrypt(value)
-        elif field == "date_of_birth" and value:
+        elif field == "date_of_birth":
             patient.date_of_birth = pii_encryption.encrypt(value.strftime("%Y-%m-%d"))
-        elif field == "phone_number" and value:
+        elif field == "phone_number":
             patient.phone_number = pii_encryption.encrypt(value)
+        elif field == "email":
+            patient.email = pii_encryption.encrypt(value)
+        elif field == "medical_history":
+            patient.medical_history = pii_encryption.encrypt(value)
+            
+        # Encrypt JSON Dictionary fields
+        elif field == "address" and isinstance(value, dict):
+            patient.address = {
+                k: pii_encryption.encrypt(str(v)) if v else v 
+                for k, v in value.items()
+            }
+
+        elif field == "emergency_contact" and isinstance(value, dict):
+            patient.emergency_contact = {
+                k: pii_encryption.encrypt(str(v)) if v else v
+                for k, v in value.items()
+            }
+            
+        # Encrypt Array fields
+        elif field == "allergies" and isinstance(value, list):
+            patient.allergies = [pii_encryption.encrypt(str(item)) for item in value]
+        elif field == "medications" and isinstance(value, list):
+            patient.medications = [pii_encryption.encrypt(str(item)) for item in value]
+            
+        # Handle unencrypted fields (like gender)
         elif hasattr(patient, field):
             setattr(patient, field, value)
             

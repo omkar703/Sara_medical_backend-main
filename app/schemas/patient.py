@@ -151,7 +151,8 @@ class PatientDetailResponse(BaseModel):
     id: UUID
     mrn: str
     full_name: str
-    age: Optional[int] = None # Calculated field
+    age: Optional[int] = None
+    date_of_birth: Optional[str] = None # Add this line
     gender: Optional[str] = None
     phone_number: Optional[str] = None
     email: Optional[str] = None
