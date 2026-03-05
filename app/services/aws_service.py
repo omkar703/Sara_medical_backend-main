@@ -26,18 +26,36 @@ class AWSService:
             aws_secret_access_key=self.secret_key
         )
 
-    async def generate_chat_stream(self, messages: List[Dict[str, str]], context: str):
-        """Streaming generator for chat responses."""
+    async def generate_chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        context: str,
+        system_prompt_override: Optional[str] = None,
+    ):
+        """
+        Streaming generator for chat responses.
+
+        Args:
+            messages: Claude-formatted message list [{role, content}]
+            context: Medical context text appended to the system prompt
+            system_prompt_override: If provided, replaces the default system prompt entirely.
+                                    The context is still appended at the end.
+        """
         client = self._get_client("bedrock-runtime")
-        
-        system_prompt = "You are a helpful medical assistant. Use the provided context to answer questions accurately."
+
+        # Use override if supplied (e.g. guardrail prompt), else generic default
+        if system_prompt_override:
+            system_prompt = system_prompt_override
+        else:
+            system_prompt = "You are a helpful medical assistant. Use the provided context to answer questions accurately."
+
         if context:
-            system_prompt += f"\n\nCONTEXT:\n{context}"
-            
-        # Format messages for Claude
+            system_prompt += f"\n\n--- PATIENT MEDICAL CONTEXT ---\n{context}\n--- END OF CONTEXT ---"
+
+        # Format messages for Claude (normalize roles)
         formatted_messages = []
         for m in messages:
-            role = "assistant" if m["role"] == "ai" or m["role"] == "assistant" else "user"
+            role = "assistant" if m["role"] in ("ai", "assistant") else "user"
             formatted_messages.append({"role": role, "content": m["content"]})
             
         body = json.dumps({

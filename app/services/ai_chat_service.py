@@ -1,7 +1,7 @@
-"""AI Chat Service - Handles RAG (Retrieval Augmented Generation) and Chat Logic"""
+"""AI Chat Service - Session-aware RAG with Medical Guardrails"""
 
 import json
-from typing import List, AsyncGenerator
+from typing import List, AsyncGenerator, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,51 @@ from sqlalchemy import select, and_
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.consultation import Consultation
-from app.models.data_access_grant import DataAccessGrant
-from app.models.chat_history import ChatHistory
-from app.services.aws_service import aws_service
 from app.models.user import User
-import uuid
+from app.services.aws_service import aws_service
+
+
+# ── Constants ──────────────────────────────────────────────────────────────────
+
+MAX_CHUNKS = 5           # Top-N document chunks to pass to LLM
+MAX_SOAP_NOTES = 3       # Top-N SOAP notes to include
+MAX_HISTORY_MESSAGES = 10  # Last-N messages from chat session
+
+# Confidence thresholds
+HIGH_CONFIDENCE_THRESHOLD = 3   # 3+ chunks → High
+LOW_CONFIDENCE_THRESHOLD = 1    # 0 chunks → skip LLM, return fallback
+
+
+# ── Medical Guardrail System Prompt ───────────────────────────────────────────
+
+MEDICAL_SYSTEM_PROMPT = """\
+You are a clinical AI assistant helping a licensed physician make informed decisions.
+
+CRITICAL RULES — STRICTLY ENFORCE:
+1. Only answer using the medical context provided below. Do not use general medical knowledge.
+2. NEVER invent, assume, or extrapolate medical information not present in the patient's records.
+3. If the records do not contain enough information to answer confidently, respond ONLY with:
+   "I cannot find sufficient information in this patient's medical records to answer this question."
+4. Do not make diagnoses that are not explicitly supported by retrieved evidence.
+5. Do not recommend medications unless they appear verbatim in the retrieved records.
+6. Always cite the source document for each clinical claim.
+
+MANDATORY RESPONSE FORMAT (follow this exactly):
+**Patient Summary:** (One sentence summary of the relevant medical context)
+**Key Findings:** (Bullet list of directly relevant clinical facts from the records)
+**Clinical Evidence:** (List the source documents you used, with document name)
+**Answer:** (Direct, concise answer to the doctor's question)
+**Confidence:** High | Medium | Low
+"""
+
+FALLBACK_NO_CONTEXT = (
+    "I cannot find sufficient information in this patient's medical records to answer this question. "
+    "Please ensure the relevant documents have been uploaded and processed."
+)
+
+FALLBACK_BEDROCK_UNAVAILABLE = (
+    "The AI clinical assistant is temporarily unavailable. Please try again later."
+)
 
 
 class AIChatService:
@@ -23,8 +63,15 @@ class AIChatService:
 
     # ── Private Helpers ────────────────────────────────────────────────────────
 
-    async def _fetch_chunk_context(self, patient_id: UUID, document_id: UUID = None) -> tuple:
-        """Fetch document chunks. Returns (chunks list, formatted context string)."""
+    async def _fetch_chunk_context(
+        self,
+        patient_id: UUID,
+        document_id: Optional[UUID] = None,
+    ) -> tuple[List[Chunk], str]:
+        """
+        Fetch top MAX_CHUNKS document chunks for RAG.
+        Returns (chunks list, formatted context string with source attribution).
+        """
         chunks = []
 
         if document_id:
@@ -32,7 +79,7 @@ class AIChatService:
                 select(Chunk)
                 .where(Chunk.document_id == document_id)
                 .order_by(Chunk.page_number.asc())
-                .limit(10)
+                .limit(MAX_CHUNKS)
             )
             result = await self.db.execute(stmt)
             chunks = result.scalars().all()
@@ -42,26 +89,34 @@ class AIChatService:
                 select(Chunk)
                 .where(Chunk.patient_id == patient_id)
                 .order_by(Chunk.created_at.desc())
-                .limit(10)
+                .limit(MAX_CHUNKS)
             )
             result = await self.db.execute(stmt)
             chunks = result.scalars().all()
 
-        print(f"[AIChatService] Found {len(chunks)} document chunks.")
+        if not chunks:
+            return [], ""
 
-        if chunks:
-            parts = [
-                f"[Source: {c.source}, Page {c.page_number or 'N/A'}]\n{c.content}"
-                for c in chunks
-            ]
-            return chunks, "\n\n---\n\n".join(parts)
+        # Build context with source attribution for each chunk
+        parts = []
+        for c in chunks:
+            # Fetch the document name for citation
+            doc_stmt = select(Document.file_name).where(Document.id == c.document_id)
+            doc_result = await self.db.execute(doc_stmt)
+            doc_name = doc_result.scalar_one_or_none() or "Unknown Document"
 
-        return chunks, ""
+            parts.append(
+                f"[Source: {doc_name} | Section: {c.source} | Page: {c.page_number or 'N/A'}]\n"
+                f"{c.content}"
+            )
+
+        print(f"[AIChatService] Fetched {len(chunks)} document chunks.")
+        return chunks, "\n\n---\n\n".join(parts)
 
     async def _fetch_soap_context(self, patient_id: UUID) -> str:
         """
-        Fetch completed SOAP notes for the patient from past consultations.
-        Returns a formatted string, or empty string if none found.
+        Fetch completed SOAP notes (up to MAX_SOAP_NOTES most recent).
+        Returns formatted string ready for inclusion in the prompt.
         """
         stmt = (
             select(Consultation)
@@ -73,12 +128,10 @@ class AIChatService:
                 )
             )
             .order_by(Consultation.scheduled_at.desc())
-            .limit(5)  # Up to 5 most recent SOAP notes
+            .limit(MAX_SOAP_NOTES)
         )
         result = await self.db.execute(stmt)
         consultations = result.scalars().all()
-
-        print(f"[AIChatService] Found {len(consultations)} SOAP note(s) for patient.")
 
         if not consultations:
             return ""
@@ -86,7 +139,7 @@ class AIChatService:
         parts = []
         for c in consultations:
             date_str = c.scheduled_at.strftime("%Y-%m-%d") if c.scheduled_at else "Unknown date"
-            soap = c.soap_note  # Already a dict (JSONB)
+            soap = c.soap_note
             if isinstance(soap, str):
                 try:
                     soap = json.loads(soap)
@@ -106,7 +159,17 @@ class AIChatService:
 
             parts.append(formatted)
 
+        print(f"[AIChatService] Fetched {len(consultations)} SOAP note(s).")
         return "\n\n---\n\n".join(parts)
+
+    def _compute_confidence(self, chunk_count: int) -> str:
+        """Determine confidence level based on retrieved context volume."""
+        if chunk_count >= HIGH_CONFIDENCE_THRESHOLD:
+            return "high"
+        elif chunk_count >= LOW_CONFIDENCE_THRESHOLD:
+            return "medium"
+        else:
+            return "low"
 
     # ── Main Chat Method ───────────────────────────────────────────────────────
 
@@ -115,77 +178,99 @@ class AIChatService:
         patient_id: UUID,
         query: str,
         requesting_user: User,
-        document_id: UUID = None,
+        document_id: Optional[UUID] = None,
+        session_history: Optional[List[dict]] = None,
     ) -> AsyncGenerator[str, None]:
         """
-        RAG Chat: retrieves document chunks AND completed SOAP notes for the patient,
-        then passes both as structured context to AWS Bedrock (Claude).
-        """
+        Session-aware, guardrailed RAG chat.
 
-        # ── 1. Fetch both context sources ─────────────────────────────────────
+        Context Sources (in priority order):
+        1. Document chunks (RAG vector search)
+        2. SOAP notes (clinical consultation summaries)
+        3. Session history (conversation memory)
+
+        Returns a streaming generator of response tokens.
+        Also yields a final metadata dict as the last event:
+          {"__meta__": True, "confidence": "high", "sources": [...]}
+        """
+        # ── 1. Retrieve Context ──────────────────────────────────────────────
         chunks, doc_context = await self._fetch_chunk_context(patient_id, document_id)
         soap_context = await self._fetch_soap_context(patient_id)
 
-        # ── 2. Build structured context with clearly labelled sections ─────────
+        chunk_count = len(chunks)
+        confidence = self._compute_confidence(chunk_count)
+
+        print(
+            f"[AIChatService] Context — chunks={chunk_count}, confidence={confidence}, "
+            f"soap={'yes' if soap_context else 'no'}, "
+            f"history_msgs={len(session_history) if session_history else 0}"
+        )
+
+        # ── 2. Guardrail: Skip LLM if no evidence at all ─────────────────────
+        if chunk_count == 0 and not soap_context:
+            yield FALLBACK_NO_CONTEXT
+            yield f'\n\n**Confidence:** Low'
+            return
+
+        # ── 3. Build Structured Context for Prompt ───────────────────────────
         context_sections = []
 
         if doc_context:
             context_sections.append(
-                "=== MEDICAL DOCUMENTS ===\n"
-                "The following text was extracted from the patient's uploaded medical files:\n\n"
+                "=== PATIENT MEDICAL DOCUMENTS ===\n"
+                "The following text was extracted from the patient's uploaded medical records.\n"
+                "Use ONLY this content to answer:\n\n"
                 + doc_context
             )
 
         if soap_context:
             context_sections.append(
                 "=== PAST CONSULTATION SOAP NOTES ===\n"
-                "The following SOAP notes were generated from the patient's past consultations:\n\n"
+                "The following SOAP notes are from the patient's previous consultations:\n\n"
                 + soap_context
             )
 
-        if context_sections:
-            context_text = "\n\n".join(context_sections)
-        else:
-            context_text = "No medical context available for this patient."
+        context_text = "\n\n".join(context_sections)
 
-        print(
-            f"[AIChatService] Context built — "
-            f"doc_chunks={len(chunks)}, soap_notes={'yes' if soap_context else 'no'}"
-        )
+        # ── 4. Build Claude Message List with History ─────────────────────────
+        messages = []
 
-        # ── 3. Save User Message ──────────────────────────────────────────────
-        conversation_id = str(uuid.uuid4())
-        user_msg = ChatHistory(
-            conversation_id=conversation_id,
-            patient_id=patient_id,
-            doctor_id=requesting_user.id if requesting_user.role == "doctor" else None,
-            document_id=document_id,
-            user_type=requesting_user.role,
-            role="user" if requesting_user.role == "patient" else "doctor",
-            content=query,
-            sources=None,
-        )
-        self.db.add(user_msg)
-        await self.db.commit()
+        # Inject prior session history as conversation context
+        if session_history:
+            messages.extend(session_history)
 
-        # ── 4. Call Bedrock with combined context ──────────────────────────────
-        messages = [{"role": "user", "content": query}]
+        # Add the current question
+        messages.append({"role": "user", "content": query})
+
+        # ── 5. Stream from Bedrock with Guardrail Prompt ──────────────────────
         full_response = ""
+        bedrock_failed = False
 
-        async for token in aws_service.generate_chat_stream(messages, context=context_text):
-            full_response += token
-            yield token
+        try:
+            async for token in aws_service.generate_chat_stream(
+                messages=messages,
+                context=context_text,
+                system_prompt_override=MEDICAL_SYSTEM_PROMPT,
+            ):
+                full_response += token
+                yield token
 
-        # ── 5. Save AI Response ───────────────────────────────────────────────
-        ai_msg = ChatHistory(
-            conversation_id=conversation_id,
-            patient_id=patient_id,
-            doctor_id=requesting_user.id if requesting_user.role == "doctor" else None,
-            document_id=document_id,
-            user_type=requesting_user.role,
-            role="assistant",
-            content=full_response,
-            sources=[str(c.id) for c in chunks],
+        except Exception as e:
+            print(f"[AIChatService] Bedrock streaming failed: {e}")
+            bedrock_failed = True
+
+        if bedrock_failed:
+            yield FALLBACK_BEDROCK_UNAVAILABLE
+            return
+
+        # ── 6. Yield Metadata (so caller can persist sources + confidence) ────
+        source_labels = [c.source for c in chunks]
+        yield (
+            f"\n\n**Confidence:** {confidence.capitalize()}"
         )
-        self.db.add(ai_msg)
-        await self.db.commit()
+
+        # Yield structured metadata as a special final event
+        import json as _json
+        yield (
+            f"\n__META__:{_json.dumps({'confidence': confidence, 'sources': source_labels})}"
+        )
