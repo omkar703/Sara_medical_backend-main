@@ -80,30 +80,24 @@ def process_document_task(document_id_str: str):
 @celery_app.task(
     name="app.workers.tasks.generate_soap_note",
     bind=True,
-    max_retries=3,
-    default_retry_delay=30,
+    max_retries=12,           # e.g., retry up to 12 times (1 hour total)
+    default_retry_delay=300,  # 5 minutes
 )
 def generate_soap_note(self, consultation_id: str) -> dict:
     """
     Background task to generate a SOAP note for a completed consultation.
-
-    Flow:
-    1. Load consultation from DB
-    2. Mark ai_status = 'processing'
-    3. Get a mock transcript (simulates Google Meet Transcript API)
-    4. Send transcript to AWS Bedrock (Claude) for SOAP note generation
-    5. Persist transcript + soap_note to DB
-    6. Mark ai_status = 'completed' (or 'failed' on error)
-
-    Returns:
-        dict with 'status', 'consultation_id', and 'soap_note' on success.
+    Uses Celery retry logic to poll Google Drive until the transcript is ready.
     """
     from app.database import AsyncSessionLocal
     from sqlalchemy import select
+    
+    # Custom exception to signal that we need to poll again
+    class TranscriptNotReady(Exception):
+        pass
 
     async def _run():
         from app.models.consultation import Consultation
-        from app.services.mock_transcript_service import mock_transcript_service
+        from app.services.google_meet_service import google_meet_service # Real service
         from app.services.aws_service import aws_service
 
         async with AsyncSessionLocal() as db:
@@ -117,18 +111,26 @@ def generate_soap_note(self, consultation_id: str) -> dict:
             consultation = result.scalar_one_or_none()
 
             if not consultation:
-                print(f"[generate_soap_note] Consultation {consultation_id} not found.")
-                return {"status": "failed", "reason": "Consultation not found"}
+                raise ValueError(f"Consultation {consultation_id} not found.")
+
+            if not consultation.google_event_id:
+                consultation.ai_status = "failed"
+                await db.commit()
+                raise ValueError("No google_event_id found for this consultation.")
 
             # 2. Mark as processing
             consultation.ai_status = "processing"
             await db.commit()
 
             try:
-                # 3. Get mock transcript
-                # In future: replace with real Google Meet Transcript API call
-                # using consultation.google_event_id
-                transcript_text = mock_transcript_service.get_mock_transcript()
+                # 3. Attempt to fetch the REAL transcript
+                transcript_text = await google_meet_service.get_meeting_transcript(
+                    consultation.google_event_id
+                )
+
+                if not transcript_text:
+                    # Not found yet! Raise our custom exception to trigger retry
+                    raise TranscriptNotReady("Transcript not yet available in Drive.")
 
                 # 4. Build optional patient context for the prompt
                 patient_info = None
@@ -151,21 +153,29 @@ def generate_soap_note(self, consultation_id: str) -> dict:
                 consultation.ai_status = "completed"
                 await db.commit()
 
-                print(
-                    f"[generate_soap_note] ✅ SOAP note generated for "
-                    f"consultation {consultation_id}"
-                )
+                print(f"[generate_soap_note] ✅ SOAP note generated for consultation {consultation_id}")
                 return {
                     "status": "completed",
                     "consultation_id": consultation_id,
                     "soap_note": soap_note,
                 }
 
+            except TranscriptNotReady:
+                # Re-raise so it escapes the async boundary
+                raise
             except Exception as e:
-                # Mark as failed but don't crash the task
+                # Mark as failed on actual errors (Bedrock failure, DB error, etc)
                 print(f"[generate_soap_note] ❌ Error for {consultation_id}: {e}")
                 consultation.ai_status = "failed"
                 await db.commit()
-                return {"status": "failed", "reason": str(e)}
+                raise e
 
-    return run_async(_run())
+    # Execute the async thread and handle the retry logic
+    try:
+        return run_async(_run())
+    except TranscriptNotReady as e:
+        print(f"[generate_soap_note] Transcript not ready. Retrying in 5 minutes... (Attempt {self.request.retries + 1}/{self.max_retries})")
+        # Trigger Celery retry (countdown is in seconds)
+        raise self.retry(exc=e, countdown=300) 
+    except Exception as e:
+        return {"status": "failed", "reason": str(e)}

@@ -66,6 +66,7 @@ def test_consultations_flow():
         return
         
     doc_token = doc_login.json().get("access_token")
+    print(doc_token)
     doc_id = doc_login.json().get("user", {}).get("id")
     doc_headers = {"Authorization": f"Bearer {doc_token}"}
 
@@ -99,14 +100,17 @@ def test_consultations_flow():
         "notes": "Initial Telehealth Consultation."
     }
     
+    print(pat_id)
+    
     consult_res = requests.post(f"{BASE_URL}/consultations", headers=doc_headers, json=consult_payload)
     
     if consult_res.status_code == 200:
         consult_data = consult_res.json()
         print(f"   ✅ SUCCESS: Consultation scheduled!")
-        print(f"   📅 Google Event ID: {consult_data.get('google_event_id')}")
-        print(f"   🔗 Google Meet Link: {consult_data.get('meet_link')}")
+        print(f"   📅 Google Event ID: {consult_data.get('googleEventId')}")
+        print(f"   🔗 Google Meet Link: {consult_data.get('meetLink')}")
         print("   👉 Check your email inboxes for the Calendar Invites!")
+        print(consult_data.get("id"))
     else:
         print(f"   ❌ FAILED: Consultation scheduling returned {consult_res.status_code}. {consult_res.text}")
         return
