@@ -9,8 +9,8 @@ DB_CONFIG = {
     "dbname": "saramedico_dev",
     "user": "saramedico_user",
     "password": "SaraMed1c0_Dev_2024!Secure",
-    "host": "localhost",
-    "port": "5435"
+    "host": "postgres",
+    "port": "5432"
 }
 
 def clean_database(emails):

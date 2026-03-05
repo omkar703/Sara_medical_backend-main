@@ -108,8 +108,7 @@ class PatientService:
         return encrypted_data
 
     def decrypt_patient_data(self, patient: Patient) -> Dict:
-        """Decrypt PII fields for API response"""
-        # Convert SQLAlchemy model to dict
+        """Decrypt PII fields for API response (robust version with safe JSON parsing)"""
         data = {
             "id": patient.id,
             "mrn": patient.mrn,
@@ -118,21 +117,18 @@ class PatientService:
             "created_at": patient.created_at,
             "updated_at": patient.updated_at
         }
-        
-        # Decrypt String fields
+
+        # --- String fields ---
         if patient.full_name:
             data['full_name'] = self.encryption.decrypt(patient.full_name)
-            
         if patient.phone_number:
             data['phone_number'] = self.encryption.decrypt(patient.phone_number)
-            
         if patient.email:
             data['email'] = self.encryption.decrypt(patient.email)
-            
         if patient.medical_history:
             data['medical_history'] = self.encryption.decrypt(patient.medical_history)
-            
-        # Decrypt Date
+
+        # --- Date field ---
         if patient.date_of_birth:
             dob_str = self.encryption.decrypt(patient.date_of_birth)
             try:
@@ -140,34 +136,54 @@ class PatientService:
             except ValueError:
                 data['date_of_birth'] = dob_str
 
-        # Decrypt JSON fields
-        if patient.address:
+        # --- Address (JSON dict, each value encrypted) ---
+        addr_data = patient.address
+        if isinstance(addr_data, str):
+            try:
+                addr_data = json.loads(addr_data)
+            except Exception:
+                addr_data = {}
+        if isinstance(addr_data, dict):
             data['address'] = {
-                k: self.encryption.decrypt(v) if v else v 
-                for k, v in patient.address.items()
+                k: self.encryption.decrypt(v) if isinstance(v, str) else v
+                for k, v in addr_data.items()
             }
         else:
             data['address'] = None
-            
-        if patient.emergency_contact:
+
+        # --- Emergency contact (JSON dict, each value encrypted) ---
+        ec_data = patient.emergency_contact
+        if isinstance(ec_data, str):
+            try:
+                ec_data = json.loads(ec_data)
+            except Exception:
+                ec_data = {}
+        if isinstance(ec_data, dict):
             data['emergency_contact'] = {
-                k: self.encryption.decrypt(v) if v else v
-                for k, v in patient.emergency_contact.items()
+                k: self.encryption.decrypt(v) if isinstance(v, str) else v
+                for k, v in ec_data.items()
             }
         else:
             data['emergency_contact'] = None
 
-        # Decrypt Lists
-        if patient.allergies:
-            data['allergies'] = [self.encryption.decrypt(i) for i in patient.allergies]
-        else:
-            data['allergies'] = []
-            
-        if patient.medications:
-            data['medications'] = [self.encryption.decrypt(i) for i in patient.medications]
-        else:
-            data['medications'] = []
-            
+        # --- Allergies list (each item encrypted) ---
+        alg_data = patient.allergies
+        if isinstance(alg_data, str):
+            try:
+                alg_data = json.loads(alg_data)
+            except Exception:
+                alg_data = []
+        data['allergies'] = [self.encryption.decrypt(i) for i in alg_data] if isinstance(alg_data, list) else []
+
+        # --- Medications list (each item encrypted) ---
+        med_data = patient.medications
+        if isinstance(med_data, str):
+            try:
+                med_data = json.loads(med_data)
+            except Exception:
+                med_data = []
+        data['medications'] = [self.encryption.decrypt(i) for i in med_data] if isinstance(med_data, list) else []
+
         return data
 
     async def create_patient(
@@ -196,7 +212,7 @@ class PatientService:
         await self.db.flush()
         # ======================
         
-        return self.decrypt_patient_data(patient)
+        return self.decrypt_patient_data(patient)  # sync helper (not a coroutine)
 
     async def get_patient(self, patient_id: UUID, organization_id: UUID) -> Optional[Dict]:
         """Get patient by ID"""
@@ -210,97 +226,10 @@ class PatientService:
         patient = result.scalar_one_or_none()
         
         if patient:
-            return self.decrypt_patient_data(patient)
+            return self.decrypt_patient_data(patient)  # sync helper
         return None
     
-    def decrypt_patient_data(self, patient: Patient) -> Dict:
-        """Decrypt PII fields for API response"""
-        data = {
-            "id": patient.id,
-            "mrn": patient.mrn,
-            "organization_id": patient.organization_id,
-            "gender": patient.gender,
-            "created_at": patient.created_at,
-            "updated_at": patient.updated_at
-        }
-        
-        # Decrypt String fields
-        if patient.full_name:
-            data['full_name'] = self.encryption.decrypt(patient.full_name)
-        if patient.phone_number:
-            data['phone_number'] = self.encryption.decrypt(patient.phone_number)
-        if patient.email:
-            data['email'] = self.encryption.decrypt(patient.email)
-        if patient.medical_history:
-            data['medical_history'] = self.encryption.decrypt(patient.medical_history)
-            
-        # Decrypt Date
-        if patient.date_of_birth:
-            dob_str = self.encryption.decrypt(patient.date_of_birth)
-            try:
-                data['date_of_birth'] = date.fromisoformat(dob_str)
-            except ValueError:
-                data['date_of_birth'] = dob_str
-
-        # --- SAFE JSON PARSING (Address) ---
-        addr_data = patient.address
-        if isinstance(addr_data, str):
-            try:
-                addr_data = json.loads(addr_data)
-            except Exception:
-                addr_data = {}
-                
-        if isinstance(addr_data, dict):
-            data['address'] = {
-                k: self.encryption.decrypt(v) if isinstance(v, str) else v 
-                for k, v in addr_data.items()
-            }
-        else:
-            data['address'] = None
-            
-        # --- SAFE JSON PARSING (Emergency Contact) ---
-        ec_data = patient.emergency_contact
-        if isinstance(ec_data, str):
-            try:
-                ec_data = json.loads(ec_data)
-            except Exception:
-                ec_data = {}
-                
-        if isinstance(ec_data, dict):
-            data['emergency_contact'] = {
-                k: self.encryption.decrypt(v) if isinstance(v, str) else v
-                for k, v in ec_data.items()
-            }
-        else:
-            data['emergency_contact'] = None
-
-        # --- SAFE LIST PARSING (Allergies) ---
-        alg_data = patient.allergies
-        if isinstance(alg_data, str):
-            try:
-                alg_data = json.loads(alg_data)
-            except Exception:
-                alg_data = []
-                
-        if isinstance(alg_data, list):
-            data['allergies'] = [self.encryption.decrypt(i) for i in alg_data]
-        else:
-            data['allergies'] = []
-            
-        # --- SAFE LIST PARSING (Medications) ---
-        med_data = patient.medications
-        if isinstance(med_data, str):
-            try:
-                med_data = json.loads(med_data)
-            except Exception:
-                med_data = []
-                
-        if isinstance(med_data, list):
-            data['medications'] = [self.encryption.decrypt(i) for i in med_data]
-        else:
-            data['medications'] = []
-            
-        return data
+    # (duplicate async decrypt_patient_data removed - only sync version above is used)
 
     async def list_patients(
         self, 

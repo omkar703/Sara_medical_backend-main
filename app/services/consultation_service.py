@@ -53,7 +53,16 @@ class ConsultationService:
             
         meeting_topic = f"Consultation: Dr. {doc_name} - {patient.mrn}"
         
-        # Call Google Meet Service
+        # Decrypt patient email (PII-encrypted in DB) for Calendar invite
+        try:
+            patient_email = pii_encryption.decrypt(patient.email) if patient.email else None
+        except Exception:
+            patient_email = None  # Graceful fallback — invite skipped for patient
+
+        attendees = [doctor.email]  # Doctor email is plain text in User model
+        if patient_email:
+            attendees.append(patient_email)
+
         google_event_id, meet_link = None, None
         try:
             from app.services.google_meet_service import google_meet_service
@@ -62,10 +71,11 @@ class ConsultationService:
                 duration_minutes=duration_minutes,
                 summary=meeting_topic,
                 description=f"Medical consultation for {patient.mrn}",
-                attendees=[doctor.email, patient.email] 
+                attendees=attendees
             )
         except Exception as e:
             print(f"[Consultation Service] ⚠ Skipped Google Meet creation: {e}")
+
         
         # 3. Create Database Record (Using the new Google fields)
         consultation = Consultation(

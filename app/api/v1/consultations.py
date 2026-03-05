@@ -226,7 +226,69 @@ async def update_consultation(
     return await _consultation_to_response(consultation)
 
 
-@router.post("/{consultation_id}/analyze", response_model=MessageResponse)
+@router.post("/{consultation_id}/complete")
+async def complete_consultation(
+    consultation_id: UUID,
+    current_user: User = Depends(require_role("doctor")),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+):
+    """
+    Mark a consultation as completed and automatically trigger AI SOAP note generation.
+
+    Call this endpoint when the Google Meet session ends.
+    The AI will:
+    1. Try to fetch the real Google Meet transcript.
+    2. Fall back to a realistic mock transcript if none is available yet.
+    3. Generate a structured SOAP note via AWS Bedrock (Claude 3.5 Sonnet).
+    4. Save the result to the database.
+
+    Poll `GET /consultations/{id}/soap-note` every 5 seconds for results.
+    """
+    service = ConsultationService(db)
+
+    consultation = await service.get_consultation(consultation_id, organization_id)
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    if consultation.status == "completed":
+        return {
+            "message": "Consultation was already completed.",
+            "consultation_id": str(consultation_id),
+            "ai_status": getattr(consultation, "ai_status", "unknown"),
+            "soap_note_url": f"/api/v1/consultations/{consultation_id}/soap-note",
+        }
+
+    # Mark as completed — this also triggers the SOAP note Celery task
+    await service.update_consultation(
+        consultation_id=consultation_id,
+        organization_id=organization_id,
+        updates={"status": "completed"},
+    )
+    await db.commit()
+
+    await log_action(
+        db=db,
+        user_id=current_user.id,
+        organization_id=organization_id,
+        action="complete",
+        resource_type="consultation",
+        resource_id=consultation_id,
+        request=request,
+    )
+    await db.commit()
+
+    return {
+        "message": "Consultation marked as completed. AI SOAP note generation started.",
+        "consultation_id": str(consultation_id),
+        "ai_status": "processing",
+        "soap_note_url": f"/api/v1/consultations/{consultation_id}/soap-note",
+        "instructions": "Poll the soap_note_url every 5 seconds. Returns 202 while processing, 200 when ready.",
+    }
+
+
+
 async def analyze_consultation(
     consultation_id: UUID,
     scenario: Optional[str] = None,

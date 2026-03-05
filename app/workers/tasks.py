@@ -13,19 +13,22 @@ from app.workers.celery_app import celery_app
 
 def run_async(coro):
     """
-    Run an async coroutine from a sync Celery task safely.
-
-    With gevent pooling (-P gevent), every Celery task runs inside a greenlet
-    that may already have an event loop attached. Using 'get_event_loop()' or
-    'run_coroutine_threadsafe()' in that context raises:
-        RuntimeError: <loop> is attached to a different loop
-
-    The safe fix: always spin up a *fresh* OS thread that has its own isolated
-    asyncio event loop and call asyncio.run() in that thread.
+    Run an async coroutine from a sync Celery task safely, especially under gevent.
+    Spins up a fresh OS thread with its own isolated asyncio event loop.
     """
     import concurrent.futures
+    import asyncio
+
+    def _threaded_run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
+        future = pool.submit(_threaded_run)
         return future.result()
 
 
@@ -80,102 +83,100 @@ def process_document_task(document_id_str: str):
 @celery_app.task(
     name="app.workers.tasks.generate_soap_note",
     bind=True,
-    max_retries=12,           # e.g., retry up to 12 times (1 hour total)
-    default_retry_delay=300,  # 5 minutes
+    max_retries=6,
+    default_retry_delay=30,
 )
 def generate_soap_note(self, consultation_id: str) -> dict:
     """
     Background task to generate a SOAP note for a completed consultation.
-    Uses Celery retry logic to poll Google Drive until the transcript is ready.
-    """
-    from app.database import AsyncSessionLocal
-    from sqlalchemy import select
     
-    # Custom exception to signal that we need to poll again
-    class TranscriptNotReady(Exception):
-        pass
+    1. Fetches the consultation (Sync).
+    2. Tries to get the REAL Google Meet transcript.
+    3. If not found, polls using Celery retries (up to 6 times holding for Google to process it).
+    4. Sends the transcript to AWS Bedrock (Claude 3.5 Sonnet).
+    5. Saves the resulting SOAP note to the DB.
+    """
+    from app.database import SyncSessionLocal
+    from sqlalchemy import select
+    from app.models.consultation import Consultation
+    from app.services.google_meet_service import google_meet_service
+    from app.services.mock_transcript_service import mock_transcript_service
+    from app.services.aws_service import aws_service
 
-    async def _run():
-        from app.models.consultation import Consultation
-        from app.services.google_meet_service import google_meet_service # Real service
-        from app.services.aws_service import aws_service
-
-        async with AsyncSessionLocal() as db:
-            from sqlalchemy.orm import selectinload
-            # 1. Load consultation with eager loading for patient
-            result = await db.execute(
-                select(Consultation)
-                .options(selectinload(Consultation.patient))
-                .where(Consultation.id == UUID(consultation_id))
-            )
-            consultation = result.scalar_one_or_none()
-
-            if not consultation:
-                raise ValueError(f"Consultation {consultation_id} not found.")
-
-            if not consultation.google_event_id:
-                consultation.ai_status = "failed"
-                await db.commit()
-                raise ValueError("No google_event_id found for this consultation.")
-
-            # 2. Mark as processing
-            consultation.ai_status = "processing"
-            await db.commit()
-
-            try:
-                # 3. Attempt to fetch the REAL transcript
-                transcript_text = await google_meet_service.get_meeting_transcript(
-                    consultation.google_event_id
-                )
-
-                if not transcript_text:
-                    # Not found yet! Raise our custom exception to trigger retry
-                    raise TranscriptNotReady("Transcript not yet available in Drive.")
-
-                # 4. Build optional patient context for the prompt
-                patient_info = None
-                if consultation.patient:
-                    patient_info = {
-                        "patient_mrn": consultation.patient.mrn,
-                        "consultation_id": str(consultation.id),
-                        "scheduled_at": consultation.scheduled_at.isoformat(),
-                    }
-
-                # 5. Generate SOAP note via AWS Bedrock
-                soap_note = await aws_service.generate_soap_note(
-                    transcript=transcript_text,
-                    patient_info=patient_info,
-                )
-
-                # 6. Persist to DB
-                consultation.transcript = transcript_text
-                consultation.soap_note = soap_note
-                consultation.ai_status = "completed"
-                await db.commit()
-
-                print(f"[generate_soap_note] ✅ SOAP note generated for consultation {consultation_id}")
-                return {
-                    "status": "completed",
-                    "consultation_id": consultation_id,
-                    "soap_note": soap_note,
-                }
-
-            except TranscriptNotReady:
-                # Re-raise so it escapes the async boundary
-                raise
-            except Exception as e:
-                # Mark as failed on actual errors (Bedrock failure, DB error, etc)
-                print(f"[generate_soap_note] ❌ Error for {consultation_id}: {e}")
-                consultation.ai_status = "failed"
-                await db.commit()
-                raise e
-
-    # Execute the async thread and handle the retry logic
+    db = SyncSessionLocal()
     try:
-        return run_async(_run())
-    except TranscriptNotReady as e:
-        print(f"[generate_soap_note] Transcript not ready. Retrying in 5 minutes... (Attempt {self.request.retries + 1}/{self.max_retries})")
-        # Trigger Celery retry (countdown is in seconds)
-        raise self.retry(exc=e, countdown=300) 
-    except Exception as e:
-        return {"status": "failed", "reason": str(e)}
+        # 1. Fetch consultation
+        consultation = db.query(Consultation).filter(Consultation.id == UUID(consultation_id)).first()
+        if not consultation:
+            return {"status": "failed", "reason": f"Consultation {consultation_id} not found"}
+
+        # 2. Mark as processing
+        consultation.ai_status = "processing"
+        db.commit()
+
+        # 3. Attempt to fetch REAL transcript
+        transcript_text = None
+        if consultation.google_event_id:
+            try:
+                transcript_text = run_async(google_meet_service.get_meeting_transcript(consultation.google_event_id))
+            except Exception as e:
+                print(f"Error fetching transcript: {e}")
+
+        # 4. Handle missing transcript (Retry or format error)
+        if not transcript_text or not transcript_text.strip():
+            print(f"[generate_soap_note] Real transcript not found for ID {consultation.google_event_id}.")
+            
+            if self.request.retries < self.max_retries:
+                retry_attempt = self.request.retries + 1
+                print(f"[generate_soap_note] Transcript not ready yet. Retrying in 30s (Attempt {retry_attempt}/{self.max_retries})")
+                raise self.retry(countdown=30)
+
+            # Max retries exhausted, as requested by the user, return this message
+            error_message = "did not able to collect proper data"
+            consultation.transcript = ""
+            consultation.soap_note = {
+                "subjective": error_message,
+                "objective": error_message,
+                "assessment": error_message,
+                "plan": error_message
+            }
+            # Mark completed so polling finishes and frontend shows the message (instead of 404/500)
+            consultation.ai_status = "completed"
+            db.commit()
+            
+            return {"status": "completed", "reason": "No transcript available"}
+
+        print(f"[generate_soap_note] Real transcript found! Processing with AWS Bedrock.")
+        # 5. Build patient context for the prompt
+        patient_info = None
+        if consultation.patient_id:
+             patient_info = {
+                 "consultation_id": str(consultation.id),
+                 "scheduled_at": consultation.scheduled_at.isoformat() if consultation.scheduled_at else None,
+             }
+
+        # 6. Generate SOAP note via AWS Bedrock
+        try:
+            soap_note = run_async(aws_service.generate_soap_note(
+                transcript=transcript_text,
+                patient_info=patient_info
+            ))
+            
+            # 7. Persist results
+            consultation.transcript = transcript_text
+            consultation.soap_note = soap_note
+            consultation.ai_status = "completed"
+            db.commit()
+            
+            print(f"[generate_soap_note] ✅ SOAP note generated for consultation {consultation_id}")
+            return {"status": "completed", "consultation_id": consultation_id}
+
+        except Exception as e:
+            print(f"[generate_soap_note] ❌ Bedrock Error: {e}")
+            consultation.ai_status = "failed"
+            db.commit()
+            return {"status": "failed", "reason": str(e)}
+
+    finally:
+        db.close()
+
