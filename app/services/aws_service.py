@@ -26,18 +26,36 @@ class AWSService:
             aws_secret_access_key=self.secret_key
         )
 
-    async def generate_chat_stream(self, messages: List[Dict[str, str]], context: str):
-        """Streaming generator for chat responses."""
+    async def generate_chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        context: str,
+        system_prompt_override: Optional[str] = None,
+    ):
+        """
+        Streaming generator for chat responses.
+
+        Args:
+            messages: Claude-formatted message list [{role, content}]
+            context: Medical context text appended to the system prompt
+            system_prompt_override: If provided, replaces the default system prompt entirely.
+                                    The context is still appended at the end.
+        """
         client = self._get_client("bedrock-runtime")
-        
-        system_prompt = "You are a helpful medical assistant. Use the provided context to answer questions accurately."
+
+        # Use override if supplied (e.g. guardrail prompt), else generic default
+        if system_prompt_override:
+            system_prompt = system_prompt_override
+        else:
+            system_prompt = "You are a helpful medical assistant. Use the provided context to answer questions accurately."
+
         if context:
-            system_prompt += f"\n\nCONTEXT:\n{context}"
-            
-        # Format messages for Claude
+            system_prompt += f"\n\n--- PATIENT MEDICAL CONTEXT ---\n{context}\n--- END OF CONTEXT ---"
+
+        # Format messages for Claude (normalize roles)
         formatted_messages = []
         for m in messages:
-            role = "assistant" if m["role"] == "ai" or m["role"] == "assistant" else "user"
+            role = "assistant" if m["role"] in ("ai", "assistant") else "user"
             formatted_messages.append({"role": role, "content": m["content"]})
             
         body = json.dumps({
@@ -72,6 +90,95 @@ class AWSService:
                 )
             else:
                 yield f"[MOCK — Bedrock unavailable] No document context found. Error: {str(e)[:80]}"
+
+    async def extract_credentials_from_image(self, file_bytes: bytes, mime_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Use Claude Vision via Bedrock to extract structured credentials from a certificate image.
+        """
+        client = self._get_client("bedrock-runtime")
+        
+        system_prompt = """You are an OCR and document information extraction system.
+Your job is to analyze a medical certificate image and extract structured information.
+The document may contain multiple languages including English and Marathi.
+
+Extract the following fields:
+1. universityName
+2. doctorName
+3. degreeName
+4. licenseNumber
+5. issueDate
+
+Rules:
+• Return ONLY valid JSON
+• Do not hallucinate missing fields
+• If a field cannot be found return null
+• Prefer English text when multiple languages exist
+• Degree names may include:
+  * Bachelor of Medicine & Bachelor of Surgery
+  * Doctor of Medicine
+  * MBBS
+  * MD
+
+Expected JSON format:
+{
+  "universityName": "",
+  "doctorName": "",
+  "degreeName": "",
+  "licenseNumber": "",
+  "issueDate": ""
+}"""
+
+        base64_image = base64.b64encode(file_bytes).decode("utf-8")
+        
+        message = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": base64_image
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "Extract credentials from this certificate."
+                }
+            ]
+        }
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1024,
+            "system": system_prompt,
+            "messages": [message]
+        })
+        
+        try:
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                body=body
+            )
+            resp_body = json.loads(response.get('body').read().decode())
+            text_resp = resp_body['content'][0]['text']
+            
+            # Extract JSON block
+            if "```json" in text_resp:
+                json_str = text_resp.split("```json")[1].split("```")[0].strip()
+            elif "```" in text_resp:
+                json_str = text_resp.split("```")[1].split("```")[0].strip()
+            else:
+                json_str = text_resp.strip()
+                
+            # If for some reason it outputs something else, just find first { and last }
+            if "{" in json_str and "}" in json_str:
+                json_str = json_str[json_str.find("{"):json_str.rfind("}")+1]
+                
+            return json.loads(json_str)
+        except Exception as e:
+            print(f"Error calling Bedrock Vision: {e}")
+            return None
 
     async def extract_text_from_document(self, file_bytes: bytes) -> Dict[str, Any]:
         """

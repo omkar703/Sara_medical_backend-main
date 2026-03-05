@@ -3,7 +3,8 @@ from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, desc, func , cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
@@ -862,3 +863,35 @@ async def edit_patient_health_metric(
     await db.refresh(metric)
     
     return metric
+@router.post("/extract-credentials", status_code=status.HTTP_200_OK)
+async def extract_credentials(
+    certificate_image: UploadFile = File(...)
+):
+    """
+    Extract doctor credentials from an uploaded certificate image using Vision LLM.
+    """
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+    if certificate_image.content_type not in allowed_types:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP"}
+        )
+        
+    file_bytes = await certificate_image.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "File too large. Max size is 10MB."}
+        )
+        
+    from app.services.aws_service import AWSService
+    aws = AWSService()
+    result = await aws.extract_credentials_from_image(file_bytes, certificate_image.content_type)
+    
+    if not result:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to extract credentials from image."}
+        )
+        
+    return result
