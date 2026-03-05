@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
 
+
 class ActivityFeedItem(BaseModel):
     """Represents one row in 'Recent Activity'"""
     id: UUID
@@ -35,8 +36,30 @@ class AdminOverviewResponse(BaseModel):
     alerts: List[SystemAlert]
     storage: StorageStats
     quick_actions: List[str] 
+    appointments_today: int
+    total_doctors: int
 
+class AdminInvitationItem(BaseModel):
+    """Schema for the Global Invitations list"""
+    id: UUID
+    email: str
+    role: str
+    status: str
+    organization_id: UUID
+    expires_at: datetime
+    created_at: datetime
 
+class AdminOrgAppointmentItem(BaseModel):
+    """Schema for Organization-specific Appointments"""
+    id: UUID
+    doctor_id: UUID
+    patient_id: UUID
+    requested_date: datetime
+    reason: Optional[str] = None
+    status: str
+    doctor_name: str
+    patient_name: str
+    created_at: datetime
 
 class OrgSettingsUpdate(BaseModel):
     """For the 'Organization Settings' form"""
@@ -124,3 +147,42 @@ class AdminDoctorDetailResponse(BaseModel):
     stats: DoctorStats
     appointments: List[DoctorApptItem]
     patients: List[DoctorPatientItem]
+
+class AccountListItem(BaseModel):
+    """
+    Row for the 'Account Management' table (UPDATED).
+    """
+    id: UUID
+    name: str         
+    email: str
+    role: str          
+    status: str        
+    last_login: Optional[str] = None 
+    avatar_url: Optional[str] = None
+    type: str  
+    # NEW FIELDS:
+    organization_id: UUID
+    organization_name: Optional[str] = None
+
+class AdminAccountUpdate(BaseModel):
+    """Payload for editing a user account via Admin Dashboard"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    status: Optional[str] = None  # "active" or "inactive"
+    
+class AdminGlobalAppointmentItem(BaseModel):
+    """
+    Descriptive row for the 'All Appointments' global dump.
+    """
+    id: UUID
+    requested_date: datetime
+    status: str
+    reason: Optional[str] = None
+    doctor_name: str
+    patient_name: str
+    organization_name: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

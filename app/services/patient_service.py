@@ -213,7 +213,7 @@ class PatientService:
             return self.decrypt_patient_data(patient)
         return None
     
-    async def decrypt_patient_data(self, patient: Patient) -> Dict:
+    def decrypt_patient_data(self, patient: Patient) -> Dict:
         """Decrypt PII fields for API response"""
         data = {
             "id": patient.id,

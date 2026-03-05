@@ -1,43 +1,50 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from datetime import datetime, timedelta
+from sqlalchemy import select, desc, func
+from datetime import datetime, timedelta, time, timezone
 import uuid
+from sqlalchemy.orm import selectinload
+from typing import List
 import hashlib
 
 from app.database import get_db
 from app.core.deps import require_role
 from app.models.user import User, Organization, Invitation
 from app.models.activity_log import ActivityLog
+from app.models.appointment import Appointment
 from app.services.email import send_invitation_email
 from app.schemas.admin import (
     AdminOverviewResponse,
-    AllSettingsResponse,      # Corrected Name
-    OrgSettingsUpdate,        # Corrected Name
+    AllSettingsResponse,
+    OrgSettingsUpdate,
     DeveloperSettingsUpdate,
     BackupSettingsUpdate,
-    AccountListItem,          # Corrected Name
+    AccountListItem,
     InviteRequest,
     StorageStats,
     SystemAlert,
     ActivityFeedItem,
-    AdminDoctorDetailResponse
+    AdminDoctorDetailResponse,
+    AdminInvitationItem,         # NEW
+    AdminOrgAppointmentItem,      # NEW
+    AdminAccountUpdate,
+    AdminGlobalAppointmentItem
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
-# --- 1. Dashboard Overview ---
+
+# --- 1. Dashboard Overview (UPDATED) ---
 @router.get("/overview", response_model=AdminOverviewResponse)
 async def get_dashboard_overview(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")), # Fixed Dependency
+    current_user: User = Depends(require_role("admin")),
 ):
     """
-    Aggregates data for the Admin Dashboard.
+    Aggregates data for the Admin Dashboard globally.
     """
-    
     from sqlalchemy.orm import selectinload
     
-    # 1. Fetch Recent Activity (Real Data)
+    # 1. Fetch Recent Activity 
     query = (
         select(ActivityLog)
         .options(selectinload(ActivityLog.user))
@@ -55,11 +62,8 @@ async def get_dashboard_overview(
         
     recent_activity_items = []
     for log in logs:
-        # Get real user name from relation, default to "System Activity" if no user attached
         display_name = "System Activity"
-        
         if log.user:
-            # Prefer full name if available, else email
             encrypted_val = log.user.full_name or log.user.email
             if encrypted_val:
                 if pii_encryption:
@@ -79,38 +83,323 @@ async def get_dashboard_overview(
             status=log.status or "completed"
         ))
 
-    # 2. Storage Stats (Mocked to match Schema)
-    storage_stats = StorageStats(
-        used_gb=124.5,
-        total_gb=1000.0,
-        percentage=12.45,
-        files_count=3420
-    )
+    # 2. Storage Stats (Mocked)
+    storage_stats = StorageStats(used_gb=124.5, total_gb=1000.0, percentage=12.45, files_count=3420)
     
-    # 3. System Alerts (Mocked to match Schema)
+    # 3. System Alerts (Mocked)
     alerts = [
-        SystemAlert(
-            id="1", 
-            title="Storage Warning",
-            message="Storage reaching 80% capacity", 
-            time_ago="10 mins ago",
-            severity="high"
-        ),
-        SystemAlert(
-            id="2", 
-            title="Backup Complete",
-            message="Weekly backup created successfully", 
-            time_ago="2 hours ago",
-            severity="info"
-        )
+        SystemAlert(id="1", title="Storage Warning", message="Storage reaching 80%", time_ago="10 mins ago", severity="high")
     ]
+
+    # 4. NEW: Global Total Doctors
+    doctor_count_query = select(func.count(User.id)).where(User.role == "doctor", User.deleted_at.is_(None))
+    doctor_count_result = await db.execute(doctor_count_query)
+    total_doctors = doctor_count_result.scalar_one_or_none() or 0
+
+    # 5. NEW: Global Appointments Today
+    now_utc = datetime.now(timezone.utc)
+    today_start = datetime.combine(now_utc.date(), time.min).replace(tzinfo=timezone.utc)
+    today_end = datetime.combine(now_utc.date(), time.max).replace(tzinfo=timezone.utc)
+    
+    appt_count_query = select(func.count(Appointment.id)).where(
+        Appointment.requested_date >= today_start,
+        Appointment.requested_date <= today_end
+    )
+    appt_count_result = await db.execute(appt_count_query)
+    appointments_today = appt_count_result.scalar_one_or_none() or 0
 
     return AdminOverviewResponse(
         storage=storage_stats,
         alerts=alerts,
         recent_activity=recent_activity_items,
-        quick_actions=["Invite Member", "View Audit Logs"]
+        quick_actions=["Invite Member", "View Audit Logs"],
+        appointments_today=appointments_today,
+        total_doctors=total_doctors
     )
+
+# --- 2. Global Invitations List (NEW) ---
+@router.get("/invitations", response_model=list[AdminInvitationItem])
+async def get_all_invitations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    """
+    Fetch all user invitations globally across all organizations.
+    """
+    query = select(Invitation).order_by(desc(Invitation.created_at))
+    result = await db.execute(query)
+    invitations = result.scalars().all()
+    
+    return [
+        AdminInvitationItem(
+            id=inv.id,
+            email=inv.email,
+            role=inv.role,
+            status=inv.status,
+            organization_id=inv.organization_id,
+            expires_at=inv.expires_at,
+            created_at=inv.created_at
+        ) for inv in invitations
+    ]
+
+# --- 3. Organization Specific Appointments (NEW) ---
+@router.get("/organizations/{org_id}/appointments", response_model=list[AdminOrgAppointmentItem])
+async def get_org_appointments(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
+    """
+    Fetch all appointments belonging to doctors in a specific organization.
+    """
+    from sqlalchemy.orm import selectinload
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+    
+    # Join Appointment with Doctor (User) to filter by organization_id
+    query = (
+        select(Appointment)
+        .join(User, Appointment.doctor_id == User.id)
+        .options(selectinload(Appointment.doctor), selectinload(Appointment.patient))
+        .where(User.organization_id == org_id)
+        .order_by(desc(Appointment.requested_date))
+    )
+    result = await db.execute(query)
+    appointments = result.scalars().all()
+    
+    response_list = []
+    for appt in appointments:
+        doc_name = "Unknown Doctor"
+        if appt.doctor:
+            try:
+                doc_name = pii_encryption.decrypt(appt.doctor.full_name) if pii_encryption else appt.doctor.full_name
+            except Exception:
+                pass
+                
+        pat_name = "Unknown Patient"
+        if appt.patient:
+            try:
+                pat_name = pii_encryption.decrypt(appt.patient.full_name) if pii_encryption else appt.patient.full_name
+            except Exception:
+                pass
+        
+        response_list.append(AdminOrgAppointmentItem(
+            id=appt.id,
+            doctor_id=appt.doctor_id,
+            patient_id=appt.patient_id,
+            requested_date=appt.requested_date,
+            reason=appt.reason,
+            status=appt.status,
+            doctor_name=doc_name,
+            patient_name=pat_name,
+            created_at=appt.created_at
+        ))
+        
+    return response_list
+
+@router.get("/accounts", response_model=list[AccountListItem])
+async def get_admin_accounts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Dumps all user accounts across ALL organizations.
+    """
+    from sqlalchemy.orm import selectinload
+    
+    # Query all users and eagerly load their organization relationship
+    result = await db.execute(select(User).options(selectinload(User.organization)))
+    users = result.scalars().all()
+    
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+        
+    account_list = []
+    for user in users:
+        # Decrypt PII data
+        full_name = user.full_name
+        email = user.email
+        if pii_encryption:
+            try:
+                if full_name: full_name = pii_encryption.decrypt(full_name)
+            except Exception: pass
+            
+        account_list.append(AccountListItem(
+            id=user.id,
+            name=full_name or "Unknown User",
+            email=email or "No Email",
+            role=user.role,
+            status="active" if user.deleted_at is None else "inactive",
+            last_login=user.last_login.strftime("%Y-%m-%d") if user.last_login else None,
+            type="user",
+            organization_id=user.organization_id,
+            organization_name=user.organization.name if user.organization else "Unknown Clinic"
+        ))
+    return account_list
+
+# --- 2. Edit an Account (NEW) ---
+@router.patch("/accounts/{id}")
+async def update_admin_account(
+    id: uuid.UUID,
+    update_data: AdminAccountUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Edit basic account information. Handles PII encryption automatically.
+    """
+    result = await db.execute(select(User).where(User.id == id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+        
+    # 1. Update Name (Requires Encryption)
+    if update_data.name:
+        user.full_name = pii_encryption.encrypt(update_data.name) if pii_encryption else update_data.name
+        
+    # 2. Update Email
+    if update_data.email:
+        # Check for duplicates before updating
+        conflict_check = await db.execute(select(User).where(User.email == update_data.email, User.id != id))
+        if conflict_check.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email is already in use by another account.")
+        user.email = update_data.email
+        
+    # 3. Update Role
+    if update_data.role:
+        user.role = update_data.role
+        
+    # 4. Update Status (Soft Delete / Reactivate)
+    if update_data.status:
+        status_lower = update_data.status.lower()
+        if status_lower == "inactive":
+            if user.id == current_user.id:
+                raise HTTPException(status_code=400, detail="You cannot deactivate your own admin account.")
+            if user.deleted_at is None:
+                user.deleted_at = datetime.utcnow()
+        elif status_lower == "active":
+            user.deleted_at = None
+            
+    user.updated_at = datetime.utcnow()
+    await db.commit()
+    
+    return {"message": "Account updated successfully"}
+
+# --- 3. Delete an Account (Global Update) ---
+@router.delete("/accounts/{id}")
+async def remove_team_member(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Revoke an invite OR Deactivate a user globally.
+    """
+    # 1. Check if it's a Pending Invitation (Delete it completely)
+    # Removed the organization_id filter so admin can delete any invitation globally
+    result_invite = await db.execute(select(Invitation).where(Invitation.id == id))
+    invite = result_invite.scalar_one_or_none()
+    
+    if invite:
+        await db.delete(invite)
+        await db.commit()
+        return {"status": "revoked_invitation", "id": str(id)}
+
+    # 2. Check if it's an Active User (Soft Delete)
+    # Removed the organization_id filter so admin can soft-delete any user globally
+    result_user = await db.execute(select(User).where(User.id == id))
+    user_to_remove = result_user.scalar_one_or_none()
+    
+    if user_to_remove:
+        # Prevent Admin from deleting themselves
+        if user_to_remove.id == current_user.id:
+            raise HTTPException(400, "You cannot revoke your own access.")
+            
+        # Soft delete: Set deleted_at timestamp
+        user_to_remove.deleted_at = datetime.utcnow()
+        await db.commit()
+        return {"status": "deactivated_user", "id": str(id)}
+
+    raise HTTPException(404, "Account or Invitation not found")
+
+@router.get("/appointments/all", response_model=List[AdminGlobalAppointmentItem])
+async def get_all_appointments_dump(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Fetch every appointment in the system across all organizations.
+    Includes decrypted doctor/patient names and organization context.
+    """
+    # 1. Query all appointments with related data
+    # We load the doctor (and their organization) and the patient
+    query = (
+        select(Appointment)
+        .options(
+            selectinload(Appointment.doctor).selectinload(User.organization),
+            selectinload(Appointment.patient)
+        )
+        .order_by(desc(Appointment.requested_date))
+    )
+    result = await db.execute(query)
+    appointments = result.scalars().all()
+
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+
+    response_list = []
+    for appt in appointments:
+        # 2. Decrypt Doctor Name
+        doctor_display = "Unknown Doctor"
+        org_display = "Unknown Organization"
+        if appt.doctor:
+            if pii_encryption and appt.doctor.full_name:
+                try:
+                    doctor_display = pii_encryption.decrypt(appt.doctor.full_name)
+                except Exception:
+                    doctor_display = appt.doctor.full_name
+            else:
+                doctor_display = appt.doctor.full_name or "Unknown Doctor"
+            
+            if appt.doctor.organization:
+                org_display = appt.doctor.organization.name
+
+        # 3. Decrypt Patient Name
+        patient_display = "Unknown Patient"
+        if appt.patient:
+            if pii_encryption and appt.patient.full_name:
+                try:
+                    patient_display = pii_encryption.decrypt(appt.patient.full_name)
+                except Exception:
+                    patient_display = appt.patient.full_name
+            else:
+                patient_display = appt.patient.full_name or "Unknown Patient"
+
+        # 4. Map to Schema
+        response_list.append(AdminGlobalAppointmentItem(
+            id=appt.id,
+            requested_date=appt.requested_date,
+            status=appt.status,
+            reason=appt.reason,
+            doctor_name=doctor_display,
+            patient_name=patient_display,
+            organization_name=org_display,
+            created_at=appt.created_at
+        ))
+
+    return response_list
 
 # --- 2. Settings Management ---
 @router.get("/settings", response_model=AllSettingsResponse)
