@@ -91,6 +91,95 @@ class AWSService:
             else:
                 yield f"[MOCK — Bedrock unavailable] No document context found. Error: {str(e)[:80]}"
 
+    async def extract_credentials_from_image(self, file_bytes: bytes, mime_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Use Claude Vision via Bedrock to extract structured credentials from a certificate image.
+        """
+        client = self._get_client("bedrock-runtime")
+        
+        system_prompt = """You are an OCR and document information extraction system.
+Your job is to analyze a medical certificate image and extract structured information.
+The document may contain multiple languages including English and Marathi.
+
+Extract the following fields:
+1. universityName
+2. doctorName
+3. degreeName
+4. licenseNumber
+5. issueDate
+
+Rules:
+• Return ONLY valid JSON
+• Do not hallucinate missing fields
+• If a field cannot be found return null
+• Prefer English text when multiple languages exist
+• Degree names may include:
+  * Bachelor of Medicine & Bachelor of Surgery
+  * Doctor of Medicine
+  * MBBS
+  * MD
+
+Expected JSON format:
+{
+  "universityName": "",
+  "doctorName": "",
+  "degreeName": "",
+  "licenseNumber": "",
+  "issueDate": ""
+}"""
+
+        base64_image = base64.b64encode(file_bytes).decode("utf-8")
+        
+        message = {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": base64_image
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "Extract credentials from this certificate."
+                }
+            ]
+        }
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1024,
+            "system": system_prompt,
+            "messages": [message]
+        })
+        
+        try:
+            response = client.invoke_model(
+                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                body=body
+            )
+            resp_body = json.loads(response.get('body').read().decode())
+            text_resp = resp_body['content'][0]['text']
+            
+            # Extract JSON block
+            if "```json" in text_resp:
+                json_str = text_resp.split("```json")[1].split("```")[0].strip()
+            elif "```" in text_resp:
+                json_str = text_resp.split("```")[1].split("```")[0].strip()
+            else:
+                json_str = text_resp.strip()
+                
+            # If for some reason it outputs something else, just find first { and last }
+            if "{" in json_str and "}" in json_str:
+                json_str = json_str[json_str.find("{"):json_str.rfind("}")+1]
+                
+            return json.loads(json_str)
+        except Exception as e:
+            print(f"Error calling Bedrock Vision: {e}")
+            return None
+
     async def extract_text_from_document(self, file_bytes: bytes) -> Dict[str, Any]:
         """
         Extract text. Uses PyPDF2 for PDFs if AWS Async is not setup, else Textract for images.

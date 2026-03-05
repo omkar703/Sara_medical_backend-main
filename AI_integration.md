@@ -164,6 +164,42 @@ The most recent labs from November 2025 show improvement in both glucose and CRP
 
 ---
 
+### 3.5. Extract Doctor Credentials (Vision OCR)
+**`POST /api/v1/doctor/extract-credentials`**
+
+Uses Claude Vision via Bedrock to automatically extract doctor credentials from an uploaded certificate image. It accepts `image/jpeg`, `image/jpg`, `image/png`, and `image/webp`. Maximum file size is 10MB.
+
+**Sample Request (Multipart Form-Data):**
+```bash
+curl -X POST http://localhost:8000/api/v1/doctor/extract-credentials \
+  -H "Authorization: Bearer <token>" \
+  -F "certificate_image=@MBBS-DEGREE-rotated-1.jpg"
+```
+
+**Sample Output Data (JSON Response) for MBBS:**
+```json
+{
+  "universityName": "Maharashtra University of Health Sciences, Nashik",
+  "doctorName": "PATIL VIRENDRA ASHOKRAO",
+  "degreeName": "Bachelor of Medicine & Bachelor of Surgery",
+  "licenseNumber": "PRN 0104140566",
+  "issueDate": "25th May 2009"
+}
+```
+
+**Sample Output Data (JSON Response) for MD:**
+```json
+{
+  "universityName": "Maharashtra University of Health Sciences, Nashik",
+  "doctorName": "Patil Virendra Ashokrao",
+  "degreeName": "Doctor of Medicine (General Medicine)",
+  "licenseNumber": "PRN 2112112657",
+  "issueDate": "5th October, 2012"
+}
+```
+
+---
+
 ## 3. Frontend Integration Guide
 
 To integrate this effectively on the web client:
