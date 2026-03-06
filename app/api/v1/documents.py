@@ -378,21 +378,22 @@ async def get_document(
     await db.commit()
     
     # RBAC Check for Doctors
-    if current_user.role == "doctor":
-        from app.services.permission_service import PermissionService
-        perm_service = PermissionService(db)
-        # document is returned as dict with camelCase keys from service
-        has_access = await perm_service.check_doctor_access(
-            doctor_id=current_user.id,
-            patient_id=UUID(document["patientId"]) 
-        )
-        if not has_access:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access Denied: You do not have permission to view this patient's documents."
-            )
+    if current_user.role == "doctor" or current_user.role == "patient":
+        # from app.services.permission_service import PermissionService
+        # perm_service = PermissionService(db)
+        # # document is returned as dict with camelCase keys from service
+        # has_access = await perm_service.check_doctor_access(
+        #     doctor_id=current_user.id,
+        #     patient_id=UUID(document["patientId"]) 
+        # )
+        # if not has_access:
+        return DocumentResponse(**document)
     
-    return DocumentResponse(**document)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access Denied: You do not have permission to view this patient's documents."
+    )
+    
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
