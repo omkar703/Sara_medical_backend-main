@@ -192,6 +192,7 @@ class CalendarService:
         """Create calendar events for both patient and doctor"""
         # Get users' organization IDs
         from app.models.user import User
+        from app.core.security import pii_encryption  # Import the decryption utility
         
         patient_query = select(User).where(User.id == appointment.patient_id)
         doctor_query = select(User).where(User.id == appointment.doctor_id)
@@ -205,12 +206,21 @@ class CalendarService:
         if not patient or not doctor:
             return
         
-        # Determine event title based on role
-        doctor_full_name = pii_encryption.decrypt(doctor.full_name)
-        patient_full_name = pii_encryption.decrypt(patient.full_name)
+        # --- NEW: Decrypt the names safely ---
+        try:
+            patient_name = pii_encryption.decrypt(patient.full_name)
+        except Exception:
+            patient_name = "Patient"
+            
+        try:
+            doctor_name = pii_encryption.decrypt(doctor.full_name)
+        except Exception:
+            doctor_name = "Doctor"
+        # -------------------------------------
         
-        patient_title = f"Appointment with Dr. {doctor_full_name}"
-        doctor_title = f"Appointment with {patient_full_name}"
+        # Determine event title based on role using DECRYPTED names
+        patient_title = f"Appointment with Dr. {doctor_name}"
+        doctor_title = f"Appointment with {patient_name}"
         
         # Create event for patient
         patient_event = CalendarEvent(
