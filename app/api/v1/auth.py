@@ -1100,7 +1100,7 @@ async def register_hospital(
             phone_number=pii_encryption.encrypt(data.phone_number),
             role="hospital", # Assign the root hospital role
             organization_id=new_org.id,
-            email_verified=False # Standard security practice
+            email_verified=True # Standard security practice
         )
         db.add(new_admin)
         
