@@ -3,29 +3,21 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 class DoctorProfileUpdate(BaseModel):
-    specialty: Optional[str] = Field(None, description="Doctor specialty (e.g., Cardiology, Dermatology)")
+    specialty: Optional[str] = Field(None, description="Doctor specialty")
     license_number: Optional[str] = Field(None, description="Medical license number")
+    department: Optional[str] = Field(None, description="Assigned department")
+    department_role: Optional[str] = Field(None, description="Role within the department")
 
 class DoctorSearchItem(BaseModel):
     id: UUID
     full_name: str = Field(..., alias="name")
     specialty: Optional[str]
     avatar_url: Optional[str] = Field(None, alias="photo_url")
+    department: Optional[str] = None
+    department_role: Optional[str] = None
 
     class Config:
         populate_by_name = True
-        from_attributes = True
-
-class DoctorSearchResponse(BaseModel):
-    results: List[DoctorSearchItem]
-
-class DoctorSearchItem(BaseModel):
-    id: UUID
-    name: str
-    specialty: Optional[str] = "General Physician"
-    photo_url: Optional[str] = None
-    
-    class Config:
         from_attributes = True
 
 class DoctorSearchResponse(BaseModel):

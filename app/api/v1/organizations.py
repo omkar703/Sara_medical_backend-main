@@ -16,6 +16,7 @@ from app.schemas.organization import (
     MemberResponse,
     OrganizationResponse,
     OrganizationUpdate,
+    DepartmentListResponse
 )
 from app.services.audit_service import log_action
 from app.services.organization_service import OrganizationService
@@ -142,3 +143,14 @@ async def accept_invitation(
         pass
         
     return user
+
+@router.get("/departments", response_model=DepartmentListResponse)
+async def list_departments(
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Fetch the list of departments in the hospital/organization"""
+    service = OrganizationService(db)
+    departments = await service.get_departments(organization_id)
+    return {"departments": departments}

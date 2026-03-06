@@ -10,6 +10,7 @@ from fastapi import HTTPException, status, BackgroundTasks
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from typing import List
 
 from app.core.security import hash_password, pii_encryption
 from app.models.user import Invitation, Organization, User
@@ -28,7 +29,9 @@ class OrganizationService:
         email: str,
         role: str,
         created_by_id: UUID,
-        background_tasks: BackgroundTasks
+        background_tasks: BackgroundTasks,
+        department: str = None,      # Added parameter
+        department_role: str = None  # Added parameter
     ) -> Invitation:
         """
         Create an invitation for a new member.
@@ -59,12 +62,12 @@ class OrganizationService:
         
         # 2. Create Invitation Record
         invitation = Invitation(
-            email=email,  # Storing plain for now in Invitation for simplicity of email sending, OR encrypt it?
-                          # If we encrypt, we need to decrypt to send email.
-                          # Let's encrypt it for consistency with PII policy.
+            email=email,
             token_hash=token_hash,
             organization_id=organization_id,
             role=role,
+            department=department,           # New
+            department_role=department_role, # New
             created_by_id=created_by_id,
             expires_at=datetime.utcnow() + timedelta(days=7)
         )
@@ -92,7 +95,9 @@ class OrganizationService:
         full_name: str,
         password: str,
         specialty: str = None,
-        license_number: str = None
+        license_number: str = None,
+        department: str = None,      # Optional override
+        department_role: str = None  # Optional override
     ) -> User:
         """
         Accept an invitation and create the user.
@@ -141,15 +146,20 @@ class OrganizationService:
         # Use the email from invitation as the User email. 
         # If it fails uniqueness, it means user exists.
         
+        # Use invitation values if not explicitly overridden during acceptance
+        final_dept = department or invitation.department
+        final_role = department_role or invitation.department_role
+
         new_user = User(
-            email=invitation.email,  # Assuming matches auth expectation
+            email=invitation.email,
             password_hash=hash_password(password),
-            full_name=encrypted_full_name,
+            full_name=pii_encryption.encrypt(full_name),
             role=invitation.role,
             organization_id=invitation.organization_id,
-            email_verified=True,  # They verified by receiving the invite
+            email_verified=True,
             specialty=specialty,
-            # Encrypt license if provided
+            department=final_dept,           # New
+            department_role=final_role,      # New
             license_number=pii_encryption.encrypt(license_number) if license_number else None
         )
         
@@ -185,3 +195,15 @@ class OrganizationService:
              select(Organization).where(Organization.id == organization_id)
         )
         return result.scalar_one_or_none()
+
+    async def get_departments(self, organization_id: UUID) -> List[str]:
+        """Fetch and parse the list of departments for an organization"""
+        result = await self.db.execute(
+            select(Organization.departments).where(Organization.id == organization_id)
+        )
+        dept_str = result.scalar_one_or_none()
+        if not dept_str:
+            return []
+        
+        # Returns a list, cleaning up any extra spaces
+        return [d.strip() for d in dept_str.split(",") if d.strip()]

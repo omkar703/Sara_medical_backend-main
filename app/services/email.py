@@ -230,3 +230,60 @@ async def send_invitation_email(email: str, token: str, role: str, org_name: str
         html_content=html_content,
         text_content=f"You have been invited to join {org_name}. Accept here: {invite_url}"
     )
+
+async def send_doctor_credentials_email(
+    to_email: str, 
+    name: str, 
+    password: str, 
+    department: str, 
+    role: str, 
+    org_name: str
+) -> bool:
+    """
+    Send an email containing login credentials to a doctor 
+    created directly by a hospital administrator.
+    """
+    login_url = f"{settings.FRONTEND_URL}/auth/login"
+    
+    html_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background-color: #2563EB; color: white; padding: 20px; text-align: center; }}
+            .content {{ padding: 20px; background-color: #f9fafb; }}
+            .button {{ display: inline-block; padding: 12px 24px; background-color: #2563EB; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+            .credentials {{ background-color: #E5E7EB; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 16px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Welcome to {org_name}</h1>
+            </div>
+            <div class="content">
+                <h2>Hello Dr. {name},</h2>
+                <p>An account has been created for you at <strong>{org_name}</strong> under the <strong>{department}</strong> department as <strong>{role}</strong>.</p>
+                <p>You can access the Saramedico platform using the following credentials:</p>
+                
+                <div class="credentials">
+                    <p style="margin: 0;"><strong>Email:</strong> {to_email}</p>
+                    <p style="margin: 0;"><strong>Password:</strong> {password}</p>
+                </div>
+                
+                <p><em>For your security, we strongly advise you to change your password immediately after logging in.</em></p>
+                <p><a href="{login_url}" class="button">Log In to Your Account</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return await send_email(
+        to_email=to_email,
+        subject=f"Your Saramedico Account Credentials for {org_name}",
+        html_content=html_template,
+        text_content=f"Your account was created. Email: {to_email}, Password: {password}. Please login at {login_url}"
+    )

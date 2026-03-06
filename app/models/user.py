@@ -32,6 +32,7 @@ class Organization(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    departments = Column(String(1000), nullable=True)
     
     # Relationships
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
@@ -67,6 +68,8 @@ class User(Base):
     # Doctor-specific fields
     specialty = Column(String(100), nullable=True)
     license_number = Column(String(255), nullable=True)  # Encrypted
+    department = Column(String(100), nullable=True)
+    department_role = Column(String(100), nullable=True)
     
     # Organization relationship
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -157,6 +160,7 @@ class Invitation(Base):
     # Additions for Staff Management UI
     staff_status = Column(String(20), default="Active") # 'Active', 'On Leave', 'Inactive'
     department_role = Column(String(100), nullable=True) # e.g., 'Chief Cardiologist', 'Senior Physician'
+    department = Column(String(100), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)

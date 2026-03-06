@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-
+from typing import List
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -15,12 +15,11 @@ class OrganizationUpdate(BaseModel):
     """Schema for updating organization profile"""
     name: Optional[str] = Field(None, min_length=2, max_length=100)
 
-
 class OrganizationResponse(BaseModel):
-    """Schema for organization details"""
     id: UUID
     name: str
     subscription_tier: str
+    departments: Optional[str] = None # Added field
     created_at: datetime
     
     class Config:
@@ -32,12 +31,13 @@ class OrganizationResponse(BaseModel):
 # ==========================================
 
 class MemberResponse(BaseModel):
-    """Schema for display team members"""
     id: UUID
     full_name: str
     email: EmailStr
     role: str
     specialty: Optional[str] = None
+    department: Optional[str] = None       # Added field
+    department_role: Optional[str] = None  # Added field
     last_login: Optional[datetime] = None
     
     class Config:
@@ -65,9 +65,10 @@ class MemberRoleUpdate(BaseModel):
 # ==========================================
 
 class InvitationCreate(BaseModel):
-    """Schema for sending an invitation"""
     email: EmailStr
     role: str = "doctor"
+    department: Optional[str] = None       # Added field
+    department_role: Optional[str] = None
     
     @field_validator('role')
     @classmethod
@@ -92,9 +93,14 @@ class InvitationResponse(BaseModel):
 
 
 class InvitationAccept(BaseModel):
-    """Schema for accepting an invitation"""
     token: str
     full_name: str
     password: str = Field(..., min_length=8)
     specialty: Optional[str] = None
     license_number: Optional[str] = None
+    department: Optional[str] = None       # Added field
+    department_role: Optional[str] = None  # Added field
+
+class DepartmentListResponse(BaseModel):
+    """Schema for returning the list of departments"""
+    departments: List[str]

@@ -20,7 +20,7 @@ from app.models.patient import Patient
 from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.schemas.appointment import AppointmentResponse
-from app.schemas.doctor import DoctorProfileUpdate
+from app.schemas.doctor import DoctorProfileUpdate, DoctorSearchResponse, DoctorSearchItem
 from app.schemas.patient import PatientOnboard
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -895,3 +895,41 @@ async def extract_credentials(
         )
         
     return result
+
+@router.get("/by-department", response_model=DoctorSearchResponse)
+async def get_doctors_by_department(
+    department: str = Query(..., description="Department name to filter by"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """Fetch all doctors belonging to a specific department in the hospital"""
+    stmt = select(User).where(
+        User.role == "doctor",
+        User.department == department,
+        User.organization_id == organization_id,
+        User.deleted_at.is_(None)
+    )
+    
+    result = await db.execute(stmt)
+    doctors = result.scalars().all()
+    
+    filtered_results = []
+    
+    for doc in doctors:
+        # Decrypt Name
+        try:
+            name = pii_encryption.decrypt(doc.full_name)
+        except:
+            name = "Unknown Doctor"
+            
+        filtered_results.append(DoctorSearchItem(
+            id=doc.id,
+            name=name,
+            specialty=doc.specialty,
+            photo_url=doc.avatar_url,
+            department=doc.department,           # Assigning the new field
+            department_role=doc.department_role  # Assigning the new field
+        ))
+        
+    return DoctorSearchResponse(results=filtered_results)

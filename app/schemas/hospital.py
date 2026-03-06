@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 class DashboardMetrics(BaseModel):
     totalDoctors: int
@@ -68,3 +68,30 @@ class StaffTableItem(BaseModel):
 class HospitalStaffResponse(BaseModel):
     metrics: StaffMetrics
     staff: List[StaffTableItem]
+    
+class DoctorCreateRequest(BaseModel):
+    """Schema for creating a doctor directly from the hospital dashboard"""
+    email: EmailStr
+    password: str
+    name: str
+    department: str
+    department_role: str
+    license_number: str
+
+class DoctorCreateResponse(BaseModel):
+    """Response schema after attempting to create a doctor"""
+    message: str
+    doctor_id: Optional[str] = None
+    
+class DoctorUpdateRequest(BaseModel):
+    """Schema for updating an existing doctor's details"""
+    name: Optional[str] = None
+    department: Optional[str] = None
+    department_role: Optional[str] = None
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+
+class DoctorUpdateResponse(BaseModel):
+    """Response schema after attempting to update a doctor"""
+    message: str
+    doctor_id: str
