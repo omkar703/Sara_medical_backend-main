@@ -20,7 +20,9 @@ class NotificationService:
         title: str,
         message: str,
         organization_id: Optional[UUID] = None,
-        action_url: Optional[str] = None
+        action_url: Optional[str] = None,
+        grant_id: Optional[UUID] = None,
+        action_metadata: Optional[dict] = None
     ) -> Notification:
         """Create a notification in the database and push it via WebSocket."""
         notification = Notification(
@@ -29,7 +31,9 @@ class NotificationService:
             title=title,
             message=message,
             organization_id=organization_id,
-            action_url=action_url
+            action_url=action_url,
+            grant_id=grant_id,
+            action_metadata=action_metadata
         )
         self.db.add(notification)
         await self.db.flush()
