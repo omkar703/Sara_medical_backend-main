@@ -32,6 +32,9 @@ from app.schemas.consultation import DoctorConsultationHistoryRow
 from app.core.security import pii_encryption
 from app.models.health_metric import HealthMetric
 from app.schemas.health_metric import HealthMetricCreate, HealthMetricResponse
+from app.core.deps import get_current_active_user
+from app.models.doctor_status import DoctorStatus
+from app.schemas.doctor_status import DoctorStatusUpdateRequest, DoctorStatusResponse
 
 from sqlalchemy import cast, String, or_
 import json
@@ -933,3 +936,42 @@ async def get_doctors_by_department(
         ))
         
     return DoctorSearchResponse(results=filtered_results)
+
+@router.put("/status", response_model=DoctorStatusResponse)
+async def set_doctor_status(
+    request: DoctorStatusUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Allows a doctor to set their current status to 'active' or 'inactive'.
+    """
+    if current_user.role != "doctor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Only doctors can update their service status."
+        )
+    
+    if request.status not in ["active", "inactive"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Invalid status. Please use 'active' or 'inactive'."
+        )
+
+    # Check if a status record already exists for this doctor
+    stmt = select(DoctorStatus).where(DoctorStatus.doctor_id == current_user.id)
+    result = await db.execute(stmt)
+    doc_status = result.scalar_one_or_none()
+
+    if doc_status:
+        doc_status.status = request.status
+    else:
+        doc_status = DoctorStatus(doctor_id=current_user.id, status=request.status)
+        db.add(doc_status)
+    
+    await db.commit()
+    
+    return DoctorStatusResponse(
+        message="Status updated successfully", 
+        status=request.status
+    )

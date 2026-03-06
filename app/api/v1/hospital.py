@@ -12,6 +12,9 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.hospital import HospitalOverviewResponse, HospitalDirectoryResponse, HospitalPatientsResponse, HospitalStaffResponse
 from app.services.hospital_service import HospitalService
+from app.models.doctor_status import DoctorStatus
+from app.schemas.doctor_status import HospitalDoctorStatusListResponse, DoctorWithStatusItem
+from app.schemas.doctor_status import HospitalDoctorStatusListResponse, DoctorDetailedWithStatusItem
 
 router = APIRouter(prefix="/hospital", tags=["Hospital Dashboard"])
 
@@ -260,4 +263,87 @@ async def update_doctor_account(
     return DoctorUpdateResponse(
         message="Doctor details updated successfully.",
         doctor_id=str(doctor.id)
+    )
+    
+@router.get("/doctors/status", response_model=HospitalDoctorStatusListResponse)
+async def get_hospital_doctors_status(
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get lists of active and inactive doctors for the hospital with all details.
+    Strictly filters by the hospital's organization_id.
+    Requires 'hospital' or 'admin' role.
+    """
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access the hospital status board."
+        )
+
+    # Note the specific filter: User.organization_id == organization_id
+    stmt = select(User, DoctorStatus.status).outerjoin(
+        DoctorStatus, User.id == DoctorStatus.doctor_id
+    ).where(
+        User.organization_id == organization_id, 
+        User.role == "doctor",
+        User.deleted_at.is_(None)
+    )
+    
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    active_doctors = []
+    inactive_doctors = []
+
+    for doc, doc_status_val in rows:
+        # 1. Decrypt Name
+        try:
+            full_name = pii_encryption.decrypt(doc.full_name) if doc.full_name else "Unknown"
+        except Exception:
+            full_name = "Encrypted"
+            
+        # 2. Decrypt Phone Number
+        phone_number = None
+        if doc.phone_number:
+            try:
+                phone_number = pii_encryption.decrypt(doc.phone_number)
+            except Exception:
+                phone_number = "Encrypted"
+                
+        # 3. Decrypt License Number
+        license_number = None
+        if doc.license_number:
+            try:
+                license_number = pii_encryption.decrypt(doc.license_number)
+            except Exception:
+                license_number = "Encrypted"
+
+        # Default to inactive if the doctor hasn't explicitly set a status yet
+        current_status = doc_status_val if doc_status_val else "inactive"
+        
+        item = DoctorDetailedWithStatusItem(
+            id=doc.id,
+            name=full_name,
+            email=doc.email,
+            specialty=doc.specialty,
+            photo_url=doc.avatar_url,
+            department=doc.department,
+            department_role=doc.department_role,
+            phone_number=phone_number,
+            license_number=license_number,
+            created_at=doc.created_at,
+            last_login=doc.last_login,
+            status=current_status
+        )
+        
+        if current_status == "active":
+            active_doctors.append(item)
+        else:
+            inactive_doctors.append(item)
+            
+    return HospitalDoctorStatusListResponse(
+        active_doctors=active_doctors,
+        inactive_doctors=inactive_doctors
     )

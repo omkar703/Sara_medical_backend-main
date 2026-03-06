@@ -13,6 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models.recent_patients import RecentPatient
 from app.schemas.recent_patients import RecentPatientResponse
+from fastapi import APIRouter, Depends, status
+
+from app.core.deps import get_current_active_user
+from app.models.doctor_status import DoctorStatus
+from app.schemas.doctor_status import DoctorStatusUpdateRequest, DoctorStatusResponse
 from typing import List
 
 router = APIRouter(prefix="/doctors", tags=["Public Directory"])
