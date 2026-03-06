@@ -10,6 +10,7 @@ from app.models.appointment import Appointment
 from app.models.task import Task
 from app.schemas.calendar import CalendarEventCreate
 from app.services.notification_service import NotificationService
+from app.core.security import pii_encryption
 
 
 class CalendarService:
@@ -206,8 +207,8 @@ class CalendarService:
             return
         
         # Determine event title based on role
-        patient_title = f"Appointment with Dr. {doctor.full_name}"
-        doctor_title = f"Appointment with {patient.full_name}"
+        patient_title = f"Appointment with Dr. {pii_encryption.decrypt(doctor.full_name)}"
+        doctor_title = f"Appointment with {pii_encryption.decrypt(patient.full_name)}"
         
         # Create event for patient
         patient_event = CalendarEvent(
