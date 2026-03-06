@@ -24,6 +24,16 @@ class MinIOService:
         )
         
         # Bucket management using internal client
+        presigned_endpoint = getattr(settings, 'MINIO_PRESIGNED_ENDPOINT', getattr(settings, 'minio_presigned_endpoint', settings.MINIO_ENDPOINT))
+        
+        self.presign_client = Minio(
+            presigned_endpoint,
+            access_key=settings.MINIO_ROOT_USER,
+            secret_key=settings.MINIO_ROOT_PASSWORD,
+            secure=settings.MINIO_USE_SSL
+        )
+        
+        # Bucket management using internal client
         self._ensure_buckets()
     
     def _ensure_buckets(self):
@@ -79,19 +89,15 @@ class MinIOService:
         Generate a presigned URL for secure, temporary file access.
         Default: 15 minutes (900 seconds) for HIPAA compliance.
         """
-        from datetime import timedelta
         try:
-            # Generate using internal client to avoid Docker loopback issues
-            url = self.client.presigned_get_object(
+            # Use the presign_client instead of the internal client.
+            # No urlparse hack is needed anymore!
+            url = self.presign_client.presigned_get_object(
                 bucket_name,
                 object_name,
-                # expires=expiry_seconds
                 expires=timedelta(seconds=expiry_seconds)
             )
-            # Robustly swap internal netloc for external netloc using urlparse
-            from urllib.parse import urlparse, urlunparse
-            parsed = urlparse(url)
-            return urlunparse(parsed._replace(netloc=settings.minio_presigned_endpoint))
+            return url
         except S3Error as e:
             print(f"Presigned URL generation failed: {e}")
             return None
