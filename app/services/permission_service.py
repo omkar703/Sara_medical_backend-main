@@ -136,14 +136,25 @@ class PermissionService:
         self.db.add(grant)
         await self.db.flush()
         
-        # Notify Patient of access request
+        # Notify Patient of access request — include grant_id so the patient can
+        # approve or reject directly from the notification
         notification_service = NotificationService(self.db)
         await notification_service.create_notification(
             user_id=patient_id,
             type="access_requested",
-            title="Data Access Request",
-            message="A doctor has requested access to your medical records for AI analysis.",
-            action_url="/settings/permissions"
+            title="AI Data Access Request",
+            message=(
+                "A doctor has requested permission to use AI to analyze your medical records. "
+                "You can approve or reject this request."
+            ),
+            action_url="/settings/permissions",
+            grant_id=grant.id,
+            action_metadata={
+                "grant_id": str(grant.id),
+                "doctor_id": str(doctor_id),
+                "reason": reason or "Doctor requested AI access to your medical records",
+                "actions": ["approve", "reject"]
+            }
         )
         
         return grant

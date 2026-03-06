@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy import JSON
 from app.database import Base
 
 class Notification(Base):
@@ -19,6 +20,12 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False, nullable=False, index=True)
     action_url = Column(String(255), nullable=True)
+
+    # Optional reference to a DataAccessGrant (for access-request notifications)
+    # Allows the patient to approve/reject the grant directly from the notification
+    grant_id = Column(UUID(as_uuid=True), ForeignKey("data_access_grants.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Metadata payload for action buttons (e.g., doctor info to display)
+    action_metadata = Column(JSON, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
