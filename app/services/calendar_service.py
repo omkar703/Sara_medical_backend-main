@@ -1,4 +1,3 @@
-
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, date, timedelta
@@ -207,8 +206,11 @@ class CalendarService:
             return
         
         # Determine event title based on role
-        patient_title = f"Appointment with Dr. {pii_encryption.decrypt(doctor.full_name)}"
-        doctor_title = f"Appointment with {pii_encryption.decrypt(patient.full_name)}"
+        doctor_full_name = pii_encryption.decrypt(doctor.full_name)
+        patient_full_name = pii_encryption.decrypt(patient.full_name)
+        
+        patient_title = f"Appointment with Dr. {doctor_full_name}"
+        doctor_title = f"Appointment with {patient_full_name}"
         
         # Create event for patient
         patient_event = CalendarEvent(
