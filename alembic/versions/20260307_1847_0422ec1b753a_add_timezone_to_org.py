@@ -25,7 +25,6 @@ def upgrade() -> None:
     op.add_column('organizations', sa.Column('date_format', sa.String(length=100), server_default='DD/MM/YYYY', nullable=True))
     op.add_column('organizations', sa.Column('org_email', sa.String(length=255), nullable=True))
     
-    op.drop_column('users', 'onboarding_complete')
     # ### end Alembic commands ###
 
 
@@ -35,5 +34,5 @@ def downgrade() -> None:
     op.drop_column('organizations', 'org_email')
     op.drop_column('organizations', 'date_format')
     op.drop_column('organizations', 'timezone')
-    op.add_column('users', sa.Column('onboarding_complete', sa.BOOLEAN(), server_default=sa.text('false'), autoincrement=False, nullable=True))
+    # onboarding_complete column was not present in the fresh schema - skip
     # ### end Alembic commands ###
