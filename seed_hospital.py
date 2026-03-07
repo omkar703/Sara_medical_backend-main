@@ -15,7 +15,7 @@ async def seed_dashboard_data():
     
     async with AsyncSessionLocal() as session:
         # 1. Create a Target Organization (Hospital)
-        org_name = "Metro City General Hospital"
+        org_name = "Urban City General Hospital"
         result = await session.execute(select(Organization).where(Organization.name == org_name))
         org = result.scalar_one_or_none()
         
@@ -26,7 +26,7 @@ async def seed_dashboard_data():
             print(f"✅ Created Organization: {org_name}")
 
         # 2. Create the Hospital Manager
-        admin_email = "admin@metrocity.com"
+        admin_email = "admin@urbancity2.com"
         result = await session.execute(select(User).where(User.email == admin_email))
         admin = result.scalar_one_or_none()
         
@@ -43,25 +43,42 @@ async def seed_dashboard_data():
             await session.flush()
             print(f"✅ Created Admin User: {admin_email}")
 
+        # Define departments and roles for seeding
+        departments = ["Cardiology", "Neurology", "General Medicine", "Pediatrics", "Emergency", "Surgery", "Orthopedics"]
+        department_roles = ["Head of Department", "Senior Attending", "Attending", "Resident", "Fellow", "Consultant"]
+
         # 3. Create Doctors (to populate the 'totalDoctors' metric)
         print("👨‍⚕️ Generating 24 Doctors...")
         doctors = []
         for i in range(24):
-            doc_email = f"doctor{i}@metrocity.com"
+            doc_email = f"doctor{i}@urbancity2.com"
             result = await session.execute(select(User).where(User.email == doc_email))
             doc = result.scalar_one_or_none()
+            
+            selected_dept = random.choice(departments)
+            selected_role = random.choice(department_roles)
+            
             if not doc:
+                # Create NEW doctor with department
                 doc = User(
                     email=doc_email,
                     password_hash=hash_password("Password123!"),
                     full_name=pii_encryption.encrypt(f"Dr. Test {i}"),
                     role="doctor",
                     organization_id=org.id,
-                    specialty=random.choice(["Cardiology", "Neurology", "General", "Pediatrics"]),
+                    specialty=selected_dept,  
+                    department=selected_dept,
+                    department_role=selected_role,
                     email_verified=True
                 )
                 session.add(doc)
-                doctors.append(doc)
+            else:
+                # UPDATE existing doctor if they are missing the department info
+                if not doc.department or not doc.department_role:
+                    doc.department = selected_dept
+                    doc.department_role = selected_role
+                    
+            doctors.append(doc)
         
         if doctors:
             await session.flush()
@@ -110,15 +127,16 @@ async def seed_dashboard_data():
             created_time = now - timedelta(hours=random.randint(1, 48))
             
             invite = Invitation(
-                email=f"new.staff.{i}@metrocity.com",
+                email=f"new.staff.{i}@urbancity2.com",
                 role="doctor",
                 organization_id=org.id,
                 created_by_id=admin.id,
-                token_hash=f"mock_hash_{uuid.uuid4().hex}",
+                token_hash=f"mock_hash_{uuid.uuid4().hex}_{i}", # Made hash unique to avoid constraint errors
                 status=random.choice(statuses),
-                expires_at=now + timedelta(days=7)
+                expires_at=now + timedelta(days=7),
+                department=random.choice(departments),
+                department_role=random.choice(department_roles)
             )
-            # Override created_at for realistic sorting (requires flush first to set ID)
             session.add(invite)
             
         await session.commit()

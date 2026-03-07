@@ -11,6 +11,8 @@ from app.models.patient import Patient
 from app.core.security import PIIEncryption
 from sqlalchemy import select
 from app.models.user import User
+from app.models.health_metric import HealthMetric
+from app.models.document import Document
 
 
 class HospitalService:
@@ -320,4 +322,65 @@ class HospitalService:
                 "totalStaff": total_staff
             },
             "staff": staff_list
+        }
+        
+    async def get_patient_records(self, organization_id: UUID, patient_id: UUID) -> dict:
+        """Fetch all health metrics and documents for a specific patient."""
+        
+        # 1. Verify Patient belongs to the organization
+        patient_check = await self.db.execute(
+            select(Patient.id).where(
+                Patient.id == patient_id,
+                Patient.organization_id == organization_id,
+                Patient.deleted_at.is_(None)
+            )
+        )
+        if not patient_check.scalar_one_or_none():
+            raise ValueError("Patient not found or does not belong to this organization.")
+
+        # 2. Fetch Health Metrics (Vitals)
+        metrics_stmt = select(HealthMetric).where(
+            HealthMetric.patient_id == patient_id
+        ).order_by(HealthMetric.recorded_at.desc())
+
+        # 3. Fetch Documents
+        docs_stmt = select(Document).where(
+            Document.patient_id == patient_id,
+            Document.deleted_at.is_(None)
+        ).order_by(Document.uploaded_at.desc())
+
+        # Execute queries concurrently
+        metrics_result, docs_result = await asyncio.gather(
+            self.db.execute(metrics_stmt),
+            self.db.execute(docs_stmt)
+        )
+
+        metrics = metrics_result.scalars().all()
+        docs = docs_result.scalars().all()
+
+        # Format Metrics
+        metrics_list = [{
+            "id": str(m.id),
+            "metric_type": m.metric_type,
+            "value": m.value,
+            "unit": m.unit,
+            "recorded_at": m.recorded_at,
+            "notes": m.notes
+        } for m in metrics]
+
+        # Format Documents
+        docs_list = [{
+            "id": str(d.id),
+            "file_name": d.file_name,
+            "file_type": d.file_type,
+            "file_size": d.file_size,
+            "category": d.category,
+            "uploaded_at": d.uploaded_at,
+            "status": "indexed" if d.total_chunks > 0 else "processing"
+        } for d in docs]
+
+        return {
+            "patient_id": str(patient_id),
+            "health_metrics": metrics_list,
+            "documents": docs_list
         }

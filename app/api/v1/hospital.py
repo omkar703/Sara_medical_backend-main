@@ -6,6 +6,7 @@ from app.core.security import hash_password, pii_encryption
 from app.schemas.hospital import DoctorCreateRequest, DoctorCreateResponse, DoctorUpdateRequest, DoctorUpdateResponse
 from app.services.email import send_doctor_credentials_email
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.schemas.hospital import PatientRecordsResponse
 
 from app.core.deps import get_current_active_user, get_organization_id
 from app.database import get_db
@@ -347,3 +348,30 @@ async def get_hospital_doctors_status(
         active_doctors=active_doctors,
         inactive_doctors=inactive_doctors
     )
+
+@router.get("/patients/{patient_id}/records", response_model=PatientRecordsResponse)
+async def get_patient_health_records(
+    patient_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get all health metrics (vitals) and documents for a specific patient.
+    Requires 'hospital' or 'admin' role.
+    """
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access patient records."
+        )
+
+    service = HospitalService(db)
+    try:
+        data = await service.get_patient_records(organization_id, patient_id)
+        return data
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )

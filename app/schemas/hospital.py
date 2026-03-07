@@ -95,3 +95,25 @@ class DoctorUpdateResponse(BaseModel):
     """Response schema after attempting to update a doctor"""
     message: str
     doctor_id: str
+    
+class HealthMetricItem(BaseModel):
+    id: str
+    metric_type: str
+    value: str
+    unit: Optional[str] = None
+    recorded_at: datetime
+    notes: Optional[str] = None
+
+class DocumentItem(BaseModel):
+    id: str
+    file_name: str
+    file_type: str
+    file_size: int
+    category: Optional[str] = None
+    uploaded_at: datetime
+    status: Optional[str] = None
+
+class PatientRecordsResponse(BaseModel):
+    patient_id: str
+    health_metrics: List[HealthMetricItem]
+    documents: List[DocumentItem]
