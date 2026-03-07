@@ -220,6 +220,24 @@ services:
       - saramedico_network
 
 
+  # ============================================
+  # Frontend Application (Next.js)
+  # ============================================
+  frontend:
+    build:
+      context: ./Frontend/saramedico-deploy-main
+      dockerfile: Dockerfile
+      args:
+        # Pass the Next.js build-time variables
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    container_name: saramedico_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - saramedico_network
 
 # ============================================
 # Persistent Volumes
