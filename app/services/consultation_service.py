@@ -190,6 +190,7 @@ class ConsultationService:
         visit_state: Optional[str] = None,
         urgency_level: Optional[str] = None,
         provider_id: Optional[UUID] = None,
+        patient_id: Optional[UUID] = None,
         search_query: Optional[str] = None,
         skip: int = 0,
         limit: int = 100,
@@ -218,6 +219,12 @@ class ConsultationService:
             query = query.where(Consultation.doctor_id == user_id)
         elif provider_id:
             query = query.where(Consultation.doctor_id == provider_id)
+
+        # 2. Patient Specific Filter (High Priority)
+        # If a specific patient_id is passed (e.g., from the Patient Directory details),
+        # we MUST restrict results to that specific patient only.
+        if patient_id:
+            query = query.where(Consultation.patient_id == patient_id)
 
         if status:
             query = query.where(Consultation.status == status)

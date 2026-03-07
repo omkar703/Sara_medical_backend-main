@@ -159,6 +159,12 @@ services:
       - medical_data:/app/medical-records
       - backend_logs:/app/logs
 
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$${HOSTNAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
     env_file:
       - .env
     environment:
@@ -192,6 +198,12 @@ services:
       - backend_logs:/app/logs
       - medical_data:/app/medical-records
 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h postgres -p 5432 -U ${DATABASE_USER:-saramedico_user} > /dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
     env_file:
       - .env
     environment:
@@ -206,6 +218,8 @@ services:
     restart: unless-stopped
     networks:
       - saramedico_network
+
+
 
 # ============================================
 # Persistent Volumes

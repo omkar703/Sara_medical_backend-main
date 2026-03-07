@@ -49,12 +49,11 @@ class HospitalService:
             Invitation.organization_id == organization_id
         ).order_by(Invitation.created_at.desc()).limit(10)
 
-        # Execute queries concurrently for performance
-        doctors_result, appts_result, activities_result = await asyncio.gather(
-            self.db.execute(doctors_stmt),
-            self.db.execute(appointments_stmt),
-            self.db.execute(activities_stmt)
-        )
+        # Execute queries sequentially to avoid session concurrency issues
+        doctors_result = await self.db.execute(doctors_stmt)
+        appts_result = await self.db.execute(appointments_stmt)
+        activities_result = await self.db.execute(activities_stmt)
+
 
         # Extract values
         total_doctors = doctors_result.scalar() or 0
@@ -96,11 +95,10 @@ class HospitalService:
             Patient.deleted_at.is_(None)
         ).order_by(Patient.created_at.desc())
 
-        # Execute both queries concurrently to halve the response time
-        doctors_result, patients_result = await asyncio.gather(
-            self.db.execute(doctors_stmt),
-            self.db.execute(patients_stmt)
-        )
+        # Execute both queries sequentially to avoid session concurrency issues
+        doctors_result = await self.db.execute(doctors_stmt)
+        patients_result = await self.db.execute(patients_stmt)
+
 
         doctors_data = doctors_result.scalars().all()
         patients_data = patients_result.scalars().all()
@@ -216,18 +214,12 @@ class HospitalService:
             .order_by(Patient.created_at.desc())
         )
 
-        # Execute all 4 queries concurrently
-        (
-            active_res, 
-            today_res, 
-            pending_res, 
-            table_res
-        ) = await asyncio.gather(
-            self.db.execute(active_patients_stmt),
-            self.db.execute(patients_today_stmt),
-            self.db.execute(pending_patients_stmt),
-            self.db.execute(patients_table_stmt)
-        )
+        # Execute all 4 queries sequentially to avoid session concurrency issues
+        active_res = await self.db.execute(active_patients_stmt)
+        today_res = await self.db.execute(patients_today_stmt)
+        pending_res = await self.db.execute(pending_patients_stmt)
+        table_res = await self.db.execute(patients_table_stmt)
+
 
         # Extract metrics safely
         active_count = active_res.scalar() or 0
@@ -349,11 +341,10 @@ class HospitalService:
             Document.deleted_at.is_(None)
         ).order_by(Document.uploaded_at.desc())
 
-        # Execute queries concurrently
-        metrics_result, docs_result = await asyncio.gather(
-            self.db.execute(metrics_stmt),
-            self.db.execute(docs_stmt)
-        )
+        # Execute queries sequentially to avoid session concurrency issues
+        metrics_result = await self.db.execute(metrics_stmt)
+        docs_result = await self.db.execute(docs_stmt)
+
 
         metrics = metrics_result.scalars().all()
         docs = docs_result.scalars().all()

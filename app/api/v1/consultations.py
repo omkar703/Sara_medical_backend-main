@@ -345,7 +345,7 @@ async def complete_consultation(
     await service.update_consultation(
         consultation_id=consultation_id,
         organization_id=organization_id,
-        updates={"status": "completed"},
+        updates={"status": "completed", "ai_status": "processing"},
     )
     await db.commit()
 
@@ -504,12 +504,11 @@ async def get_queue_metrics(
         cast(Consultation.completion_time, Date) == today
     ).subquery())
 
-    # Execute aggregate queries concurrently for performance
-    pending_result, urgent_result, cleared_result = await asyncio.gather(
-        db.execute(pending_stmt),
-        db.execute(urgent_stmt),
-        db.execute(cleared_stmt)
-    )
+    # Execute aggregate queries sequentially to avoid session concurrency issues
+    pending_result = await db.execute(pending_stmt)
+    urgent_result = await db.execute(urgent_stmt)
+    cleared_result = await db.execute(cleared_stmt)
+
 
     # Calculate Average Wait Time (Mocked logic, replace with actual check_in_time delta if needed)
     # E.g., select(func.avg(Consultation.completion_time - Consultation.check_in_time))
@@ -531,13 +530,14 @@ async def list_consultations(
     search: Optional[str] = Query(None, description="Global search by Patient Name, MRN, or Session ID"),
     page: int = Query(1, ge=1, description="Page number for pagination"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    patient_id: Optional[UUID] = Query(None, description="Filter by a specific patient"),
     current_user: User = Depends(get_current_active_user),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
     """
-    List consultations for the Structured Approval Queue with advanced filtering and pagination.
+    List consultations with advanced filtering and pagination.
     """
     service = ConsultationService(db)
     
@@ -551,6 +551,7 @@ async def list_consultations(
         visit_state=visit_state,
         urgency_level=urgency_level,
         provider_id=provider_id,
+        patient_id=patient_id,
         search_query=search,
         skip=skip,
         limit=limit
@@ -565,12 +566,11 @@ async def list_consultations(
         resource_type="consultation",
         resource_id=None,
         request=request,
-        metadata={"filters": {"status": status, "search": search, "page": page}}
+        metadata={"filters": {"status": status, "search": search, "page": page, "patient_id": str(patient_id) if patient_id else None}}
     )
     await db.commit()
     
     response_list = []
-    # Assumes you have updated _consultation_to_response to include the new visit_state and urgency fields
     for c in consultations:
         response_list.append(await _consultation_to_response(c))
         

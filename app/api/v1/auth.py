@@ -677,25 +677,26 @@ async def reset_password(
     return MessageResponse(message="Password reset successfully")
 
 
+from app.core.deps import get_user_optional
+
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
     request: RefreshTokenRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """Logout by revoking refresh token"""
     # Hash and revoke the refresh token
     token_hash = hash_token(request.refresh_token)
     
-    await db.execute(
-        update(RefreshToken)
-        .where(
-            RefreshToken.token_hash == token_hash,
-            RefreshToken.user_id == current_user.id
-        )
-        .values(revoked=True)
-    )
+    # Revoke the token if it exists
+    # If current_user is provided, only revoke if it belongs to them
+    stmt = update(RefreshToken).where(RefreshToken.token_hash == token_hash)
     
+    if current_user:
+        stmt = stmt.where(RefreshToken.user_id == current_user.id)
+        
+    await db.execute(stmt)
     await db.commit()
     
     return MessageResponse(message="Logged out successfully")

@@ -83,6 +83,20 @@ async def get_current_user(
     return user
 
 
+async def get_user_optional(
+    db: AsyncSession = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+) -> Optional[User]:
+    """Get the current user or None if not authenticated"""
+    if not credentials:
+        return None
+        
+    try:
+        return await get_current_user(credentials, db)
+    except HTTPException:
+        return None
+
+
 async def get_current_active_user(
     current_user: User = Depends(get_current_user)
 ) -> User:

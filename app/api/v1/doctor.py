@@ -508,12 +508,11 @@ async def get_doctor_dashboard_metrics(
         Task.status == 'pending'
     )
 
-    # Execute queries concurrently
-    pending_res, patients_res, orders_res = await asyncio.gather(
-        db.execute(pending_notes_stmt),
-        db.execute(patients_today_stmt),
-        db.execute(unsigned_orders_stmt)
-    )
+    # Execute queries sequentially to avoid session concurrency issues
+    pending_res = await db.execute(pending_notes_stmt)
+    patients_res = await db.execute(patients_today_stmt)
+    orders_res = await db.execute(unsigned_orders_stmt)
+
 
     return ClinicalDashboardMetrics(
         pending_notes=pending_res.scalar() or 0,
