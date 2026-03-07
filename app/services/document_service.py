@@ -27,13 +27,30 @@ class DocumentService:
         file_size: int,
         uploaded_by: UUID,
     ) -> Dict:
-        """
-        Create document metadata record (before file upload)
+        # 1. Search for existing "pending" record for SAME patient/file to prevent doubling
+        # (e.g. from failed/retried upload-url attempts)
+        from sqlalchemy import and_
+        from datetime import timedelta
         
-        Returns:
-            Document data including ID and storage path
-        """
-        # Create document with unique ID
+        # Look for same file uploaded within last hour that has no size (meaning it's just meta)
+        time_limit = datetime.utcnow() - timedelta(hours=1)
+        stmt = select(Document).where(
+            and_(
+                Document.patient_id == patient_id,
+                Document.file_name == file_name,
+                Document.file_size == 0,
+                Document.uploaded_at >= time_limit,
+                Document.deleted_at.is_(None)
+            )
+        ).order_by(Document.uploaded_at.desc()).limit(1)
+        
+        result = await self.db.execute(stmt)
+        existing_doc = result.scalar_one_or_none()
+        
+        if existing_doc:
+            return await self._document_to_dict(existing_doc)
+
+        # 2. Create document with unique ID if no recent pending metadata found
         document = Document(
             patient_id=patient_id,
             organization_id=organization_id,
@@ -234,7 +251,11 @@ class DocumentService:
         }
         
         if include_download_url:
-            download_url = await self.storage.generate_download_url(document.storage_path)
-            data["downloadUrl"] = download_url
+            exists = await self.storage.file_exists(document.storage_path)
+            if exists:
+                download_url = await self.storage.generate_download_url(document.storage_path)
+                data["downloadUrl"] = download_url
+            else:
+                data["downloadUrl"] = None
         
         return data

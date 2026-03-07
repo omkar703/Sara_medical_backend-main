@@ -1,5 +1,6 @@
 """Document API Endpoints"""
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -38,6 +39,7 @@ async def upload_document(
     file: UploadFile = File(...),
     patient_id: UUID = Form(...),
     notes: Optional[str] = Form(None),
+    document_id: Optional[UUID] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -74,11 +76,13 @@ async def upload_document(
     # 3. Save to temp storage (local)
     upload_dir = "/tmp/saramedico_uploads"
     os.makedirs(upload_dir, exist_ok=True)
-    file_id = uuid4()
+    
+    # Reuse provided ID or generate new one
+    file_id = document_id or uuid4()
     ext = os.path.splitext(file.filename)[1]
     local_path = f"{upload_dir}/{file_id}{ext}"
     
-    # Generate proper storage path using StorageService logic
+    # Generate storage path
     storage = StorageService()
     storage_path = storage.generate_storage_path(
         organization_id=current_user.organization_id,
@@ -91,7 +95,6 @@ async def upload_document(
         with open(local_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Upload to MinIO right after saving locally using the storage service bucket
         from app.services.minio_service import minio_service
         minio_service.upload_file(
             file_path=local_path,
@@ -102,30 +105,53 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File save/upload failed: {e}")
         
-    # 4. Create Document Record
-    new_doc = Document(
-        id=file_id,
-        patient_id=patient.id,
-        organization_id=current_user.organization_id,
-        file_name=file.filename,
-        file_type=file.content_type,
-        file_size=0, # Updated below
-        storage_path=storage_path,
-        uploaded_by=current_user.id,
-        notes=notes,
-        processing_details={
-            "tier_1_text": {"status": "pending"},
-            "tier_2_images": {"status": "pending"},
-            "tier_3_vision": {"status": "pending"}
-        }
-    )
-    # Get file size
-    new_doc.file_size = os.path.getsize(local_path)
+    # 4. Create or Update Document Record
+    if document_id:
+        stmt = select(Document).where(Document.id == document_id)
+        result = await db.execute(stmt)
+        new_doc = result.scalar_one_or_none()
+        if new_doc:
+            new_doc.file_name = file.filename
+            new_doc.file_type = file.content_type
+            new_doc.file_size = os.path.getsize(local_path)
+            new_doc.storage_path = storage_path
+            new_doc.uploaded_at = datetime.utcnow()
+        else:
+            # If ID provided but not found, create new (safe fallback)
+            new_doc = Document(
+                id=file_id,
+                patient_id=patient.id,
+                organization_id=current_user.organization_id,
+                file_name=file.filename,
+                file_type=file.content_type,
+                file_size=os.path.getsize(local_path),
+                storage_path=storage_path,
+                uploaded_by=current_user.id,
+                notes=notes
+            )
+            db.add(new_doc)
+    else:
+        new_doc = Document(
+            id=file_id,
+            patient_id=patient.id,
+            organization_id=current_user.organization_id,
+            file_name=file.filename,
+            file_type=file.content_type,
+            file_size=os.path.getsize(local_path),
+            storage_path=storage_path,
+            uploaded_by=current_user.id,
+            notes=notes,
+            processing_details={
+                "tier_1_text": {"status": "pending"},
+                "tier_2_images": {"status": "pending"},
+                "tier_3_vision": {"status": "pending"}
+            }
+        )
+        db.add(new_doc)
     
-    db.add(new_doc)
     await db.commit()
     
-    # 4. Trigger Processing via Celery
+    # 5. Trigger Processing
     from app.workers.tasks import process_document_task
     process_document_task.delay(str(new_doc.id))
 
@@ -138,7 +164,7 @@ async def upload_document(
         action="upload",
         resource_type="document",
         resource_id=new_doc.id,
-        metadata={"file_name": file.filename, "file_size": new_doc.file_size}
+        metadata={"file_name": file.filename, "file_size": new_doc.file_size, "reused_id": bool(document_id)}
     )
 
     return {

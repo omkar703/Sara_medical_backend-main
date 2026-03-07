@@ -230,35 +230,55 @@ async def approve_appointment(
     if appointment.status != "pending":
         raise HTTPException(status_code=400, detail=f"Appointment is already {appointment.status}")
 
-    # Generate Zoom Meeting
+    # Generate Google Meet link using mock/real service
+    from app.core.security import pii_encryption
+    from app.services.mock_google_meet import google_meet_service as mock_meet_service
+    from app.config import settings
+
     try:
-        topic = f"Consultation with {current_user.full_name}"
-        # We try to decrypt doctor name for the topic if possible, but full_name is encrypted in DB
-        from app.core.security import pii_encryption
-        try:
-            doctor_name = pii_encryption.decrypt(current_user.full_name)
-            topic = f"Consultation with Dr. {doctor_name}"
-        except:
-            pass
-            
-        zoom_meeting = await zoom_service.create_meeting(
-            topic=topic,
-            start_time=approval_in.appointment_time.isoformat(),
-            duration_minutes=30
-        )
-        
-        appointment.meeting_id = str(zoom_meeting["id"])
-        appointment.join_url = zoom_meeting["join_url"]
-        appointment.start_url = zoom_meeting["start_url"]
-        appointment.meeting_password = zoom_meeting.get("password")
-        
+        doctor_name = pii_encryption.decrypt(current_user.full_name)
+    except Exception:
+        doctor_name = "Doctor"
+
+    meeting_summary = f"Consultation with Dr. {doctor_name}"
+    meet_link = None
+    google_event_id = None
+
+    try:
+        # Try the real Google Meet service first if feature is enabled
+        from app.services.google_meet_service import google_meet_service as real_meet_service
+        if settings.FEATURE_VIDEO_CALLS and getattr(real_meet_service, "_available", False):
+            google_event_id, meet_link = await real_meet_service.create_meeting(
+                start_time=approval_in.appointment_time,
+                duration_minutes=30,
+                summary=meeting_summary,
+                description=f"Medical appointment",
+                attendees=[current_user.email]
+            )
+        else:
+            raise Exception("Real Google Meet not configured — using mock")
     except Exception as e:
-        print(f"Error creating Zoom meeting: {e}")
-        # Bypass Zoom API error and provide fallback URLs so appointment can be approved
-        appointment.meeting_id = "LOCAL_MEETING"
-        appointment.join_url = "https://example.com/meet/fallback"
-        appointment.start_url = "https://example.com/meet/fallback"
-        appointment.meeting_password = "123"
+        print(f"[Appointments] Falling back to mock Google Meet: {e}")
+        try:
+            google_event_id, meet_link = await mock_meet_service.create_meeting(
+                start_time=approval_in.appointment_time,
+                duration_minutes=30,
+                summary=meeting_summary,
+                description="Appointment consultation",
+                attendees=[current_user.email]
+            )
+        except Exception as mock_err:
+            print(f"[Appointments] Mock service also failed: {mock_err}")
+            from uuid import uuid4
+            google_event_id = str(uuid4())
+            meet_link = f"https://meet.google.com/mock-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+
+    # Store the meet link so both doctor & patient can join
+    appointment.meet_link = meet_link
+    appointment.google_event_id = google_event_id
+    # Also set join_url for backwards compatibility with older frontend code
+    appointment.join_url = meet_link
+    appointment.start_url = meet_link
 
     appointment.status = "accepted"
     appointment.requested_date = approval_in.appointment_time

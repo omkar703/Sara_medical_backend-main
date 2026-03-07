@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 import phonenumbers
 from pydantic import BaseModel, EmailStr, Field, validator
+from app.schemas.health_metric import HealthMetricResponse
 
 
 # ==========================================
@@ -167,6 +168,7 @@ class PatientDetailResponse(BaseModel):
     
     # Dashboard Widgets (The new part)
     latest_vitals: Optional[Dict[str, str]] = None  # e.g., {"bp": "120/80", "hr": "72"}
+    health_metrics: Optional[List[HealthMetricResponse]] = []        # Full history for tables
     last_consultation: Optional[Dict[str, Any]] = None # e.g., {"date": "2024-02-10", "diagnosis": "Flu"}
     
     class Config:

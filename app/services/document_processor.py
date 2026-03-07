@@ -68,7 +68,7 @@ class DocumentProcessor:
                 
             try:
                 minio_service.client.fget_object(
-                    "saramedico-medical-records", 
+                    settings.MINIO_BUCKET_DOCUMENTS, 
                     document.storage_path,
                     temp_path
                 )

@@ -173,14 +173,17 @@ async def get_current_active_user_ws(token: str, db: AsyncSession = None) -> Use
         if not payload:
             return None
             
-        payload = decode_token(token)
-        if not payload:
+        # Get user ID from payload and convert to UUID object
+        user_id_str = payload.get("sub")
+        if not user_id_str:
             return None
             
-        from types import SimpleNamespace
-        token_data = SimpleNamespace(**payload)
+        try:
+            user_uuid = UUID(user_id_str)
+        except (ValueError, TypeError):
+            return None
         
-        user_result = await db.execute(select(User).where(User.id == getattr(token_data, "sub", None)))
+        user_result = await db.execute(select(User).where(User.id == user_uuid))
         user = user_result.scalar_one_or_none()
         
         # Check if user exists and is not soft-deleted

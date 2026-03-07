@@ -22,7 +22,22 @@ class StorageService:
             secure=settings.MINIO_USE_SSL
         )
         
+        # IMPORTANT: presign_client uses the EXTERNAL endpoint (localhost:9010).
+        # Presigned URL signatures include the 'host' header, so the client used
+        # to sign must match the host the browser will use to fetch the file.
+        external_endpoint = settings.minio_presigned_endpoint
+        self.presign_client = Minio(
+            external_endpoint,
+            access_key=settings.MINIO_ROOT_USER,
+            secret_key=settings.MINIO_ROOT_PASSWORD,
+            secure=settings.MINIO_USE_SSL
+        )
+        
         self.bucket_name = settings.MINIO_BUCKET_DOCUMENTS
+        
+        # Pre-populate region map on BOTH clients to avoid network region-discovery pings.
+        self.client._region_map[self.bucket_name] = "us-east-1"
+        self.presign_client._region_map[self.bucket_name] = "us-east-1"
     
     async def generate_upload_url(
         self, 
@@ -35,16 +50,13 @@ class StorageService:
         """
         from datetime import timedelta
         try:
-            # Use internal client for generation
-            url = self.client.presigned_put_object(
+            # Use presign_client initialized with the external endpoint
+            url = self.presign_client.presigned_put_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
                 expires=timedelta(seconds=expires_in)
             )
-            # Robustly swap internal netloc for external netloc using urlparse
-            from urllib.parse import urlparse, urlunparse
-            parsed = urlparse(url)
-            return urlunparse(parsed._replace(netloc=settings.minio_presigned_endpoint))
+            return url
         except S3Error as e:
             raise Exception(f"Failed to generate upload URL: {str(e)}")
     
@@ -58,16 +70,13 @@ class StorageService:
         """
         from datetime import timedelta
         try:
-            # Use internal client for generation
-            url = self.client.presigned_get_object(
+            # Use presign_client initialized with the external endpoint
+            url = self.presign_client.presigned_get_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_path,
                 expires=timedelta(seconds=expires_in)
             )
-            # Robustly swap internal netloc for external netloc using urlparse
-            from urllib.parse import urlparse, urlunparse
-            parsed = urlparse(url)
-            return urlunparse(parsed._replace(netloc=settings.minio_presigned_endpoint))
+            return url
         except S3Error as e:
             raise Exception(f"Failed to generate download URL: {str(e)}")
     
@@ -81,13 +90,19 @@ class StorageService:
         Returns:
             True if file exists, False otherwise
         """
+        clean_path = storage_path.strip() if storage_path else storage_path
         try:
+            print(f"Checking storage: bucket={self.bucket_name}, path='{clean_path}'")
             self.client.stat_object(
                 bucket_name=self.bucket_name,
-                object_name=storage_path
+                object_name=clean_path
             )
             return True
-        except S3Error:
+        except S3Error as e:
+            print(f"Storage check failed for '{clean_path}': {e}")
+            return False
+        except Exception as e:
+            print(f"Unexpected error checking storage for '{clean_path}': {e}")
             return False
     
     async def delete_file(self, storage_path: str) -> None:

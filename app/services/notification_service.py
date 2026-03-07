@@ -6,7 +6,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification
-from app.api.v1.websockets import manager
 from app.schemas.notification import NotificationResponse
 
 class NotificationService:
@@ -40,6 +39,7 @@ class NotificationService:
         
         # Prepare for real-time push
         notification_data = NotificationResponse.model_validate(notification).model_dump(mode="json")
+        from app.api.v1.websockets import manager
         await manager.send_personal_message(
             {"type": "notification", "data": notification_data},
             organization_id or UUID("00000000-0000-0000-0000-000000000000"), # Fallback if org is missing

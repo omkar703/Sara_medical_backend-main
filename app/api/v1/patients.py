@@ -383,7 +383,7 @@ async def get_patient_details_for_dashboard(
         select(HealthMetric)
         .where(HealthMetric.patient_id == patient_id)
         .order_by(HealthMetric.recorded_at.desc())
-        .limit(5) # Fetch last few to find BP and HR
+        .limit(50) # Fetch more to reliably find all types
     )
     vitals_result = await db.execute(vitals_stmt)
     vitals_records = vitals_result.scalars().all()
@@ -613,9 +613,14 @@ async def get_patient_details_for_dashboard(
         medications=medications,
 
         latest_vitals={
-            "bp": latest_bp or "N/A",
-            "hr": latest_hr or "N/A"
+            "bp": next((v.value for v in vitals_records if v.metric_type.strip().lower() in ["blood_pressure", "blood pressure"]), "N/A"),
+            "hr": next((v.value for v in vitals_records if v.metric_type.strip().lower() in ["heart_rate", "heart rate"]), "N/A"),
+            "weight": next((v.value for v in vitals_records if v.metric_type.strip().lower() == "weight"), "N/A"),
+            "temp": next((v.value for v in vitals_records if v.metric_type.strip().lower() == "temperature"), "N/A"),
+            "resp": next((v.value for v in vitals_records if v.metric_type.strip().lower() == "respiratory_rate"), "N/A"),
+            "spo2": next((v.value for v in vitals_records if v.metric_type.strip().lower() == "oxygen_saturation"), "N/A")
         },
+        health_metrics=vitals_records,
         last_consultation={
             "date": last_cons_date,
             "diagnosis": last_cons_diagnosis

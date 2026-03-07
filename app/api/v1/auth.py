@@ -17,6 +17,7 @@ from datetime import date
 from typing import Union
 from app.models.patient import Patient
 from app.models.consultation import Consultation
+from app.models.health_metric import HealthMetric
 from app.schemas.patient import PatientDetailResponse
 from app.services.minio_service import minio_service
 from pydantic import BaseModel, EmailStr, Field
@@ -827,7 +828,17 @@ async def get_current_user_info(
                     "diagnosis": last_visit_obj.diagnosis
                 }
 
-            # 5. Fetch temporary Avatar URL from the current user
+            # 5. Fetch Health Metrics
+            health_metrics_q = (
+                select(HealthMetric)
+                .where(HealthMetric.patient_id == patient.id)
+                .order_by(HealthMetric.recorded_at.desc())
+                .limit(20)
+            )
+            hm_res = await db.execute(health_metrics_q)
+            health_metrics = hm_res.scalars().all()
+
+            # 6. Fetch temporary Avatar URL from the current user
             avatar_link = None
             if current_user.avatar_url:
                 avatar_link = minio_service.generate_presigned_url(
@@ -850,7 +861,15 @@ async def get_current_user_info(
                 medical_history=medical_history,
                 allergies=allergies_list,
                 medications=medications_list,
-                latest_vitals=None,
+                latest_vitals={
+                    "bp": next((v.value for v in health_metrics if v.metric_type.strip().lower() in ["blood_pressure", "blood pressure"]), "N/A"),
+                    "hr": next((v.value for v in health_metrics if v.metric_type.strip().lower() in ["heart_rate", "heart rate"]), "N/A"),
+                    "weight": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "weight"), "N/A"),
+                    "temp": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "temperature"), "N/A"),
+                    "resp": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "respiratory_rate"), "N/A"),
+                    "spo2": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "oxygen_saturation"), "N/A")
+                },
+                health_metrics=health_metrics,
                 last_consultation=last_consultation
             )
 

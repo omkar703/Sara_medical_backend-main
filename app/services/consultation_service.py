@@ -11,7 +11,9 @@ from sqlalchemy.orm import selectinload
 from app.models.consultation import Consultation
 from app.models.patient import Patient
 from app.models.user import User
-from app.services.google_meet_service import google_meet_service
+from app.services.google_meet_service import google_meet_service as real_google_meet_service
+from app.services.mock_google_meet import google_meet_service as mock_google_meet_service
+from app.config import settings
 from app.core.security import pii_encryption
 from app.models.recent_doctors import RecentDoctor  
 from app.models.recent_patients import RecentPatient
@@ -65,8 +67,12 @@ class ConsultationService:
 
         google_event_id, meet_link = None, None
         try:
-            from app.services.google_meet_service import google_meet_service
-            google_event_id, meet_link = await google_meet_service.create_meeting(
+            # Determine which service to use
+            meet_service = real_google_meet_service
+            if not settings.FEATURE_VIDEO_CALLS or not getattr(real_google_meet_service, "_available", False):
+                meet_service = mock_google_meet_service
+            
+            google_event_id, meet_link = await meet_service.create_meeting(
                 start_time=scheduled_at,
                 duration_minutes=duration_minutes,
                 summary=meeting_topic,
@@ -94,6 +100,76 @@ class ConsultationService:
         self.db.add(consultation)
         await self.db.flush()
         
+        # 4. Notify Patient (if they have a user account)
+        try:
+            # Check if this patient ID exists in the users table (registered patients)
+            # In our system, registered patients have User.id == Patient.id
+            user_check = await self.db.execute(select(User.id).where(User.id == patient_id))
+            if user_check.scalar_one_or_none():
+                from app.services.notification_service import NotificationService
+                notif_service = NotificationService(self.db)
+                
+                await notif_service.create_notification(
+                    user_id=patient_id,
+                    type="consultation_started",
+                    title="Consultation Started",
+                    message=f"Dr. {doc_name} has started a live consultation session. click here to join.",
+                    organization_id=organization_id,
+                    action_url=f"/dashboard/patient/video-call?consultationId={consultation.id}",
+                    action_metadata={
+                        "consultation_id": str(consultation.id),
+                        "meet_link": meet_link,
+                        "doctor_name": doc_name
+                    }
+                )
+        except Exception as e:
+            # Notifications are best-effort; don't break the consultation creation if it fails
+            print(f"[Consultation Service] ⚠ Failed to send notification to patient {patient_id}: {e}")
+
+        # 5. Update Recent History for both participants
+        try:
+            # Update Recent Patient for the Doctor
+            rp_stmt = select(RecentPatient).where(
+                RecentPatient.doctor_id == doctor_id,
+                RecentPatient.patient_id == patient_id
+            )
+            rp_res = await self.db.execute(rp_stmt)
+            recent_patient = rp_res.scalar_one_or_none()
+            
+            if recent_patient:
+                recent_patient.last_visit_at = datetime.utcnow()
+                recent_patient.visit_count += 1
+            else:
+                self.db.add(RecentPatient(
+                    doctor_id=doctor_id,
+                    patient_id=patient_id,
+                    last_visit_at=datetime.utcnow(),
+                    visit_count=1
+                ))
+            
+            # Update Recent Doctor for the Patient
+            rd_stmt = select(RecentDoctor).where(
+                RecentDoctor.patient_id == patient_id,
+                RecentDoctor.doctor_id == doctor_id
+            )
+            rd_res = await self.db.execute(rd_stmt)
+            recent_doctor = rd_res.scalar_one_or_none()
+            
+            if recent_doctor:
+                recent_doctor.last_visit_at = datetime.utcnow()
+                recent_doctor.visit_count += 1
+            else:
+                self.db.add(RecentDoctor(
+                    patient_id=patient_id,
+                    doctor_id=doctor_id,
+                    last_visit_at=datetime.utcnow(),
+                    visit_count=1
+                ))
+            
+            await self.db.flush()
+        except Exception as e:
+            print(f"[Consultation Service] ⚠ Failed to update recent history: {e}")
+
         # Refresh to load relationships for response
         await self.db.refresh(consultation, attribute_names=["doctor", "patient"])
         
@@ -129,9 +205,8 @@ class ConsultationService:
         
         # --- Apply Filters ---
         if role == "patient":
-             # Patients only see their own - assuming patient_id field or similar?
-             # For now, let's assuming user_id if it's a patient user
-             pass 
+             # Patients only see their own
+             query = query.where(Consultation.patient_id == user_id)
         elif role == "doctor" and not provider_id:
             # By default, doctors might only see their own
             query = query.where(Consultation.doctor_id == user_id)
@@ -206,7 +281,7 @@ class ConsultationService:
             RecentPatient.patient_id == consultation.patient_id
         )
         result_pat = await self.db.execute(stmt_pat)
-        recent_pat = result_pat.scalar_one_or_none()
+        recent_pat = result_pat.scalars().first()
 
         if recent_pat:
             # Update existing
@@ -228,7 +303,7 @@ class ConsultationService:
             RecentDoctor.doctor_id == consultation.doctor_id
         )
         result_doc = await self.db.execute(stmt_doc)
-        recent_doc = result_doc.scalar_one_or_none()
+        recent_doc = result_doc.scalars().first()
 
         if recent_doc:
             # Update existing

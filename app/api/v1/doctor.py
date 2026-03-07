@@ -683,8 +683,17 @@ async def get_single_patient(
             "diagnosis": last_visit_obj.diagnosis
         }
 
-    # 5. Fetch Avatar URL from the User table
-    # Since Patient ID == User ID, we can look them up directly
+    # 5. Fetch Health Metrics
+    health_metrics_q = (
+        select(HealthMetric)
+        .where(HealthMetric.patient_id == patient.id)
+        .order_by(HealthMetric.recorded_at.desc())
+        .limit(20)
+    )
+    hm_res = await db.execute(health_metrics_q)
+    health_metrics = hm_res.scalars().all()
+
+    # 6. Fetch Avatar URL from the User table
     user_query = select(User).where(User.id == patient.id)
     user_result = await db.execute(user_query)
     patient_user = user_result.scalar_one_or_none()
@@ -705,7 +714,7 @@ async def get_single_patient(
         age=age,
         date_of_birth=dob_str,
         gender=patient.gender,
-        avatar_url=avatar_link,  # Send the generated link to the frontend
+        avatar_url=avatar_link,
         phone_number=phone,
         email=email,
         address=address_dict,
@@ -713,7 +722,15 @@ async def get_single_patient(
         medical_history=medical_history,
         allergies=allergies_list,
         medications=medications_list,
-        latest_vitals=None,
+        latest_vitals={
+            "bp": next((v.value for v in health_metrics if v.metric_type.strip().lower() in ["blood_pressure", "blood pressure"]), "N/A"),
+            "hr": next((v.value for v in health_metrics if v.metric_type.strip().lower() in ["heart_rate", "heart rate"]), "N/A"),
+            "weight": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "weight"), "N/A"),
+            "temp": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "temperature"), "N/A"),
+            "resp": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "respiratory_rate"), "N/A"),
+            "spo2": next((v.value for v in health_metrics if v.metric_type.strip().lower() == "oxygen_saturation"), "N/A")
+        },
+        health_metrics=health_metrics,
         last_consultation=last_consultation
     )
 

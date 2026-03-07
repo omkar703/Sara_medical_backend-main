@@ -15,7 +15,7 @@ class MinIOService:
     """
     
     def __init__(self):
-        # Internal client for backend-to-MinIO communication  
+        # Internal client for backend-to-MinIO communication (bucket checks, uploads, etc.)
         self.client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ROOT_USER,
@@ -23,18 +23,30 @@ class MinIOService:
             secure=settings.MINIO_USE_SSL
         )
         
-        # Bucket management using internal client
-        presigned_endpoint = getattr(settings, 'MINIO_PRESIGNED_ENDPOINT', getattr(settings, 'minio_presigned_endpoint', settings.MINIO_ENDPOINT))
-        
+        # IMPORTANT: presign_client uses the EXTERNAL endpoint (localhost:9010).
+        # Presigned URL signatures include the 'host' header, so the client used
+        # to sign must match the host the browser will use to fetch the file.
+        # If we sign with 'minio:9000' but serve 'localhost:9010', MinIO returns
+        # SignatureDoesNotMatch.
+        external_endpoint = settings.minio_presigned_endpoint
         self.presign_client = Minio(
-            presigned_endpoint,
+            external_endpoint,
             access_key=settings.MINIO_ROOT_USER,
             secret_key=settings.MINIO_ROOT_PASSWORD,
             secure=settings.MINIO_USE_SSL
         )
         
-        # Bucket management using internal client
+        # Bucket management MUST use internal client (self.client) 
+        # because the backend container can't reach 'localhost:9010' from inside Docker.
         self._ensure_buckets()
+
+        # Pre-populate region map on BOTH clients to avoid network region-discovery pings.
+        # Without this, the library tries to connect to the server to find the region,
+        # which crashes when presign_client tries to connect to localhost:9010 from inside Docker.
+        for bucket in [settings.MINIO_BUCKET_UPLOADS, settings.MINIO_BUCKET_DOCUMENTS,
+                       settings.MINIO_BUCKET_AUDIO, settings.MINIO_BUCKET_AVATARS]:
+            self.client._region_map[bucket] = "us-east-1"
+            self.presign_client._region_map[bucket] = "us-east-1"
     
     def _ensure_buckets(self):
         """Ensure all required buckets exist"""
@@ -43,7 +55,6 @@ class MinIOService:
             settings.MINIO_BUCKET_DOCUMENTS,
             settings.MINIO_BUCKET_AUDIO,
             settings.MINIO_BUCKET_AVATARS,
-            "saramedico-medical-records"  # Dedicated bucket for medical history
         ]
         
         for bucket in buckets:
@@ -90,8 +101,10 @@ class MinIOService:
         Default: 15 minutes (900 seconds) for HIPAA compliance.
         """
         try:
-            # Use the presign_client instead of the internal client.
-            # No urlparse hack is needed anymore!
+            # Use presign_client (configured with the external endpoint) to generate the URL.
+            # The signature is computed using the 'host' header, so it must match the endpoint
+            # that the browser will use. presign_client._region_map is pre-populated so no
+            # background network call is made to discover the region.
             url = self.presign_client.presigned_get_object(
                 bucket_name,
                 object_name,
@@ -99,7 +112,10 @@ class MinIOService:
             )
             return url
         except S3Error as e:
-            print(f"Presigned URL generation failed: {e}")
+            print(f"Failed to generate presigned URL: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error generating presigned URL: {e}")
             return None
     
     def get_file_bytes(self, bucket_name: str, object_name: str) -> Optional[bytes]:
@@ -127,9 +143,14 @@ class MinIOService:
     def file_exists(self, bucket_name: str, object_name: str) -> bool:
         """Check if a file exists in MinIO"""
         try:
+            print(f"Minio existence check: bucket={bucket_name}, path='{object_name}'")
             self.client.stat_object(bucket_name, object_name)
             return True
-        except S3Error:
+        except S3Error as e:
+            print(f"Minio existence check FAILED for '{object_name}' in {bucket_name}: {e}")
+            return False
+        except Exception as e:
+            print(f"Minio existence check ERROR for '{object_name}': {e}")
             return False
 
 

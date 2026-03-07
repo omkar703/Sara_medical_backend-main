@@ -453,3 +453,212 @@ async def get_doctor_history(
     result = await db.execute(stmt)
     history = result.scalars().all()
     return {"history": history}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Medical Timeline Generation (new endpoint)
+# ══════════════════════════════════════════════════════════════════════════════
+
+TIMELINE_SYSTEM_PROMPT = """\
+You are a clinical document analysis AI. Your task is to extract a structured medical timeline from the provided document image or text.
+
+STRICT RULES:
+1. Only include events that are EXPLICITLY mentioned in the document. Do not invent events.
+2. For every event you extract, provide a date (even if approximate like "2024-01", "~2023" or "Unknown").
+3. Classify each event into one of these types: lab, imaging, visit, medication, procedure, surgery, diagnosis, vaccination, other
+4. Return ONLY valid JSON — no markdown fences, no explanation, no preamble.
+
+JSON format (array of events, sorted by date descending):
+[
+  {
+    "id": 1,
+    "date": "YYYY-MM-DD or YYYY-MM or YYYY or approximate",
+    "title": "Short event title (max 60 chars)",
+    "description": "Brief description of the event (max 120 chars)",
+    "type": "lab|imaging|visit|medication|procedure|surgery|diagnosis|vaccination|other",
+    "page": 1
+  }
+]
+
+If no medical timeline events can be found in the document, return an empty array: []
+"""
+
+
+class TimelineEvent(BaseModel):
+    id: int
+    date: str
+    title: str
+    description: str
+    type: str
+    page: int = 1
+
+
+class TimelineResponse(BaseModel):
+    document_id: str
+    events: List[TimelineEvent]
+    generated_at: str
+    source: str  # "ai" or "fallback"
+
+
+@router.get("/timeline/{document_id}", response_model=TimelineResponse)
+async def get_document_timeline(
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Analyse a medical document with AI (Claude Vision via Bedrock) and extract
+    a structured medical timeline as a list of dated events.
+
+    The document is fetched directly from MinIO (no presigned URL needed).
+    """
+    if current_user.role not in ["doctor", "admin"]:
+        raise HTTPException(status_code=403, detail="Doctor or Admin role required")
+
+    from sqlalchemy import select as sa_select
+    from app.models.document import Document
+    from app.services.storage_service import StorageService
+    from datetime import datetime
+    import base64, json as _json
+
+    # 1. Fetch document metadata
+    result = await db.execute(
+        sa_select(Document).where(
+            Document.id == document_id,
+            Document.deleted_at.is_(None),
+        )
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # 2. Download raw bytes from MinIO
+    storage = StorageService()
+    try:
+        import io
+        response_obj = storage.client.get_object(
+            bucket_name=storage.bucket_name,
+            object_name=doc.storage_path,
+        )
+        file_bytes = response_obj.read()
+        response_obj.close()
+        response_obj.release_conn()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not fetch document from storage: {e}")
+
+    # 3. Determine media type
+    fname = (doc.file_name or "").lower()
+    if fname.endswith(".pdf"):
+        media_type = "application/pdf"
+    elif fname.endswith(".png"):
+        media_type = "image/png"
+    elif fname.endswith((".jpg", ".jpeg")):
+        media_type = "image/jpeg"
+    elif fname.endswith(".webp"):
+        media_type = "image/webp"
+    else:
+        media_type = "image/png"  # fallback
+
+    # 4. Call Claude Vision (Bedrock) — for images use vision, for other text-only fallback
+    import boto3
+    from app.services.aws_service import aws_service as _aws_svc
+
+    is_image = media_type.startswith("image/")
+    aws = _aws_svc._get_client("bedrock-runtime")
+    now_str = datetime.utcnow().isoformat()
+
+    if is_image:
+        b64_data = base64.b64encode(file_bytes).decode("utf-8")
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64_data,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Analyse this medical document image (file: {doc.file_name}). "
+                            "Extract all medical timeline events you can find and return them as JSON."
+                        ),
+                    },
+                ],
+            }
+        ]
+    else:
+        # For PDFs: extract text first, pass as text to Claude
+        try:
+            import io as _io
+            from pypdf import PdfReader
+            reader = PdfReader(_io.BytesIO(file_bytes))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception:
+            text = "[Could not extract text from PDF]"
+
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    f"Analyse this medical document text (file: {doc.file_name}):\n\n"
+                    f"{text[:8000]}\n\n"
+                    "Extract all medical timeline events and return them as JSON."
+                ),
+            }
+        ]
+
+    body = _json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 2048,
+        "system": TIMELINE_SYSTEM_PROMPT,
+        "messages": messages,
+    })
+
+    try:
+        resp = aws.invoke_model(
+            modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+            body=body,
+        )
+        resp_body = _json.loads(resp.get("body").read().decode())
+        raw_text = resp_body["content"][0]["text"].strip()
+
+        # Strip optional code fences
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].split("```")[0].strip()
+
+        events_raw = _json.loads(raw_text)
+        if not isinstance(events_raw, list):
+            events_raw = []
+
+        events = [
+            TimelineEvent(
+                id=i + 1,
+                date=str(e.get("date", "Unknown")),
+                title=str(e.get("title", "Event"))[:60],
+                description=str(e.get("description", ""))[:120],
+                type=str(e.get("type", "other")),
+                page=int(e.get("page", 1)),
+            )
+            for i, e in enumerate(events_raw)
+        ]
+        source = "ai"
+
+    except Exception as ex:
+        print(f"[Timeline] Bedrock call failed: {ex}")
+        # Graceful fallback — return empty
+        events = []
+        source = "fallback"
+
+    return TimelineResponse(
+        document_id=str(document_id),
+        events=events,
+        generated_at=now_str,
+        source=source,
+    )

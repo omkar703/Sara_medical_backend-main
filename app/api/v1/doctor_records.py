@@ -97,14 +97,24 @@ async def get_patient_documents(
     from app.config import settings
     response_documents = []
     for doc in documents:
-        presigned_url = minio_service.generate_presigned_url(
-            settings.MINIO_BUCKET_DOCUMENTS,
-            doc.storage_path,
-            expiry_seconds=900  # 15 minutes
-        )
+        # Check if file actually exists in storage before generating URL
+        storage_path = doc.storage_path.strip() if doc.storage_path else None
+        
+        file_ready = False
+        if storage_path:
+            file_ready = minio_service.file_exists(settings.MINIO_BUCKET_DOCUMENTS, storage_path)
+            
+        if not file_ready:
+            presigned_url = "" # Signal to frontend to show "Waiting"
+        else:
+            presigned_url = minio_service.generate_presigned_url(
+                settings.MINIO_BUCKET_DOCUMENTS,
+                storage_path,
+                expiry_seconds= settings.PRESIGNED_URL_EXPIRY or 900
+            )
         
         if not presigned_url:
-            presigned_url = f"[URL generation failed]"
+            presigned_url = ""
         
         response_documents.append(MedicalHistoryResponse(
             id=doc.id,
