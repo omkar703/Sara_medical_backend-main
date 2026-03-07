@@ -26,6 +26,11 @@ def upgrade() -> None:
     from sqlalchemy.engine.reflection import Inspector
     bind = op.get_bind()
     inspector = Inspector.from_engine(bind)
+    
+    # Check if table exists to avoid NoSuchTableError
+    if not inspector.has_table('notifications'):
+        return
+        
     existing_cols = [col['name'] for col in inspector.get_columns('notifications')]
 
     if 'grant_id' not in existing_cols:
