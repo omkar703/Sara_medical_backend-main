@@ -10,6 +10,7 @@ class ActivityFeedItem(BaseModel):
     user_name: str
     user_avatar: Optional[str] = None
     event_description: str 
+    resource_type: Optional[str] = "System"
     timestamp: datetime
     status: str
 
@@ -96,6 +97,7 @@ class AccountListItem(BaseModel):
     status: str        
     last_login: Optional[str] = None 
     avatar_url: Optional[str] = None
+    gender: Optional[str] = None
     type: str          
 
 class InviteRequest(BaseModel):
@@ -159,6 +161,7 @@ class AccountListItem(BaseModel):
     status: str        
     last_login: Optional[str] = None 
     avatar_url: Optional[str] = None
+    gender: Optional[str] = None
     type: str  
     # NEW FIELDS:
     organization_id: UUID
@@ -170,6 +173,12 @@ class AdminAccountUpdate(BaseModel):
     email: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None  # "active" or "inactive"
+    phone_number: Optional[str] = None
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    department: Optional[str] = None
+    organization_display_name: Optional[str] = None
+    gender: Optional[str] = None
     
 class AdminGlobalAppointmentItem(BaseModel):
     """
@@ -204,6 +213,7 @@ class AdminProfileSchema(BaseModel):
     name: str
     email: str
     avatar_url: Optional[str] = None
+    gender: Optional[str] = None
 
 class AllSettingsResponse(BaseModel):
     """Loads all settings forms at once (UPDATED)"""
@@ -217,3 +227,50 @@ class AdminProfileUpdate(BaseModel):
     """Payload for updating admin's own profile"""
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    password: Optional[str] = None
+
+
+class AuditLogItem(BaseModel):
+    """Detailed audit log row for security monitoring"""
+    id: UUID
+    timestamp: datetime
+    user_name: str
+    action: str
+    resource_type: str
+    ip_address: Optional[str] = None
+    severity: str = "info" # info, warning, critical
+
+class AuditInsights(BaseModel):
+    """Security summary for the admin audit page"""
+    total_events_24h: int
+    new_users_24h: int
+    new_doctors_24h: int
+    new_hospitals_24h: int
+
+class AdminAuditResponse(BaseModel):
+    """Composite response for the enhanced audit page"""
+    logs: List[AuditLogItem]
+    insights: AuditInsights
+class AdminAccountDetail(BaseModel):
+    """Detailed profile data for granular admin editing"""
+    id: UUID
+    name: str
+    email: str
+    role: str
+    status: str
+    phone_number: Optional[str] = None
+    avatar_url: Optional[str] = None
+    gender: Optional[str] = None
+    
+    # Doctor related
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    department: Optional[str] = None
+    
+    # Organization related
+    organization_id: UUID
+    organization_name: str
+    
+    # Audit tracking
+    created_at: datetime
+    last_login: Optional[datetime] = None

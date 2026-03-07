@@ -153,6 +153,32 @@ class MinIOService:
             print(f"Minio existence check ERROR for '{object_name}': {e}")
             return False
 
+    def get_storage_stats(self):
+        """Calculate used space and count objects across all buckets"""
+        total_size = 0
+        total_count = 0
+        buckets = [
+            settings.MINIO_BUCKET_UPLOADS,
+            settings.MINIO_BUCKET_DOCUMENTS,
+            settings.MINIO_BUCKET_AUDIO,
+            settings.MINIO_BUCKET_AVATARS,
+        ]
+        
+        for bucket in buckets:
+            try:
+                if self.client.bucket_exists(bucket):
+                    objects = self.client.list_objects(bucket, recursive=True)
+                    for obj in objects:
+                        total_size += obj.size
+                        total_count += 1
+            except Exception as e:
+                print(f"Error getting stats for bucket {bucket}: {e}")
+                
+        return {
+            "used_bytes": total_size,
+            "files_count": total_count
+        }
+
 
 # Global instance
 minio_service = MinIOService()

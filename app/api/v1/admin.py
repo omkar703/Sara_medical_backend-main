@@ -16,6 +16,7 @@ from app.core.deps import require_role
 from app.models.user import User, Organization, Invitation
 from app.models.activity_log import ActivityLog
 from app.models.appointment import Appointment
+from app.models.notification import Notification
 from app.services.email import send_invitation_email
 from app.schemas.admin import (
     AdminOverviewResponse,
@@ -35,7 +36,11 @@ from app.schemas.admin import (
     AdminGlobalAppointmentItem,
     AdminClinicStatsItem,
     AdminProfileSchema,
-    AdminProfileUpdate
+    AdminProfileUpdate,
+    AdminAuditResponse,
+    AuditLogItem,
+    AuditInsights,
+    AdminAccountDetail
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -51,13 +56,12 @@ async def get_dashboard_overview(
     """
     from sqlalchemy.orm import selectinload
     
-    # 1. Fetch Recent Activity 
+    # 1. Fetch Global Recent Activity 
     query = (
         select(ActivityLog)
         .options(selectinload(ActivityLog.user))
-        .where(ActivityLog.organization_id == current_user.organization_id)
         .order_by(desc(ActivityLog.created_at))
-        .limit(5)
+        .limit(10)
     )
     result = await db.execute(query)
     logs = result.scalars().all()
@@ -86,24 +90,129 @@ async def get_dashboard_overview(
             user_name=display_name,
             user_avatar=None,
             event_description=log.activity_type or "System Event",
+            resource_type=log.related_entity_type or "System",
             timestamp=log.created_at,
             status=log.status or "completed"
         ))
 
-    # 2. Storage Stats (Mocked)
-    storage_stats = StorageStats(used_gb=124.5, total_gb=1000.0, percentage=12.45, files_count=3420)
+    # 2. Storage Stats (Real from MinIO)
+    try:
+        stats = minio_service.get_storage_stats()
+        used_gb = round(stats["used_bytes"] / (1024**3), 2)
+        total_gb = 512.0  # Valid storage capacity for this system
+        percentage = round((used_gb / total_gb) * 100, 2)
+        
+        storage_stats = StorageStats(
+            used_gb=used_gb,
+            total_gb=total_gb,
+            percentage=percentage,
+            files_count=stats["files_count"]
+        )
+    except Exception as e:
+        print(f"Failed to get real storage stats: {e}")
+        storage_stats = StorageStats(used_gb=0.0, total_gb=512.0, percentage=0.0, files_count=0)
     
-    # 3. System Alerts (Mocked)
-    alerts = [
-        SystemAlert(id="1", title="Storage Warning", message="Storage reaching 80%", time_ago="10 mins ago", severity="high")
-    ]
+    # 3. Handle System Alerts (On-the-fly and Persistent)
+    alerts = []
+    from app.services.notification_service import NotificationService
+    ns = NotificationService(db)
+    
+    # A. Storage Alerts
+    if storage_stats.percentage > 90:
+        alert_item = SystemAlert(
+            id="storage-critical",
+            title="Storage Critical",
+            message=f"Storage usage at {storage_stats.percentage}%. Please upgrade quota.",
+            time_ago="Immediate",
+            severity="high"
+        )
+        alerts.append(alert_item)
+        # Create persistent notification for Admin if not already present
+        existing = await db.execute(select(Notification).where(
+            Notification.user_id == current_user.id,
+            Notification.type == "storage-critical",
+            Notification.is_read == False
+        ))
+        if not existing.scalars().first():
+            await ns.create_notification(
+                user_id=current_user.id,
+                type="storage-critical",
+                title=alert_item.title,
+                message=alert_item.message,
+                organization_id=current_user.organization_id
+            )
 
-    # 4. NEW: Global Total Doctors
+    elif storage_stats.percentage > 70:
+        alert_item = SystemAlert(
+            id="storage-warning",
+            title="Storage Warning",
+            message=f"Storage usage at {storage_stats.percentage}%. Approaching limit.",
+            time_ago="Recently",
+            severity="medium"
+        )
+        alerts.append(alert_item)
+        # Create persistent notification for Admin if not already present
+        existing = await db.execute(select(Notification).where(
+            Notification.user_id == current_user.id,
+            Notification.type == "storage-warning",
+            Notification.is_read == False
+        ))
+        if not existing.scalars().first():
+            await ns.create_notification(
+                user_id=current_user.id,
+                type="storage-warning",
+                title=alert_item.title,
+                message=alert_item.message,
+                organization_id=current_user.organization_id
+            )
+
+    # B. New User Vetting Alerts
+    unverified_users_query = select(func.count(User.id)).where(User.email_verified == False, User.deleted_at.is_(None))
+    unverified_count = await db.scalar(unverified_users_query) or 0
+    if unverified_count > 0:
+        alert_item = SystemAlert(
+            id="user-vetting",
+            title="User Verification Pending",
+            message=f"There are {unverified_count} new users requiring account verification.",
+            time_ago="Action Required",
+            severity="medium"
+        )
+        alerts.append(alert_item)
+        # Create persistent notification if not already present
+        existing = await db.execute(select(Notification).where(
+            Notification.user_id == current_user.id,
+            Notification.type == "user-vetting",
+            Notification.is_read == False
+        ))
+        if not existing.scalars().first():
+            await ns.create_notification(
+                user_id=current_user.id,
+                type="user-vetting",
+                title=alert_item.title,
+                message=alert_item.message,
+                organization_id=current_user.organization_id,
+                action_url="/dashboard/admin/manage-accounts"
+            )
+
+    # C. AI Processing Failures
+    from app.models.consultation import Consultation
+    failed_ai_query = select(func.count(Consultation.id)).where(Consultation.ai_status == "failed")
+    failed_count = await db.scalar(failed_ai_query) or 0
+    if failed_count > 0:
+        alerts.append(SystemAlert(
+            id="ai-failure",
+            title="AI Processing Alert",
+            message=f"{failed_count} SOAP notes failed to generate recently. Check logs.",
+            time_ago="Action required",
+            severity="medium"
+        ))
+
+    # 4. Global Total Doctors
     doctor_count_query = select(func.count(User.id)).where(User.role == "doctor", User.deleted_at.is_(None))
     doctor_count_result = await db.execute(doctor_count_query)
     total_doctors = doctor_count_result.scalar_one_or_none() or 0
 
-    # 5. NEW: Global Appointments Today
+    # 5. Global Appointments Today
     now_utc = datetime.now(timezone.utc)
     today_start = datetime.combine(now_utc.date(), time.min).replace(tzinfo=timezone.utc)
     today_end = datetime.combine(now_utc.date(), time.max).replace(tzinfo=timezone.utc)
@@ -114,6 +223,8 @@ async def get_dashboard_overview(
     )
     appt_count_result = await db.execute(appt_count_query)
     appointments_today = appt_count_result.scalar_one_or_none() or 0
+
+    print(f"DEBUG OVERVIEW: docs={total_doctors}, appts={appointments_today}, storage={storage_stats.used_gb}GB")
 
     return AdminOverviewResponse(
         storage=storage_stats,
@@ -248,7 +359,71 @@ async def get_admin_accounts(
         ))
     return account_list
 
-# --- 2. Edit an Account (NEW) ---
+# --- 2. Get Account Details (NEW) ---
+@router.get("/accounts/{id}", response_model=AdminAccountDetail)
+async def get_admin_account_detail(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """
+    Fetch full decrypted profile details for any user.
+    """
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.organization))
+        .where(User.id == id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Account not found")
+        
+    try:
+        from app.core.security import pii_encryption
+    except ImportError:
+        pii_encryption = None
+        
+    # Decrypt sensitive fields
+    name = user.full_name
+    phone = user.phone_number
+    license = user.license_number
+    gender = None
+    
+    if user.role == "patient":
+        from app.models.patient import Patient
+        p_res = await db.execute(select(Patient).where(Patient.email == user.email))
+        patient = p_res.scalar_one_or_none()
+        if patient:
+            gender = patient.gender
+
+    if pii_encryption:
+        try:
+            if name: name = pii_encryption.decrypt(name)
+            if phone: phone = pii_encryption.decrypt(phone)
+            if license: license = pii_encryption.decrypt(license)
+        except Exception:
+            pass
+
+    return AdminAccountDetail(
+        id=user.id,
+        name=name or "Unknown User",
+        email=user.email,
+        role=user.role,
+        status="active" if user.deleted_at is None else "inactive",
+        phone_number=phone,
+        avatar_url=user.avatar_url,
+        gender=gender,
+        specialty=user.specialty,
+        license_number=license,
+        department=user.department,
+        organization_id=user.organization_id,
+        organization_name=user.organization.name if user.organization else "System",
+        created_at=user.created_at,
+        last_login=user.last_login
+    )
+
+# --- 3. Edit an Account (UPDATED) ---
 @router.patch("/accounts/{id}")
 async def update_admin_account(
     id: uuid.UUID,
@@ -257,9 +432,13 @@ async def update_admin_account(
     current_user: User = Depends(require_role("admin")),
 ):
     """
-    Edit basic account information. Handles PII encryption automatically.
+    Edit every aspect of an account, including role-specific profile data.
     """
-    result = await db.execute(select(User).where(User.id == id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.organization))
+        .where(User.id == id)
+    )
     user = result.scalar_one_or_none()
     
     if not user:
@@ -270,23 +449,42 @@ async def update_admin_account(
     except ImportError:
         pii_encryption = None
         
-    # 1. Update Name (Requires Encryption)
+    # 1. Base User Fields
     if update_data.name:
         user.full_name = pii_encryption.encrypt(update_data.name) if pii_encryption else update_data.name
         
-    # 2. Update Email
     if update_data.email:
-        # Check for duplicates before updating
         conflict_check = await db.execute(select(User).where(User.email == update_data.email, User.id != id))
         if conflict_check.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email is already in use by another account.")
         user.email = update_data.email
         
-    # 3. Update Role
+    if update_data.phone_number:
+        user.phone_number = pii_encryption.encrypt(update_data.phone_number) if pii_encryption else update_data.phone_number
+
+    # 2. Role Specific metadata & Model Sync
+    if update_data.specialty:
+        user.specialty = update_data.specialty
+    if update_data.license_number:
+        user.license_number = pii_encryption.encrypt(update_data.license_number) if pii_encryption else update_data.license_number
+    if update_data.department:
+        user.department = update_data.department
+    
+    if user.role == "patient" or update_data.role == "patient":
+        from app.models.patient import Patient
+        # Find linked patient by email
+        p_res = await db.execute(select(Patient).where(Patient.email == user.email))
+        patient = p_res.scalar_one_or_none()
+        if patient:
+            if update_data.name: patient.full_name = pii_encryption.encrypt(update_data.name) if pii_encryption else update_data.name
+            if update_data.phone_number: patient.phone_number = pii_encryption.encrypt(update_data.phone_number) if pii_encryption else update_data.phone_number
+            if update_data.gender: patient.gender = update_data.gender
+            if update_data.email: patient.email = update_data.email
+
+    # 3. Organization Updates
     if update_data.role:
         user.role = update_data.role
         
-    # 4. Update Status (Soft Delete / Reactivate)
     if update_data.status:
         status_lower = update_data.status.lower()
         if status_lower == "inactive":
@@ -300,7 +498,7 @@ async def update_admin_account(
     user.updated_at = datetime.utcnow()
     await db.commit()
     
-    return {"message": "Account updated successfully"}
+    return {"message": "Account and profile data updated successfully"}
 
 # --- 3. Delete an Account (Global Update) ---
 @router.delete("/accounts/{id}")
@@ -524,6 +722,15 @@ async def update_admin_profile(
         if conflict.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already in use")
         current_user.email = profile_in.email
+
+    if profile_in.password:
+        try:
+            from app.core.security import get_password_hash
+            current_user.password_hash = get_password_hash(profile_in.password)
+        except ImportError:
+            # Fallback if security utils are in a different place
+            import hashlib
+            current_user.password_hash = hashlib.sha256(profile_in.password.encode()).hexdigest()
 
     await db.commit()
     return {"message": "Profile updated successfully"}
@@ -838,25 +1045,48 @@ async def get_admin_doctor_details(
         patients=recent_patients
     )
 
-@router.get("/audit-logs")
+@router.get("/audit-logs", response_model=AdminAuditResponse)
 async def get_audit_logs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """
-    Fetch the last 50 activity logs for the admin's organization.
+    Enhanced global audit logs with security insights for administrators.
     """
     from sqlalchemy.orm import selectinload
+    from app.models.audit import AuditLog
+    from datetime import timedelta
     
+    # 1. Fetch Global Audit Logs
     query = (
-        select(ActivityLog)
-        .options(selectinload(ActivityLog.user))
-        .where(ActivityLog.organization_id == current_user.organization_id)
-        .order_by(desc(ActivityLog.created_at))
-        .limit(50)
+        select(AuditLog)
+        .options(selectinload(AuditLog.user))
+        .order_by(desc(AuditLog.timestamp))
+        .limit(100)
     )
     result = await db.execute(query)
     logs = result.scalars().all()
+    
+    # 2. Calculate 24h Insights (Dynamic Stats)
+    yesterday = datetime.utcnow() - timedelta(days=1)
+    
+    from app.models.user import User, Organization
+    
+    # 2.1 Total Events (Last 24h)
+    total_24h_query = select(func.count(AuditLog.id)).where(AuditLog.timestamp >= yesterday)
+    total_24h = await db.scalar(total_24h_query) or 0
+    
+    # 2.2 New Users Onboarding (Last 24h)
+    new_users_query = select(func.count(User.id)).where(User.created_at >= yesterday)
+    new_users_24h = await db.scalar(new_users_query) or 0
+    
+    # 2.3 New Doctors Onboarding (Last 24h)
+    new_doctors_query = select(func.count(User.id)).where(User.created_at >= yesterday, User.role == "doctor")
+    new_doctors_24h = await db.scalar(new_doctors_query) or 0
+    
+    # 2.4 New Hospitals/Clinics Onboarding (Last 24h)
+    new_hospitals_query = select(func.count(Organization.id)).where(Organization.created_at >= yesterday)
+    new_hospitals_24h = await db.scalar(new_hospitals_query) or 0
     
     try:
         from app.core.security import pii_encryption
@@ -865,7 +1095,7 @@ async def get_audit_logs(
         
     formatted_logs = []
     for log in logs:
-        display_name = "System Activity"
+        display_name = "System"
         if log.user:
             encrypted_val = log.user.full_name or log.user.email
             if encrypted_val:
@@ -877,11 +1107,32 @@ async def get_audit_logs(
                 else:
                     display_name = encrypted_val
                     
-        formatted_logs.append({
-            "id": str(log.id),
-            "action": log.activity_type or "System Event",
-            "user": display_name,
-            "timestamp": log.created_at.isoformat() if log.created_at else None
-        })
+        # Determine severity based on action
+        severity = "info"
+        action_lower = (log.action or "").lower()
+        if any(w in action_lower for w in ["delete", "remove", "failure", "unauthorized"]):
+            severity = "critical"
+        elif any(w in action_lower for w in ["update", "modify", "export"]):
+            severity = "warning"
+        elif any(w in action_lower for w in ["create", "add", "onboard"]):
+            severity = "info"
 
-    return {"logs": formatted_logs}
+        formatted_logs.append(AuditLogItem(
+            id=log.id,
+            timestamp=log.timestamp,
+            user_name=display_name,
+            action=log.action or "unknown",
+            resource_type=log.resource_type or "system",
+            ip_address=str(log.ip_address) if log.ip_address else None,
+            severity=severity
+        ))
+
+    return AdminAuditResponse(
+        logs=formatted_logs,
+        insights=AuditInsights(
+            total_events_24h=total_24h,
+            new_users_24h=new_users_24h,
+            new_doctors_24h=new_doctors_24h,
+            new_hospitals_24h=new_hospitals_24h
+        )
+    )
