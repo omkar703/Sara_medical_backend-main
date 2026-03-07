@@ -68,9 +68,10 @@ class ConsultationService:
         google_event_id, meet_link = None, None
         try:
             # Determine which service to use
-            meet_service = real_google_meet_service
-            if not settings.FEATURE_VIDEO_CALLS or not getattr(real_google_meet_service, "_available", False):
-                meet_service = mock_google_meet_service
+            use_real = settings.FEATURE_VIDEO_CALLS and getattr(real_google_meet_service, "_available", False)
+            meet_service = real_google_meet_service if use_real else mock_google_meet_service
+            
+            print(f"[Consultation Service] Using {'REAL' if use_real else 'MOCK'} Google Meet service")
             
             google_event_id, meet_link = await meet_service.create_meeting(
                 start_time=scheduled_at,
@@ -80,7 +81,12 @@ class ConsultationService:
                 attendees=attendees
             )
         except Exception as e:
-            print(f"[Consultation Service] ⚠ Skipped Google Meet creation: {e}")
+            print(f"[Consultation Service] ⚠ Meet service failed: {e}. Falling back to hardcoded mock.")
+            from uuid import uuid4
+            google_event_id = str(uuid4())
+            meet_link = f"https://meet.google.com/mock-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+        
+        print(f"[Consultation Service] Resulting meet_link: {meet_link}")
 
         
         # 3. Create Database Record (Using the new Google fields)

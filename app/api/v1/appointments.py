@@ -233,6 +233,7 @@ async def approve_appointment(
     # Generate Google Meet link using mock/real service
     from app.core.security import pii_encryption
     from app.services.mock_google_meet import google_meet_service as mock_meet_service
+    from app.services.google_meet_service import google_meet_service as real_meet_service
     from app.config import settings
 
     try:
@@ -244,39 +245,44 @@ async def approve_appointment(
     meet_link = None
     google_event_id = None
 
+    # Determine which service to use
+    use_real = settings.FEATURE_VIDEO_CALLS and getattr(real_meet_service, "_available", False)
+    meet_service = real_meet_service if use_real else mock_meet_service
+    
+    print(f"[Appointments] Using {'REAL' if use_real else 'MOCK'} Google Meet service")
+    
     try:
-        # Try the real Google Meet service first if feature is enabled
-        from app.services.google_meet_service import google_meet_service as real_meet_service
-        if settings.FEATURE_VIDEO_CALLS and getattr(real_meet_service, "_available", False):
-            google_event_id, meet_link = await real_meet_service.create_meeting(
-                start_time=approval_in.appointment_time,
-                duration_minutes=30,
-                summary=meeting_summary,
-                description=f"Medical appointment",
-                attendees=[current_user.email]
-            )
-        else:
-            raise Exception("Real Google Meet not configured — using mock")
+        google_event_id, meet_link = await meet_service.create_meeting(
+            start_time=approval_in.appointment_time,
+            duration_minutes=30,
+            summary=meeting_summary,
+            description="Medical consultation session",
+            attendees=[current_user.email]
+        )
+        print(f"[Appointments] ✅ Meet link generated successfully via {'REAL' if use_real else 'MOCK'} service")
     except Exception as e:
-        print(f"[Appointments] Falling back to mock Google Meet: {e}")
-        try:
-            google_event_id, meet_link = await mock_meet_service.create_meeting(
-                start_time=approval_in.appointment_time,
-                duration_minutes=30,
-                summary=meeting_summary,
-                description="Appointment consultation",
-                attendees=[current_user.email]
-            )
-        except Exception as mock_err:
-            print(f"[Appointments] Mock service also failed: {mock_err}")
-            from uuid import uuid4
-            google_event_id = str(uuid4())
-            meet_link = f"https://meet.google.com/mock-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+        print(f"[Appointments] ❌ Meet service error ({type(e).__name__}): {e}")
+        print(f"[Appointments] Falling back to generated stub link.")
+        from uuid import uuid4
+        u1 = uuid4().hex
+        u2 = uuid4().hex
+        google_event_id = str(uuid4())
+        meet_link = f"https://meet.google.com/fallback-{u1[:4]}-{u2[:4]}"
+
+    print(f"[Appointments] Generated meet_link: {meet_link}")
 
     # Store the meet link so both doctor & patient can join
+    if not meet_link:
+        print("[Appointments] ⚠ meet_link was None after service call. Generating immediate fallback.")
+        from uuid import uuid4
+        meet_link = f"https://meet.google.com/fallback-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+        
     appointment.meet_link = meet_link
     appointment.google_event_id = google_event_id
-    # Also set join_url for backwards compatibility with older frontend code
+    
+    # Store legacy/alias fields too if they are being used by frontend
+    # Note: These are NOT columns in the model, but we set them on the object 
+    # for the session duration so the initial response is correct.
     appointment.join_url = meet_link
     appointment.start_url = meet_link
 
@@ -286,6 +292,8 @@ async def approve_appointment(
         appointment.doctor_notes = approval_in.doctor_notes
     appointment.updated_at = datetime.utcnow()
     
+    print(f"[Appointments] Appointment {appointment.id} updated to ACCEPTED with link {appointment.meet_link}")
+    
     # Sync appointment to calendar (update events with confirmed time and Zoom link)
     from app.services.calendar_service import CalendarService
     calendar_service = CalendarService(db)
@@ -294,13 +302,43 @@ async def approve_appointment(
     await db.commit()
     await db.refresh(appointment)
     
+    # Store join_url locally to use after refresh
+    final_link = appointment.meet_link
+    
+    # ── Create a linked Consultation record ───────────────────────────────
+    # This enables SOAP note generation via the /consultations/{id}/complete endpoint
+    consultation_id = None
+    try:
+        from app.models.consultation import Consultation
+        linked_consultation = Consultation(
+            doctor_id=current_user.id,
+            patient_id=appointment.patient_id,
+            organization_id=current_user.organization_id,
+            scheduled_at=appointment.requested_date,
+            duration_minutes=30,
+            status="scheduled",
+            google_event_id=google_event_id,
+            meet_link=final_link,
+            notes=appointment.doctor_notes,
+            chief_complaint=appointment.reason,
+        )
+        db.add(linked_consultation)
+        await db.commit()
+        await db.refresh(linked_consultation)
+        consultation_id = str(linked_consultation.id)
+        print(f"[Appointments] ✅ Created linked consultation {consultation_id} for appointment {appointment.id}")
+    except Exception as e:
+        print(f"[Appointments] ⚠ Could not create linked consultation: {e}")
+        # Non-fatal — appointment is still approved
+    # ─────────────────────────────────────────────────────────────────────
+
     # Notify Patient of approval
     notification_service = NotificationService(db)
     await notification_service.create_notification(
         user_id=appointment.patient_id,
         type="appointment_approved",
         title="Appointment Approved",
-        message=f"Your appointment has been approved for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
+        message=f"Your appointment has been approved for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}. Join meeting: {final_link}",
         action_url=f"/appointments/{appointment.id}"
     )
     
@@ -312,12 +350,31 @@ async def approve_appointment(
         activity_type="Appointment Scheduled",
         description=f"Appointment confirmed for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}",
         status="completed",
-        extra_data={"appointment_id": str(appointment.id), "zoom_link": appointment.join_url}
+        extra_data={"appointment_id": str(appointment.id), "zoom_link": final_link, "consultation_id": consultation_id}
     )
     db.add(activity)
     await db.commit()
     
-    return appointment
+    # Return as dict to ensure all fields are included correctly
+    response_dict = {
+        "id": appointment.id,
+        "doctor_id": appointment.doctor_id,
+        "patient_id": appointment.patient_id,
+        "requested_date": appointment.requested_date,
+        "reason": appointment.reason,
+        "status": appointment.status,
+        "doctor_notes": appointment.doctor_notes,
+        "google_event_id": appointment.google_event_id,
+        "meet_link": final_link,
+        "join_url": final_link,
+        "start_url": final_link,
+        "meeting_id": consultation_id,  # Use consultation_id as the meeting_id so frontend can route to SOAP page
+        "created_at": appointment.created_at,
+        "updated_at": appointment.updated_at,
+        "doctor_name": doctor_name
+    }
+    
+    return AppointmentResponse(**response_dict)
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)
@@ -353,6 +410,11 @@ async def get_appointment(
         except Exception:
             doc_name = appointment.doctor.full_name or "Unknown Doctor"
             
+    # Reload the object to ensure DB state
+    await db.refresh(appointment)
+    
+    # Return as dict to ensure all temporary fields (start_url/join_url) 
+    # and decrypted doctor name are included correctly.
     response_dict = {
         "id": appointment.id,
         "doctor_id": appointment.doctor_id,

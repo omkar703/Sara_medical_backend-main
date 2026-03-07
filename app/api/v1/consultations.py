@@ -42,6 +42,13 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         patient_name = pii_encryption.decrypt(consultation.patient.full_name) if consultation.patient else None
     except:
         patient_name = "Unknown Patient"
+        
+    try:
+        patient_dob_str = pii_encryption.decrypt(consultation.patient.date_of_birth) if consultation.patient and consultation.patient.date_of_birth else None
+    except:
+        patient_dob_str = None
+        
+    patient_mrn = consultation.patient.mrn if consultation.patient else None
 
     return ConsultationResponse(
         id=str(consultation.id),
@@ -52,6 +59,8 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         doctorName=doctor_name,
         patientId=str(consultation.patient_id),
         patientName=patient_name,
+        patientMrn=patient_mrn,
+        patientDob=patient_dob_str,
         
         # NEW Google Meet Info
         googleEventId=getattr(consultation, 'google_event_id', None),
@@ -129,7 +138,79 @@ async def schedule_consultation(
     
     return await _consultation_to_response(consultation)
 
+@router.delete("/{consultation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_consultation(
+    consultation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("doctor")),
+    organization_id: UUID = Depends(get_organization_id)
+):
+    """
+    Delete a consultation (e.g., to clear test records).
+    """
+    query = select(Consultation).filter(
+        and_(
+            Consultation.id == consultation_id,
+            Consultation.organization_id == organization_id
+        )
+    )
+    result = await db.execute(query)
+    consultation = result.scalar_one_or_none()
+    
+    if not consultation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Consultation not found"
+        )
+        
+    await db.delete(consultation)
+    
+    # Audit trail
+    await log_action(
+        db=db,
+        user_id=current_user.id,
+        organization_id=organization_id,
+        action="delete",
+        resource_type="consultation",
+        resource_id=consultation.id
+    )
+    
+    await db.commit()
+    return None
 
+
+
+
+@router.get("/lookup/by-patient", response_model=ConsultationResponse)
+async def get_consultation_by_doctor_patient(
+    patient_id: UUID = Query(..., description="Patient ID from the appointment"),
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Look up the most recent consultation for the current doctor and a given patient.
+    Useful when navigating from an approved appointment to the SOAP note page.
+    """
+    from sqlalchemy import and_
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(Consultation)
+        .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+        .where(
+            and_(
+                Consultation.doctor_id == current_user.id,
+                Consultation.patient_id == patient_id,
+                Consultation.organization_id == organization_id,
+            )
+        )
+        .order_by(Consultation.scheduled_at.desc())
+        .limit(1)
+    )
+    consultation = result.scalar_one_or_none()
+    if not consultation:
+        raise HTTPException(status_code=404, detail="No consultation found for this doctor-patient pair")
+    return await _consultation_to_response(consultation)
 
 
 @router.get("/{consultation_id}", response_model=ConsultationResponse)
@@ -289,6 +370,7 @@ async def complete_consultation(
 
 
 
+@router.post("/{consultation_id}/analyze")
 async def analyze_consultation(
     consultation_id: UUID,
     scenario: Optional[str] = None,

@@ -145,7 +145,10 @@ async def get_doctor_appointments(
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Access denied")
 
-    query = select(Appointment).where(Appointment.doctor_id == current_user.id)
+    query = select(Appointment).options(
+        selectinload(Appointment.patient)
+    ).where(Appointment.doctor_id == current_user.id)
+    
     if status:
         query = query.where(Appointment.status == status)
     
@@ -153,7 +156,38 @@ async def get_doctor_appointments(
     
     result = await db.execute(query)
     appointments = result.scalars().all()
-    return appointments
+    
+    response_list = []
+    for appt in appointments:
+        patient_name = "Unknown Patient"
+        if appt.patient:
+            try:
+                patient_name = pii_encryption.decrypt(appt.patient.full_name)
+            except:
+                patient_name = appt.patient.full_name or "Unknown Patient"
+        
+        # Construct response dict to include the decrypted name
+        response_dict = {
+            "id": appt.id,
+            "doctor_id": appt.doctor_id,
+            "patient_id": appt.patient_id,
+            "requested_date": appt.requested_date,
+            "reason": appt.reason,
+            "status": appt.status,
+            "doctor_notes": appt.doctor_notes,
+            "google_event_id": appt.google_event_id,
+            "meet_link": appt.meet_link,
+            "meeting_id": getattr(appt, 'meeting_id', None),
+            "join_url": getattr(appt, 'join_url', None),
+            "start_url": getattr(appt, 'start_url', None),
+            "meeting_password": getattr(appt, 'meeting_password', None),
+            "created_at": appt.created_at,
+            "updated_at": appt.updated_at,
+            "patient_name": patient_name  # Injected decrypted name
+        }
+        response_list.append(AppointmentResponse(**response_dict))
+
+    return response_list
 
 # New endpoint: upcoming appointment (schedule next)
 @router.get("/schedule/next", response_model=Dict)

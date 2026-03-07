@@ -61,6 +61,8 @@ class ConsultationResponse(BaseModel):
     doctorName: Optional[str] = None
     patientId: str
     patientName: Optional[str] = None
+    patientMrn: Optional[str] = None
+    patientDob: Optional[str] = None
     
     # Google Meet Info
     googleEventId: Optional[str] = None
