@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 
 # revision identifiers, used by Alembic.
 revision: str = 'f8a2b4c6d7e8'
-down_revision: Union[str, None] = 'add_chat_sessions'
+down_revision: Union[str, None] = '2c8b6c6a9d3d'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
