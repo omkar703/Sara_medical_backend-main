@@ -1,3 +1,6 @@
+import os
+import uuid
+from datetime import datetime
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -10,8 +13,23 @@ from app.schemas.hospital import PatientRecordsResponse
 
 from app.core.deps import get_current_active_user, get_organization_id
 from app.database import get_db
-from app.models.user import User
-from app.schemas.hospital import HospitalOverviewResponse, HospitalDirectoryResponse, HospitalPatientsResponse, HospitalStaffResponse
+from fastapi import File, UploadFile
+from app.models.user import User, Organization
+from app.schemas.hospital import (
+    HospitalOverviewResponse, 
+    HospitalDirectoryResponse, 
+    HospitalPatientsResponse, 
+    HospitalStaffResponse
+)
+from app.schemas.admin import (
+    AllSettingsResponse,
+    AdminProfileSchema,
+    OrganizationSchema,
+    AdminProfileUpdate,
+    OrgSettingsUpdate
+)
+from app.config import settings
+from app.services.minio_service import minio_service
 from app.services.hospital_service import HospitalService
 from app.models.doctor_status import DoctorStatus
 from app.schemas.doctor_status import HospitalDoctorStatusListResponse, DoctorWithStatusItem
@@ -375,3 +393,156 @@ async def get_patient_health_records(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
+
+# --- Settings Management (Hospital Specific) ---
+
+@router.get("/settings", response_model=AllSettingsResponse)
+async def get_hospital_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Fetch hospital dashboard settings (profile + organization)"""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+
+    # 1. Fetch Organization Info
+    result = await db.execute(select(Organization).where(Organization.id == current_user.organization_id))
+    org = result.scalar_one_or_none()
+    
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # 2. Prepare Profile Info (Decrypted)
+    try:
+        display_name = pii_encryption.decrypt(current_user.full_name) if current_user.full_name else "Hospital User"
+        display_phone = pii_encryption.decrypt(current_user.phone_number) if current_user.phone_number else None
+    except Exception as e:
+        print(f"PII Decryption failed: {e}")
+        display_name = current_user.full_name or "Hospital User"
+        display_phone = current_user.phone_number
+
+    # Generate a preview URL for the avatar if it exists
+    avatar_preview = None
+    if current_user.avatar_url:
+        try:
+            avatar_preview = minio_service.generate_presigned_url(
+                bucket_name=settings.MINIO_BUCKET_AVATARS,
+                object_name=current_user.avatar_url
+            )
+        except Exception as e:
+            print(f"Avatar URL generation failed: {e}")
+
+    return AllSettingsResponse(
+        profile=AdminProfileSchema(
+            name=display_name,
+            full_name=display_name,
+            email=current_user.email,
+            avatar_url=avatar_preview,
+            phone=display_phone,
+            phone_number=display_phone
+        ),
+        organization=OrganizationSchema(
+            name=org.name or "Untitled Hospital",
+            org_email=org.org_email or "admin@hospital-group.com",
+            timezone=org.timezone or "UTC",
+            date_format=org.date_format or "DD/MM/YYYY"
+        ),
+        integrations=[],
+        developer={"api_key_name": "Standard Key", "webhook_url": ""},
+        backup={"backup_frequency": "daily"}
+    )
+
+@router.patch("/settings/profile")
+async def update_hospital_profile(
+    profile_in: AdminProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Update the logged-in hospital user's personal information"""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+
+    
+    if profile_in.name:
+        current_user.full_name = pii_encryption.encrypt(profile_in.name)
+    
+    if profile_in.email:
+        # Check for email conflicts
+        conflict = await db.execute(select(User).where(User.email == profile_in.email, User.id != current_user.id))
+        if conflict.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already in use")
+        current_user.email = profile_in.email
+
+    if profile_in.phone_number is not None:
+        current_user.phone_number = pii_encryption.encrypt(profile_in.phone_number) if profile_in.phone_number else None
+
+    if profile_in.password:
+        current_user.password_hash = hash_password(profile_in.password)
+
+    await db.commit()
+    return {"message": "Profile updated successfully"}
+
+@router.post("/settings/avatar")
+async def upload_hospital_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload and set the hospital user's profile picture"""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    try:
+        file_ext = os.path.splitext(file.filename)[1]
+        object_name = f"avatars/{current_user.id}_{uuid.uuid4().hex}{file_ext}"
+        
+        file_content = await file.read()
+        success = minio_service.upload_bytes(
+            file_data=file_content,
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=object_name,
+            content_type=file.content_type
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to upload to storage")
+
+        current_user.avatar_url = object_name
+        await db.commit()
+        
+        return {"message": "Avatar updated", "avatar_url": object_name}
+    except Exception as e:
+        print(f"Avatar upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/settings/organization")
+async def update_hospital_organization(
+    settings_in: OrgSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Update organization-level settings for the hospital"""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+
+    result = await db.execute(select(Organization).where(Organization.id == current_user.organization_id))
+    org = result.scalar_one_or_none()
+    
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    if settings_in.name:
+        org.name = settings_in.name
+    
+    if settings_in.timezone:
+        org.timezone = settings_in.timezone
+    if settings_in.date_format:
+        org.date_format = settings_in.date_format
+    if settings_in.org_email:
+        org.org_email = settings_in.org_email
+
+    await db.commit()
+    return {"message": "Organization updated successfully"}

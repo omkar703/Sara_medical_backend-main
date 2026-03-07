@@ -33,6 +33,9 @@ class Organization(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     departments = Column(String(1000), nullable=True)
+    timezone = Column(String(100), default="UTC", nullable=True)
+    date_format = Column(String(100), default="DD/MM/YYYY", nullable=True)
+    org_email = Column(String(255), nullable=True)
     
     # Relationships
     users = relationship("User", back_populates="organization", cascade="all, delete-orphan")

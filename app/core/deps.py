@@ -131,7 +131,10 @@ def require_role(required_role: str):
         Dependency function that checks role
     """
     async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if str(current_user.role) != required_role:
+        # Normalize role to string for comparison
+        user_role_str = str(current_user.role).split('.')[-1] if hasattr(current_user.role, 'value') else str(current_user.role)
+        
+        if user_role_str != required_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"This endpoint requires {required_role} role",
@@ -152,7 +155,10 @@ def require_any_role(*allowed_roles: str):
         Dependency function that checks if user has any of the allowed roles
     """
     async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if str(current_user.role) not in allowed_roles:
+        # Normalize role to string for comparison
+        user_role_str = str(current_user.role).split('.')[-1] if hasattr(current_user.role, 'value') else str(current_user.role)
+        
+        if user_role_str not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"This endpoint requires one of: {', '.join(allowed_roles)}",

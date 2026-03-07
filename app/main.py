@@ -44,7 +44,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
+# Custom Validation Middleware
+from app.middleware.validation import ValidationMiddleware
+app.add_middleware(ValidationMiddleware)
+
+# Configure CORS (Added last to be the outermost layer)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -52,10 +56,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Custom Validation Middleware
-from app.middleware.validation import ValidationMiddleware
-app.add_middleware(ValidationMiddleware)
 
 # Include API routers
 from app.api.v1 import api_router

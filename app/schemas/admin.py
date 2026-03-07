@@ -78,17 +78,9 @@ class BackupSettingsUpdate(BaseModel):
     """For the 'Backup & Security' form"""
     backup_frequency: Optional[str] = None
 
-class AllSettingsResponse(BaseModel):
-    """Loads all settings forms at once"""
-    organization: dict 
-    integrations: List[dict]
-    developer: dict
-    backup: dict 
-
-
 class AccountListItem(BaseModel):
     """
-    Row for the 'Account Management' table.
+    Row for the 'Account Management' table (UPDATED).
     """
     id: UUID
     name: str         
@@ -98,7 +90,10 @@ class AccountListItem(BaseModel):
     last_login: Optional[str] = None 
     avatar_url: Optional[str] = None
     gender: Optional[str] = None
-    type: str          
+    type: str  
+    # NEW FIELDS:
+    organization_id: UUID
+    organization_name: Optional[str] = None
 
 class InviteRequest(BaseModel):
     """Payload for 'Invite Team Members' """
@@ -150,23 +145,6 @@ class AdminDoctorDetailResponse(BaseModel):
     appointments: List[DoctorApptItem]
     patients: List[DoctorPatientItem]
 
-class AccountListItem(BaseModel):
-    """
-    Row for the 'Account Management' table (UPDATED).
-    """
-    id: UUID
-    name: str         
-    email: str
-    role: str          
-    status: str        
-    last_login: Optional[str] = None 
-    avatar_url: Optional[str] = None
-    gender: Optional[str] = None
-    type: str  
-    # NEW FIELDS:
-    organization_id: UUID
-    organization_name: Optional[str] = None
-
 class AdminAccountUpdate(BaseModel):
     """Payload for editing a user account via Admin Dashboard"""
     name: Optional[str] = None
@@ -210,15 +188,25 @@ class AdminClinicStatsItem(BaseModel):
         
 class AdminProfileSchema(BaseModel):
     """Admin's own profile information"""
-    name: str
+    name: str # display name
+    full_name: Optional[str] = None # fallback
     email: str
     avatar_url: Optional[str] = None
     gender: Optional[str] = None
+    phone: Optional[str] = None # fallback
+    phone_number: Optional[str] = None
+
+class OrganizationSchema(BaseModel):
+    """Hospital organization details"""
+    name: str
+    org_email: Optional[str] = None
+    timezone: Optional[str] = "UTC"
+    date_format: Optional[str] = "DD/MM/YYYY"
 
 class AllSettingsResponse(BaseModel):
     """Loads all settings forms at once (UPDATED)"""
-    profile: AdminProfileSchema  # NEW
-    organization: dict 
+    profile: AdminProfileSchema
+    organization: OrganizationSchema
     integrations: List[dict]
     developer: dict
     backup: dict 
@@ -228,6 +216,7 @@ class AdminProfileUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     password: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 class AuditLogItem(BaseModel):

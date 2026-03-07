@@ -12,7 +12,7 @@ from typing import List
 import hashlib
 
 from app.database import get_db
-from app.core.deps import require_role
+from app.core.deps import require_role, require_any_role
 from app.models.user import User, Organization, Invitation
 from app.models.activity_log import ActivityLog
 from app.models.appointment import Appointment
@@ -40,7 +40,8 @@ from app.schemas.admin import (
     AdminAuditResponse,
     AuditLogItem,
     AuditInsights,
-    AdminAccountDetail
+    AdminAccountDetail,
+    OrganizationSchema
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -672,30 +673,39 @@ async def get_admin_settings(
     # 2. Prepare Profile Info (Decrypted)
     try:
         from app.core.security import pii_encryption
-        display_name = pii_encryption.decrypt(current_user.full_name) if current_user.full_name else "Admin"
-    except Exception:
-        display_name = current_user.full_name or "Admin"
+        display_name = pii_encryption.decrypt(current_user.full_name) if current_user.full_name else "Hospital Administrator"
+        display_phone = pii_encryption.decrypt(current_user.phone_number) if current_user.phone_number else None
+    except Exception as e:
+        print(f"PII Decryption failed: {e}")
+        display_name = current_user.full_name or "Hospital Administrator"
+        display_phone = current_user.phone_number
 
     # Generate a preview URL for the avatar if it exists
     avatar_preview = None
     if current_user.avatar_url:
-        avatar_preview = minio_service.generate_presigned_url(
-            bucket_name=settings.MINIO_BUCKET_AVATARS,
-            object_name=current_user.avatar_url
-        )
+        try:
+            avatar_preview = minio_service.generate_presigned_url(
+                bucket_name=settings.MINIO_BUCKET_AVATARS,
+                object_name=current_user.avatar_url
+            )
+        except Exception as e:
+            print(f"Avatar URL generation failed: {e}")
 
     return AllSettingsResponse(
         profile=AdminProfileSchema(
             name=display_name,
+            full_name=display_name,
             email=current_user.email,
-            avatar_url=avatar_preview
+            avatar_url=avatar_preview,
+            phone=display_phone,
+            phone_number=display_phone
         ),
-        organization={
-            "name": org.name,
-            "org_email": "admin@clinic.ai",
-            "timezone": getattr(org, "timezone", "UTC"),
-            "date_format": getattr(org, "date_format", "DD/MM/YYYY")
-        },
+        organization=OrganizationSchema(
+            name=org.name or "Untitled Hospital",
+            org_email=org.org_email or "admin@hospital-group.com",
+            timezone=org.timezone or "UTC",
+            date_format=org.date_format or "DD/MM/YYYY"
+        ),
         integrations=[],
         developer={"api_key_name": "Standard Key", "webhook_url": "https://api.clinic.ai/webhook"},
         backup={"backup_frequency": "daily"}
@@ -723,14 +733,12 @@ async def update_admin_profile(
             raise HTTPException(status_code=400, detail="Email already in use")
         current_user.email = profile_in.email
 
+    if profile_in.phone_number is not None:
+        current_user.phone_number = pii_encryption.encrypt(profile_in.phone_number) if (pii_encryption and profile_in.phone_number) else profile_in.phone_number
+
     if profile_in.password:
-        try:
-            from app.core.security import get_password_hash
-            current_user.password_hash = get_password_hash(profile_in.password)
-        except ImportError:
-            # Fallback if security utils are in a different place
-            import hashlib
-            current_user.password_hash = hashlib.sha256(profile_in.password.encode()).hexdigest()
+        from app.core.security import hash_password
+        current_user.password_hash = hash_password(profile_in.password)
 
     await db.commit()
     return {"message": "Profile updated successfully"}
@@ -748,26 +756,30 @@ async def upload_admin_avatar(
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"admin_{current_user.id}_{uuid.uuid4().hex}{file_extension}"
     
-    file_content = await file.read()
-    success = minio_service.upload_bytes(
-        file_data=file_content,
-        bucket_name=settings.MINIO_BUCKET_AVATARS,
-        object_name=unique_filename,
-        content_type=file.content_type
-    )
-    
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to upload to storage")
+    try:
+        file_content = await file.read()
+        success = minio_service.upload_bytes(
+            file_data=file_content,
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=unique_filename,
+            content_type=file.content_type
+        )
         
-    current_user.avatar_url = unique_filename
-    await db.commit()
+        if not success:
+            raise HTTPException(status_code=500, detail="Storage engine failed to write the file. Please check MinIO status.")
+            
+        current_user.avatar_url = unique_filename
+        await db.commit()
 
-    preview_url = minio_service.generate_presigned_url(
-        bucket_name=settings.MINIO_BUCKET_AVATARS,
-        object_name=unique_filename
-    )
-    
-    return {"message": "Avatar updated", "preview_url": preview_url}
+        preview_url = minio_service.generate_presigned_url(
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=unique_filename
+        )
+        
+        return {"message": "Avatar updated", "preview_url": preview_url}
+    except Exception as e:
+        print(f"Avatar upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected upload failure: {str(e)}")
 
 @router.patch("/settings/organization", response_model=dict)
 async def update_organization_settings(
@@ -785,10 +797,12 @@ async def update_organization_settings(
         org.name = settings_in.name
     
     # Handle optional fields safely
-    if settings_in.timezone and hasattr(org, "timezone"):
+    if settings_in.timezone:
         org.timezone = settings_in.timezone
-    if settings_in.date_format and hasattr(org, "date_format"):
+    if settings_in.date_format:
         org.date_format = settings_in.date_format
+    if settings_in.org_email:
+        org.org_email = settings_in.org_email
 
     await db.commit()
     return {"message": "Organization settings updated successfully"}
@@ -808,131 +822,6 @@ async def update_backup_settings(
     return {"message": "Backup settings updated successfully"}
 
 # --- 3. Team Management ---
-@router.get("/accounts", response_model=list[AccountListItem])
-async def get_admin_accounts(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
-):
-    # Fetch Users
-    result = await db.execute(select(User).limit(100))
-    users = result.scalars().all()
-    
-    try:
-        from app.core.security import pii_encryption
-    except ImportError:
-        pii_encryption = None
-        
-    account_list = []
-    for user in users:
-        # Decrypt PII data
-        full_name = user.full_name
-        email = user.email
-        if pii_encryption:
-            try:
-                if full_name: full_name = pii_encryption.decrypt(full_name)
-            except Exception: pass
-            try:
-                if email: email = pii_encryption.decrypt(email)
-            except Exception: pass
-            
-        account_list.append(AccountListItem(
-            id=user.id,
-            name=full_name or "Unknown User",
-            email=email or "No Email",
-            role=user.role,
-            status="active" if user.deleted_at is None else "inactive",
-            last_login=user.last_login.strftime("%Y-%m-%d") if user.last_login else None,
-            type="user"
-        ))
-    return account_list
-
-@router.post("/invite", response_model=dict)
-async def invite_team_member(
-    invite_in: InviteRequest,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
-):
-    # Check for existing user
-    result = await db.execute(select(User).where(User.email == invite_in.email))
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="User already registered.")
-
-    token_raw = uuid.uuid4().hex
-    token_hash = hashlib.sha256(token_raw.encode()).hexdigest()
-    
-    new_invite = Invitation(
-        email=invite_in.email,
-        role=invite_in.role,
-        token_hash=token_hash,
-        expires_at=datetime.utcnow() + timedelta(hours=48),
-        organization_id=current_user.organization_id,
-        created_by_id=current_user.id,
-        status="pending"
-    )
-    
-    db.add(new_invite)
-    await db.commit()
-    
-    # In a real scenario, use background_tasks.add_task(send_email, ...)
-    from app.models.user import Organization
-    result = await db.execute(select(Organization).where(Organization.id == current_user.organization_id))
-    org = result.scalar_one_or_none()
-    org_name = org.name if org else "Saramedico"
-
-    # Add the task to send the email in the background
-    background_tasks.add_task(
-        send_invitation_email,
-        email=invite_in.email,
-        token=token_raw, # Use the raw UUID hex, not the hash
-        role=invite_in.role,
-        org_name=org_name
-    )
-    
-    return {"message": f"Invitation sent to {invite_in.email}"}
-
-@router.delete("/accounts/{id}")
-async def remove_team_member(
-    id: uuid.UUID, # Changed from str to uuid.UUID for automatic validation
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
-):
-    """
-    Revoke an invite OR Deactivate a user so the UI list updates.
-    """
-    # 1. Check if it's a Pending Invitation (Delete it completely)
-    result_invite = await db.execute(select(Invitation).where(
-        Invitation.id == id, 
-        Invitation.organization_id == current_user.organization_id
-    ))
-    invite = result_invite.scalar_one_or_none()
-    
-    if invite:
-        await db.delete(invite)
-        await db.commit()
-        return {"status": "revoked_invitation", "id": str(id)}
-
-    # 2. Check if it's an Active User (Soft Delete)
-    result_user = await db.execute(select(User).where(
-        User.id == id,
-        User.organization_id == current_user.organization_id
-    ))
-    user_to_remove = result_user.scalar_one_or_none()
-    
-    if user_to_remove:
-        # Prevent Admin from deleting themselves
-        if user_to_remove.id == current_user.id:
-            raise HTTPException(400, "You cannot revoke your own access.")
-            
-        # Soft delete: Set deleted_at timestamp
-        user_to_remove.deleted_at = datetime.utcnow()
-        await db.commit()
-        return {"status": "deactivated_user", "id": str(id)}
-
-        return {"status": "deactivated_user", "id": str(id)}
-
-    raise HTTPException(404, "Account or Invitation not found")
-
 @router.get("/doctors/{doctor_id}/details", response_model=AdminDoctorDetailResponse)
 async def get_admin_doctor_details(
     doctor_id: uuid.UUID,
@@ -984,7 +873,8 @@ async def get_admin_doctor_details(
     from datetime import timezone
     now = datetime.now(timezone.utc)
     
-    patient_map = {} # patient_id -> Patient model
+    from typing import Dict
+    patient_map: Dict[uuid.UUID, User] = {} 
 
     for appt in all_appts:
         patient_ids.add(appt.patient_id)
@@ -1012,7 +902,8 @@ async def get_admin_doctor_details(
             ))
 
     # Derive recent patients from the 5 most recent appointments
-    for pat_id, pat_obj in list(patient_map.items())[:5]:
+    recent_patient_objs = list(patient_map.values())[:5]
+    for pat_obj in recent_patient_objs:
         pat_name = "Unknown Patient"
         try: pat_name = pii_encryption.decrypt(pat_obj.full_name)
         except: pass
