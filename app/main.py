@@ -51,7 +51,7 @@ app.add_middleware(ValidationMiddleware)
 # Configure CORS (Added last to be the outermost layer)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=["*"], # Explicitly allow all for mobile connection stability
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
