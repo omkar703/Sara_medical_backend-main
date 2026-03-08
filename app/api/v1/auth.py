@@ -142,6 +142,23 @@ async def register(
     await db.commit()
     await db.refresh(user)
     
+    # Log the registration
+    try:
+        from app.models.activity_log import ActivityLog
+        activity = ActivityLog(
+            user_id=user.id,
+            organization_id=organization.id,
+            activity_type="New Account Created",
+            description=f"New {user.role} account created for {user.email}",
+            related_entity_type="user",
+            related_entity_id=user.id,
+            status="completed"
+        )
+        db.add(activity)
+        await db.commit()
+    except Exception as e:
+        print(f"Failed to log registration: {e}")
+    
     
     # Auto-create Patient Profile if role is patient
     # Normalize role to string for comparison
@@ -858,6 +875,8 @@ async def get_current_user_info(
                 avatar_url=avatar_link,
                 phone_number=phone,
                 email=email,
+                role=current_user.role,
+                organization_id=current_user.organization_id,
                 address=address_dict,
                 emergency_contact=emergency_contact_dict,
                 medical_history=medical_history,

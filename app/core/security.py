@@ -24,10 +24,17 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    return bcrypt.checkpw(
-        plain_password.encode('utf-8'),
-        hashed_password.encode('utf-8')
-    )
+    try:
+        if not hashed_password or not hashed_password.startswith('$2b$'):
+            return False
+            
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8')
+        )
+    except ValueError:
+        # This handles cases where the salt is invalid or the hash is corrupted
+        return False
 
 
 # ==========================================

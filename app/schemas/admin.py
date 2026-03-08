@@ -10,6 +10,7 @@ class ActivityFeedItem(BaseModel):
     user_name: str
     user_avatar: Optional[str] = None
     event_description: str 
+    resource_type: Optional[str] = "System"
     timestamp: datetime
     status: str
 
@@ -77,17 +78,9 @@ class BackupSettingsUpdate(BaseModel):
     """For the 'Backup & Security' form"""
     backup_frequency: Optional[str] = None
 
-class AllSettingsResponse(BaseModel):
-    """Loads all settings forms at once"""
-    organization: dict 
-    integrations: List[dict]
-    developer: dict
-    backup: dict 
-
-
 class AccountListItem(BaseModel):
     """
-    Row for the 'Account Management' table.
+    Row for the 'Account Management' table (UPDATED).
     """
     id: UUID
     name: str         
@@ -96,7 +89,11 @@ class AccountListItem(BaseModel):
     status: str        
     last_login: Optional[str] = None 
     avatar_url: Optional[str] = None
-    type: str          
+    gender: Optional[str] = None
+    type: str  
+    # NEW FIELDS:
+    organization_id: UUID
+    organization_name: Optional[str] = None
 
 class InviteRequest(BaseModel):
     """Payload for 'Invite Team Members' """
@@ -148,28 +145,18 @@ class AdminDoctorDetailResponse(BaseModel):
     appointments: List[DoctorApptItem]
     patients: List[DoctorPatientItem]
 
-class AccountListItem(BaseModel):
-    """
-    Row for the 'Account Management' table (UPDATED).
-    """
-    id: UUID
-    name: str         
-    email: str
-    role: str          
-    status: str        
-    last_login: Optional[str] = None 
-    avatar_url: Optional[str] = None
-    type: str  
-    # NEW FIELDS:
-    organization_id: UUID
-    organization_name: Optional[str] = None
-
 class AdminAccountUpdate(BaseModel):
     """Payload for editing a user account via Admin Dashboard"""
     name: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None  # "active" or "inactive"
+    phone_number: Optional[str] = None
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    department: Optional[str] = None
+    organization_display_name: Optional[str] = None
+    gender: Optional[str] = None
     
 class AdminGlobalAppointmentItem(BaseModel):
     """
@@ -201,14 +188,25 @@ class AdminClinicStatsItem(BaseModel):
         
 class AdminProfileSchema(BaseModel):
     """Admin's own profile information"""
-    name: str
+    name: str # display name
+    full_name: Optional[str] = None # fallback
     email: str
     avatar_url: Optional[str] = None
+    gender: Optional[str] = None
+    phone: Optional[str] = None # fallback
+    phone_number: Optional[str] = None
+
+class OrganizationSchema(BaseModel):
+    """Hospital organization details"""
+    name: str
+    org_email: Optional[str] = None
+    timezone: Optional[str] = "UTC"
+    date_format: Optional[str] = "DD/MM/YYYY"
 
 class AllSettingsResponse(BaseModel):
     """Loads all settings forms at once (UPDATED)"""
-    profile: AdminProfileSchema  # NEW
-    organization: dict 
+    profile: AdminProfileSchema
+    organization: OrganizationSchema
     integrations: List[dict]
     developer: dict
     backup: dict 
@@ -217,3 +215,51 @@ class AdminProfileUpdate(BaseModel):
     """Payload for updating admin's own profile"""
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    phone_number: Optional[str] = None
+
+
+class AuditLogItem(BaseModel):
+    """Detailed audit log row for security monitoring"""
+    id: UUID
+    timestamp: datetime
+    user_name: str
+    action: str
+    resource_type: str
+    ip_address: Optional[str] = None
+    severity: str = "info" # info, warning, critical
+
+class AuditInsights(BaseModel):
+    """Security summary for the admin audit page"""
+    total_events_24h: int
+    new_users_24h: int
+    new_doctors_24h: int
+    new_hospitals_24h: int
+
+class AdminAuditResponse(BaseModel):
+    """Composite response for the enhanced audit page"""
+    logs: List[AuditLogItem]
+    insights: AuditInsights
+class AdminAccountDetail(BaseModel):
+    """Detailed profile data for granular admin editing"""
+    id: UUID
+    name: str
+    email: str
+    role: str
+    status: str
+    phone_number: Optional[str] = None
+    avatar_url: Optional[str] = None
+    gender: Optional[str] = None
+    
+    # Doctor related
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    department: Optional[str] = None
+    
+    # Organization related
+    organization_id: UUID
+    organization_name: str
+    
+    # Audit tracking
+    created_at: datetime
+    last_login: Optional[datetime] = None

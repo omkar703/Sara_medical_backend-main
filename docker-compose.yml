@@ -126,7 +126,7 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_EXTERNAL_ENDPOINT=localhost:9010
+      - MINIO_EXTERNAL_ENDPOINT=107.20.98.130:9010
     depends_on:
       postgres:
         condition: service_healthy
@@ -220,6 +220,24 @@ services:
       - saramedico_network
 
 
+  # ============================================
+  # Frontend Application (Next.js)
+  # ============================================
+  frontend:
+    build:
+      context: ../saramedico-deploy
+      dockerfile: Dockerfile
+      args:
+        # Pass the Next.js build-time variables
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    container_name: saramedico_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - saramedico_network
 
 # ============================================
 # Persistent Volumes
