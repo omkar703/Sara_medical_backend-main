@@ -88,7 +88,7 @@ async def get_doctor_patients(
     )
 
     query = select(Patient, User, lv_subquery.label("last_visit_at"))\
-        .outerjoin(User, Patient.user_id == User.id)\
+        .outerjoin(User, Patient.id == User.id)\
         .where(
         Patient.organization_id == organization_id, 
         Patient.deleted_at == None
