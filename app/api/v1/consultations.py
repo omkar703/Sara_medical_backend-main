@@ -388,20 +388,63 @@ async def analyze_consultation(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Trigger SOAP note generation for a consultation.
-
-    Uses a mock transcript (simulating Google Meet Transcript API) and sends it
-    to AWS Bedrock (Claude) for SOAP note generation via a background Celery task.
-
-    Query params:
-        scenario (optional): One of 'chest_pain', 'diabetes', 'pediatric_fever',
-                             'hypertension', 'anxiety'. Picks randomly if not set.
+    Trigger SOAP note generation for a consultation using REAL Google Meet transcript.
+    This is the background task triggered after a consultation is marked complete.
     """
-    from app.services.mock_transcript_service import mock_transcript_service, SCENARIOS
     from app.workers.tasks import generate_soap_note as soap_task
 
     service = ConsultationService(db)
     consultation = await service.get_consultation(consultation_id, organization_id)
+
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    # Mark as processing immediately so the caller knows something is happening
+    consultation.ai_status = "processing"
+    await db.commit()
+
+    # Dispatch the background Celery task
+    soap_task.delay(str(consultation_id))
+
+    return MessageResponse(
+        message=(
+            f"SOAP note generation queued for consultation {consultation_id}. "
+            f"Processing in background. Poll GET /consultations/{consultation_id}/soap-note for results."
+        )
+    )
+
+
+@router.post("/{consultation_id}/generate-demo-soap")
+async def generate_demo_soap(
+    consultation_id: UUID,
+    scenario: Optional[str] = Query(None, description="Scenario: chest_pain, diabetes, pediatric_fever, hypertension, anxiety"),
+    current_user: User = Depends(require_role("doctor")),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate a SOAP note using a MOCK transcript. Use this button for demo/testing
+    when no real Google Meet transcript is available.
+    
+    This endpoint:
+    1. Picks a realistic mock clinical transcript (configurable scenario)
+    2. Sends it to AWS Bedrock for a real AI-generated SOAP note
+    3. Stores the result in the consultation record
+    """
+    from sqlalchemy.orm import selectinload
+    from app.services.mock_transcript_service import mock_transcript_service, SCENARIOS
+    from app.services.aws_service import aws_service
+
+    # Allow lookup by consultation id without strict org check (for demo)
+    result = await db.execute(
+        select(Consultation)
+        .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+        .where(
+            Consultation.id == consultation_id,
+            Consultation.deleted_at.is_(None)
+        )
+    )
+    consultation = result.scalar_one_or_none()
 
     if not consultation:
         raise HTTPException(status_code=404, detail="Consultation not found")
@@ -413,22 +456,49 @@ async def analyze_consultation(
             detail=f"Invalid scenario '{scenario}'. Available: {list(SCENARIOS.keys())}"
         )
 
-    # Mark as processing immediately so the caller knows something is happening
+    # Get a mock transcript
+    try:
+        transcript = mock_transcript_service.get_mock_transcript(scenario)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not load mock transcript: {e}")
+
+    # Mark processing
     consultation.ai_status = "processing"
     await db.commit()
 
-    # Dispatch the background Celery task
-    # The task will: get mock transcript → call Bedrock → save soap_note to DB
-    soap_task.delay(str(consultation_id))
+    # Generate SOAP via Bedrock (run synchronously in a thread to avoid blocking)
+    import asyncio
+    import concurrent.futures
 
-    available_scenarios = list(SCENARIOS.keys())
-    return MessageResponse(
-        message=(
-            f"SOAP note generation queued for consultation {consultation_id}. "
-            f"Processing in background. Poll GET /consultations/{consultation_id}/soap-note for results. "
-            f"Available test scenarios: {available_scenarios}"
+    patient_info = {
+        "consultation_id": str(consultation.id),
+        "scheduled_at": consultation.scheduled_at.isoformat() if consultation.scheduled_at else None,
+    }
+
+    try:
+        soap_note = await aws_service.generate_soap_note(
+            transcript=transcript,
+            patient_info=patient_info
         )
-    )
+
+        consultation.transcript = transcript
+        consultation.soap_note = soap_note
+        consultation.ai_status = "completed"
+        # Also mark consultation as completed if not already
+        if consultation.status != "completed":
+            consultation.status = "completed"
+        await db.commit()
+
+        return {
+            "message": "Demo SOAP note generated successfully.",
+            "consultation_id": str(consultation_id),
+            "ai_status": "completed",
+            "soap_note": soap_note
+        }
+    except Exception as e:
+        consultation.ai_status = "failed"
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"SOAP generation failed: {str(e)}")
 
 
 @router.get("/{consultation_id}/soap-note")
@@ -442,43 +512,82 @@ async def get_soap_note(
     Retrieve the generated SOAP note for a consultation.
 
     Returns:
-        200 + SOAP note JSON if generation is complete.
-        202 if still processing.
-        404 if consultation not found or SOAP note not yet generated.
+        200 + SOAP note JSON if ai_status == 'completed' and soap_note exists.
+        202 if still processing or awaiting transcript.
+        200 with ai_status payload if terminal non-completed state (e.g. no_transcript).
+        404 if consultation not found.
     """
     from fastapi.responses import JSONResponse
+    from sqlalchemy.orm import selectinload
 
+    # Try fetching by org first; if not found, try without org restriction
+    # (allows patients in different orgs to view their own consultations)
     service = ConsultationService(db)
     consultation = await service.get_consultation(consultation_id, organization_id)
 
     if not consultation:
+        # Cross-org lookup: patient may belong to a different org than the consultation org
+        result = await db.execute(
+            select(Consultation)
+            .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+            .where(
+                Consultation.id == consultation_id,
+                Consultation.deleted_at.is_(None)
+            )
+        )
+        consultation = result.scalar_one_or_none()
+
+    if not consultation:
         raise HTTPException(status_code=404, detail="Consultation not found")
+
+    # Security: patients can only view their own consultation
+    if current_user.role == "patient" and str(consultation.patient_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     ai_status = getattr(consultation, 'ai_status', 'pending')
 
-    if ai_status == "processing":
+    # Still in progress — return 202
+    if ai_status in ("processing", "awaiting_transcript", "pending"):
         return JSONResponse(
             status_code=202,
             content={
                 "status": "processing",
-                "message": "SOAP note is being generated. Please check back shortly.",
+                "ai_status": ai_status,
+                "message": "SOAP note is being generated or awaiting transcript. Please check back shortly.",
                 "consultation_id": str(consultation_id),
+            }
+        )
+
+    # Terminal state: no transcript captured — return 200 with status info
+    if ai_status == "no_transcript":
+        return JSONResponse(
+            status_code=200,
+            content={
+                "consultation_id": str(consultation_id),
+                "status": consultation.status,
+                "ai_status": "no_transcript",
+                "soap_note": None,
+                "message": "No speech was detected in this meeting. No SOAP note was generated."
             }
         )
 
     soap_note = getattr(consultation, 'soap_note', None)
     if not soap_note:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"SOAP note not yet available (ai_status='{ai_status}'). "
-                "Trigger generation via POST /analyze first."
-            )
+        # ai_status might be 'failed' or unknown — return info instead of 404
+        return JSONResponse(
+            status_code=200,
+            content={
+                "consultation_id": str(consultation_id),
+                "status": consultation.status,
+                "ai_status": ai_status,
+                "soap_note": None,
+                "message": f"SOAP note not available (ai_status='{ai_status}'). Use the Generate button to trigger it."
+            }
         )
 
     return {
         "consultation_id": str(consultation_id),
-        "status": consultation.status,       # consultation status (e.g. completed)
+        "status": consultation.status,
         "ai_status": ai_status,
         "transcript_available": bool(getattr(consultation, 'transcript', None)),
         "soap_note": soap_note,
