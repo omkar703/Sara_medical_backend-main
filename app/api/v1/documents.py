@@ -39,6 +39,7 @@ async def upload_document(
     file: UploadFile = File(...),
     patient_id: UUID = Form(...),
     notes: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
     document_id: Optional[UUID] = Form(None),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -62,16 +63,13 @@ async def upload_document(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
-    # Permission check: Only onboarding doctor or the patient themselves can upload
+    # Permission check: Only onboarding doctor, the patient themselves, or a doctor/admin/hospital in the same org
     is_owner = str(current_user.id) == str(patient.id)
-    is_onboarding_doctor = str(current_user.id) == str(patient.created_by)
-    is_admin = str(current_user.role) == "admin"
+    is_authorized_role = str(current_user.role) in ["doctor", "admin", "hospital"]
+    is_same_org = str(current_user.organization_id) == str(patient.organization_id)
     
-    if not (is_owner or is_onboarding_doctor or is_admin):
+    if not (is_owner or (is_authorized_role and is_same_org)):
         raise HTTPException(status_code=403, detail="Access Denied: You do not have permission to upload documents for this patient.")
-
-    if patient.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
 
     # 3. Save to temp storage (local)
     upload_dir = "/tmp/saramedico_uploads"
@@ -127,7 +125,8 @@ async def upload_document(
                 file_size=os.path.getsize(local_path),
                 storage_path=storage_path,
                 uploaded_by=current_user.id,
-                notes=notes
+                notes=notes,
+                category=category
             )
             db.add(new_doc)
     else:
@@ -141,6 +140,7 @@ async def upload_document(
             storage_path=storage_path,
             uploaded_by=current_user.id,
             notes=notes,
+            category=category,
             processing_details={
                 "tier_1_text": {"status": "pending"},
                 "tier_2_images": {"status": "pending"},
@@ -220,16 +220,13 @@ async def request_upload_url(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
-    # Permission check: Only onboarding doctor or the patient themselves can upload
+    # Permission check: Only onboarding doctor, the patient themselves, or a doctor/admin/hospital in the same org
     is_owner = str(current_user.id) == str(patient.id)
-    is_onboarding_doctor = str(current_user.id) == str(patient.created_by)
-    is_admin = str(current_user.role) == "admin"
+    is_authorized_role = str(current_user.role) in ["doctor", "admin", "hospital"]
+    is_same_org = str(current_user.organization_id) == str(patient.organization_id)
     
-    if not (is_owner or is_onboarding_doctor or is_admin):
+    if not (is_owner or (is_authorized_role and is_same_org)):
         raise HTTPException(status_code=403, detail="Access Denied: You do not have permission to upload documents for this patient.")
-
-    if patient.organization_id != organization_id:
-        raise HTTPException(status_code=403, detail="Access Denied: Patient belongs to a different organization.")
 
     service = DocumentService(db)
     storage = StorageService()
