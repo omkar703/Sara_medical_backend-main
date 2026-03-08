@@ -83,24 +83,26 @@ def process_document_task(document_id_str: str):
 @celery_app.task(
     name="app.workers.tasks.generate_soap_note",
     bind=True,
-    max_retries=6,
+    max_retries=3,
     default_retry_delay=30,
 )
 def generate_soap_note(self, consultation_id: str) -> dict:
     """
     Background task to generate a SOAP note for a completed consultation.
-    
-    1. Fetches the consultation (Sync).
-    2. Tries to get the REAL Google Meet transcript.
-    3. If not found, polls using Celery retries (up to 6 times holding for Google to process it).
-    4. Sends the transcript to AWS Bedrock (Claude 3.5 Sonnet).
-    5. Saves the resulting SOAP note to the DB.
+
+    IMPORTANT: This task requires a REAL Google Meet transcript to generate a SOAP note.
+    It will NEVER fall back to mock/demo data as that would produce fabricated clinical records.
+
+    Flow:
+    1. Verify the consultation has a google_event_id (i.e., a real meeting was scheduled).
+    2. Attempt to fetch the real transcript from Google Drive (attached to the Calendar event).
+    3. If transcript is not ready yet, retry up to 3 times (90s total).
+    4. If no transcript is available after retries → set ai_status = "no_transcript" and STOP.
+    5. If real transcript found → send to AWS Bedrock and save SOAP note.
     """
     from app.database import SyncSessionLocal
-    from sqlalchemy import select
     from app.models.consultation import Consultation
     from app.services.google_meet_service import google_meet_service
-    from app.services.mock_transcript_service import mock_transcript_service
     from app.services.aws_service import aws_service
 
     db = SyncSessionLocal()
@@ -110,71 +112,70 @@ def generate_soap_note(self, consultation_id: str) -> dict:
         if not consultation:
             return {"status": "failed", "reason": f"Consultation {consultation_id} not found"}
 
-        # 2. Mark as processing
+        # 2. Safety check: No real meeting = no transcript = no SOAP note
+        if not consultation.google_event_id:
+            print(f"[generate_soap_note] ⚠ Consultation {consultation_id} has no google_event_id. "
+                  "Cannot generate SOAP note without a real meeting transcript.")
+            consultation.ai_status = "no_transcript"
+            db.commit()
+            return {"status": "no_transcript", "reason": "No Google Meet event associated with this consultation"}
+
+        # 3. Mark as processing
         consultation.ai_status = "processing"
         db.commit()
 
-        # 3. Attempt to fetch REAL transcript
+        # 4. Attempt to fetch REAL transcript from Google Drive
         transcript_text = None
-        if consultation.google_event_id:
-            try:
-                transcript_text = run_async(google_meet_service.get_meeting_transcript(consultation.google_event_id))
-            except Exception as e:
-                print(f"Error fetching transcript: {e}")
+        try:
+            transcript_text = run_async(google_meet_service.get_meeting_transcript(consultation.google_event_id))
+        except Exception as e:
+            print(f"[generate_soap_note] Error fetching transcript: {e}")
 
-        # 4. Handle missing transcript (Retry or fallback to Mock)
+        # 5. Handle missing transcript — retry a few times or fail gracefully
         if not transcript_text or not transcript_text.strip():
-            print(f"[generate_soap_note] Real transcript not found for Event ID {consultation.google_event_id}.")
-            
-            # Only retry 2 times (60s) in development — Google Meet doesn't produce transcripts unless configured
-            if consultation.google_event_id and self.request.retries < min(2, self.max_retries):
+            print(f"[generate_soap_note] No transcript found yet for Event ID: {consultation.google_event_id}.")
+
+            if self.request.retries < self.max_retries:
                 retry_attempt = self.request.retries + 1
-                print(f"[generate_soap_note] Real transcript not ready yet. Retrying in 30s (Attempt {retry_attempt}/2)")
+                print(f"[generate_soap_note] Retrying in 30s (Attempt {retry_attempt}/{self.max_retries})...")
                 raise self.retry(countdown=30)
 
-            # --- FALLBACK TO MOCK TRANSCRIPT ---
-            # If we reach here, retries are exhausted. Instead of failing, 
-            # we use a realistic mock transcript so the doctor still sees a SOAP note.
-            print(f"[generate_soap_note] ⚠ Real transcript exhausted. Falling back to MOCK transcript for demo.")
-            
-            # Attempt to pick a scenario based on the reasoning/notes if available
-            scenario = "chest_pain" # default
-            if consultation.notes:
-                notes_lower = consultation.notes.lower()
-                if "diabetes" in notes_lower or "sugar" in notes_lower:
-                    scenario = "diabetes"
-                elif "fever" in notes_lower or "child" in notes_lower:
-                    scenario = "pediatric_fever"
-                elif "anxiety" in notes_lower or "stress" in notes_lower:
-                    scenario = "anxiety"
-                elif "pressure" in notes_lower or "hypertension" in notes_lower:
-                    scenario = "hypertension"
-            
-            transcript_text = mock_transcript_service.get_mock_transcript(scenario)
-            print(f"[generate_soap_note] Using mock scenario: {scenario}")
+            # All retries exhausted — meeting had no transcript (e.g., no speech, or transcription disabled)
+            print(f"[generate_soap_note] ⚠ No real transcript available after all retries. "
+                  "Marking as 'no_transcript'. No SOAP note will be generated.")
+            consultation.ai_status = "no_transcript"
+            db.commit()
+            return {
+                "status": "no_transcript",
+                "reason": (
+                    "No transcript was captured for this meeting. "
+                    "Ensure Google Meet transcription is enabled and that the meeting "
+                    "contained actual spoken conversation."
+                )
+            }
 
-        print(f"[generate_soap_note] Real transcript found! Processing with AWS Bedrock.")
-        # 5. Build patient context for the prompt
+        # 6. Real transcript found — build patient context
+        print(f"[generate_soap_note] ✅ Real transcript found! Sending to AWS Bedrock...")
         patient_info = None
         if consultation.patient_id:
-             patient_info = {
-                 "consultation_id": str(consultation.id),
-                 "scheduled_at": consultation.scheduled_at.isoformat() if consultation.scheduled_at else None,
-             }
+            patient_info = {
+                "consultation_id": str(consultation.id),
+                "scheduled_at": consultation.scheduled_at.isoformat() if consultation.scheduled_at else None,
+            }
 
-        # 6. Generate SOAP note via AWS Bedrock
+        # 7. Generate SOAP note via AWS Bedrock (Claude 3.5 Sonnet)
         try:
             soap_note = run_async(aws_service.generate_soap_note(
                 transcript=transcript_text,
                 patient_info=patient_info
             ))
-            
-            # 7. Persist results
+
+            # 8. Persist results
             consultation.transcript = transcript_text
             consultation.soap_note = soap_note
             consultation.ai_status = "completed"
             db.commit()
-            
+
             print(f"[generate_soap_note] ✅ SOAP note generated for consultation {consultation_id}")
             return {"status": "completed", "consultation_id": consultation_id}
 

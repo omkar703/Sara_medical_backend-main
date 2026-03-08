@@ -316,14 +316,14 @@ async def complete_consultation(
     request: Request = None,
 ):
     """
-    Mark a consultation as completed and automatically trigger AI SOAP note generation.
+    Mark a consultation as completed and trigger AI SOAP note generation.
 
     Call this endpoint when the Google Meet session ends.
     The AI will:
-    1. Try to fetch the real Google Meet transcript.
-    2. Fall back to a realistic mock transcript if none is available yet.
-    3. Generate a structured SOAP note via AWS Bedrock (Claude 3.5 Sonnet).
-    4. Save the result to the database.
+    1. Check if a real Google Meet transcript exists for the session.
+    2. If transcript is found → generate a SOAP note via AWS Bedrock (Claude 3.5 Sonnet).
+    3. If no transcript is found (meeting had no speech, or transcription not enabled)
+       → ai_status is set to 'no_transcript'. No SOAP note is generated.
 
     Poll `GET /consultations/{id}/soap-note` every 5 seconds for results.
     """
@@ -341,13 +341,17 @@ async def complete_consultation(
             "soap_note_url": f"/api/v1/consultations/{consultation_id}/soap-note",
         }
 
-    # Mark as completed — this also triggers the SOAP note Celery task
+    # Mark consultation as completed and trigger SOAP note generation background task
     await service.update_consultation(
         consultation_id=consultation_id,
         organization_id=organization_id,
-        updates={"status": "completed", "ai_status": "processing"},
+        updates={"status": "completed", "ai_status": "awaiting_transcript"},
     )
     await db.commit()
+
+    # Dispatch background Celery task to check for real transcript and generate SOAP
+    from app.workers.tasks import generate_soap_note as soap_task
+    soap_task.delay(str(consultation_id))
 
     await log_action(
         db=db,
@@ -361,11 +365,16 @@ async def complete_consultation(
     await db.commit()
 
     return {
-        "message": "Consultation marked as completed. AI SOAP note generation started.",
+        "message": "Consultation marked as completed. Checking for meeting transcript...",
         "consultation_id": str(consultation_id),
-        "ai_status": "processing",
+        "ai_status": "awaiting_transcript",
         "soap_note_url": f"/api/v1/consultations/{consultation_id}/soap-note",
-        "instructions": "Poll the soap_note_url every 5 seconds. Returns 202 while processing, 200 when ready.",
+        "instructions": (
+            "Poll the soap_note_url every 10 seconds. "
+            "Returns 202 while processing. "
+            "Returns 200 with soap_note when ready. "
+            "ai_status='no_transcript' means no meeting speech was detected."
+        ),
     }
 
 
