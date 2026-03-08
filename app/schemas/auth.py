@@ -79,6 +79,7 @@ class UserResponse(BaseModel):
     organization_id: UUID
     mfa_enabled: bool
     email_verified: bool
+    avatar_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

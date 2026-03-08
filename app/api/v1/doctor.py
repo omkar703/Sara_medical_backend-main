@@ -49,6 +49,7 @@ class DoctorPatientListItem(BaseModel):
     status_tag: str = Field(..., alias="statusTag")
     dob: str
     mrn: str
+    email: Optional[str] = None
     last_visit: Optional[str] = Field(None, alias="lastVisit")
     problem: Optional[str] = None
 
@@ -86,7 +87,9 @@ async def get_doctor_patients(
         .scalar_subquery()
     )
 
-    query = select(Patient, lv_subquery.label("last_visit_at")).where(
+    query = select(Patient, User, lv_subquery.label("last_visit_at"))\
+        .outerjoin(User, Patient.user_id == User.id)\
+        .where(
         Patient.organization_id == organization_id, 
         Patient.deleted_at == None
     )
@@ -96,7 +99,7 @@ async def get_doctor_patients(
     all_patients = []
     recent_patients_with_dates = []
 
-    for p, last_visit_at in rows:
+    for p, u, last_visit_at in rows:
         # Decrypt fields
         try:
             name = pii_encryption.decrypt(p.full_name)
@@ -106,6 +109,23 @@ async def get_doctor_patients(
             dob = "Unknown"
 
         last_visit_str = last_visit_at.strftime("%d/%m/%y") if last_visit_at else "No visits"
+        
+        # Determine email: Patient.email is encrypted PII; User.email is plaintext
+        email = "N/A"
+        try:
+            if p.email:
+                email = pii_encryption.decrypt(p.email)
+        except Exception:
+            # If decryption fails, try plain (some older records may be unencrypted)
+            try:
+                email = str(p.email) if p.email else "N/A"
+            except Exception:
+                email = "N/A"
+        
+        # Fallback: use User's plaintext email if patient email is missing
+        if email == "N/A" and u and u.email:
+            email = u.email
+
 
         item = DoctorPatientListItem(
             id=p.id,
@@ -113,6 +133,7 @@ async def get_doctor_patients(
             statusTag="Analysis Ready",
             dob=dob,
             mrn=p.mrn,
+            email=email,
             lastVisit=last_visit_str,
             problem=p.medical_history or "General"
         )
@@ -289,21 +310,42 @@ async def update_doctor_profile(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update the doctor's profile (specialty, license)."""
+    """Update the doctor's profile (full name, specialty, license, department, department_role)."""
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Access denied")
+
+    if profile_in.full_name is not None and profile_in.full_name.strip():
+        current_user.full_name = pii_encryption.encrypt(profile_in.full_name.strip())
 
     if profile_in.specialty is not None:
         current_user.specialty = profile_in.specialty
     
     if profile_in.license_number is not None:
-        from app.core.security import pii_encryption
         current_user.license_number = pii_encryption.encrypt(profile_in.license_number)
+
+    if profile_in.department is not None:
+        current_user.department = profile_in.department
+
+    if profile_in.department_role is not None:
+        current_user.department_role = profile_in.department_role
 
     await db.commit()
     await db.refresh(current_user)
+
+    # Return decrypted name so UI can reflect the updated value immediately
+    try:
+        decrypted_name = pii_encryption.decrypt(current_user.full_name)
+    except:
+        decrypted_name = profile_in.full_name or ""
     
-    return {"message": "Profile updated successfully", "specialty": current_user.specialty}
+    return {
+        "message": "Profile updated successfully",
+        "full_name": decrypted_name,
+        "specialty": current_user.specialty,
+        "department": current_user.department,
+        "department_role": current_user.department_role,
+    }
+
 
 @router.get("/{doctor_id}/recent-patients", response_model=List[RecentPatientResponse])
 async def get_doctor_recent_patients(

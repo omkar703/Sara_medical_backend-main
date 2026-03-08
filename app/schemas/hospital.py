@@ -22,6 +22,8 @@ class DoctorDirectoryItem(BaseModel):
     name: str
     email: str
     specialty: Optional[str] = None
+    department: Optional[str] = None
+    department_role: Optional[str] = None
     phone: Optional[str] = None
     joinedAt: datetime
 
@@ -113,7 +115,17 @@ class DocumentItem(BaseModel):
     uploaded_at: datetime
     status: Optional[str] = None
 
+class PatientInfo(BaseModel):
+    id: str
+    full_name: str
+    mrn: str
+    gender: Optional[str] = None
+    age: Optional[int | str] = None
+    date_of_birth: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+
 class PatientRecordsResponse(BaseModel):
-    patient_id: str
+    patient_info: PatientInfo
     health_metrics: List[HealthMetricItem]
     documents: List[DocumentItem]

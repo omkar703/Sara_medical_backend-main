@@ -45,7 +45,8 @@ class CalendarService:
                 CalendarEvent.start_time <= end_date
             )
         ).options(
-            selectinload(CalendarEvent.appointment),
+            selectinload(CalendarEvent.appointment).selectinload(Appointment.doctor),
+            selectinload(CalendarEvent.appointment).selectinload(Appointment.patient),
             selectinload(CalendarEvent.task)
         )
         
@@ -75,7 +76,8 @@ class CalendarService:
                 CalendarEvent.user_id == user_id
             )
         ).options(
-            selectinload(CalendarEvent.appointment),
+            selectinload(CalendarEvent.appointment).selectinload(Appointment.doctor),
+            selectinload(CalendarEvent.appointment).selectinload(Appointment.patient),
             selectinload(CalendarEvent.task)
         )
         result = await self.db.execute(query)
@@ -391,33 +393,23 @@ class CalendarService:
             await self.db.delete(event)
             await self.db.flush()
     
-    async def get_day_view(self, user_id: UUID, target_date: date) -> List[CalendarEvent]:
+    async def get_day_view(self, user_id: UUID, target_date: date, organization_id: Optional[UUID] = None) -> List[CalendarEvent]:
         """
-        Get all events for a specific day
-        
-        Args:
-            user_id: User UUID
-            target_date: Date to get events for
-        
-        Returns:
-            List of CalendarEvent objects for that day
+        Get all events for a specific day.
+        If organization_id is provided, returns all organization events for that day.
         """
         start_datetime = datetime.combine(target_date, datetime.min.time())
         end_datetime = datetime.combine(target_date, datetime.max.time())
         
+        if organization_id:
+            return await self.get_organization_events(organization_id, start_datetime, end_datetime)
+        
         return await self.get_events_by_date_range(user_id, start_datetime, end_datetime)
     
-    async def get_month_view(self, user_id: UUID, year: int, month: int) -> dict:
+    async def get_month_view(self, user_id: UUID, year: int, month: int, organization_id: Optional[UUID] = None) -> dict:
         """
-        Get summary of all days in a month with event counts
-        
-        Args:
-            user_id: User UUID
-            year: Year (e.g., 2024)
-            month: Month (1-12)
-        
-        Returns:
-            Dictionary with day-by-day event summary
+        Get summary of all days in a month with event counts.
+        If organization_id is provided, returns counts for the entire organization.
         """
         # Get first and last day of month
         start_date = datetime(year, month, 1)
@@ -427,7 +419,10 @@ class CalendarService:
             end_date = datetime(year, month + 1, 1) - timedelta(seconds=1)
         
         # Get all events for the month
-        events = await self.get_events_by_date_range(user_id, start_date, end_date)
+        if organization_id:
+            events = await self.get_organization_events(organization_id, start_date, end_date)
+        else:
+            events = await self.get_events_by_date_range(user_id, start_date, end_date)
         
         # Group events by day
         days_summary = {}
@@ -462,7 +457,9 @@ class CalendarService:
         organization_id: UUID,
         start_date: datetime,
         end_date: datetime,
-        event_type: Optional[str] = None
+        event_type: Optional[str] = None,
+        doctor_id: Optional[UUID] = None,
+        visit_type: Optional[str] = None # "video" or "in-person"
     ) -> List[CalendarEvent]:
         """
         Get all calendar events for an entire organization within a date range.
@@ -477,13 +474,26 @@ class CalendarService:
                 CalendarEvent.start_time <= end_date
             )
         ).options(
-            selectinload(CalendarEvent.user),       # Eager load the staff member
-            selectinload(CalendarEvent.appointment),
+            selectinload(CalendarEvent.user),
+            selectinload(CalendarEvent.appointment).selectinload(Appointment.doctor),
+            selectinload(CalendarEvent.appointment).selectinload(Appointment.patient),
             selectinload(CalendarEvent.task)
         )
         
         if event_type:
             query = query.where(CalendarEvent.event_type == event_type)
+        
+        if doctor_id:
+            query = query.where(CalendarEvent.user_id == doctor_id)
+            
+        if visit_type:
+            # Join with Appointment to filter by visit type (video vs in-person)
+            # Since visit_type is not a column, we use meet_link as proxy
+            query = query.join(CalendarEvent.appointment)
+            if visit_type == "video":
+                query = query.where(Appointment.meet_link.isnot(None))
+            else:
+                query = query.where(Appointment.meet_link.is_(None))
         
         query = query.order_by(CalendarEvent.start_time.asc())
         

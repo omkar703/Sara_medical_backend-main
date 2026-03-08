@@ -299,27 +299,33 @@ async def get_hospital_doctors_status(
     inactive_doctors = []
 
     for doc, doc_status_val in rows:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # 1. Decrypt Name
         try:
             full_name = pii_encryption.decrypt(doc.full_name) if doc.full_name else "Unknown"
-        except Exception:
-            full_name = "Encrypted"
+        except Exception as e:
+            logger.error(f"Failed to decrypt name for doc {doc.id} ({doc.email}): {e}")
+            full_name = doc.full_name or "Unknown"
             
         # 2. Decrypt Phone Number
         phone_number = None
         if doc.phone_number:
             try:
                 phone_number = pii_encryption.decrypt(doc.phone_number)
-            except Exception:
-                phone_number = "Encrypted"
+            except Exception as e:
+                logger.error(f"Failed to decrypt phone for doc {doc.id} ({doc.email}): {e}")
+                phone_number = doc.phone_number
                 
         # 3. Decrypt License Number
         license_number = None
         if doc.license_number:
             try:
                 license_number = pii_encryption.decrypt(doc.license_number)
-            except Exception:
-                license_number = "Encrypted"
+            except Exception as e:
+                logger.error(f"Failed to decrypt license for doc {doc.id} ({doc.email}): {e}")
+                license_number = doc.license_number
 
         # Default to inactive if the doctor hasn't explicitly set a status yet
         current_status = doc_status_val if doc_status_val else "inactive"

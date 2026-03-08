@@ -34,13 +34,16 @@ class HospitalService:
             ).subquery()
         )
 
-        # Query 2: Today's Appointments
+        # Query 2: Today's Appointments (from CalendarEvents)
+        from app.models.calendar_event import CalendarEvent
+        
         appointments_stmt = select(func.count()).select_from(
-            select(Consultation).where(
-                Consultation.organization_id == organization_id,
-                Consultation.scheduled_at >= start_of_today,
-                Consultation.scheduled_at <= end_of_today,
-                Consultation.deleted_at.is_(None)
+            select(CalendarEvent).where(
+                CalendarEvent.organization_id == organization_id,
+                CalendarEvent.event_type == "appointment",
+                CalendarEvent.start_time >= start_of_today,
+                CalendarEvent.start_time <= end_of_today,
+                CalendarEvent.status != "cancelled"
             ).subquery()
         )
 
@@ -123,6 +126,8 @@ class HospitalService:
                 "name": name,
                 "email": doc.email,
                 "specialty": doc.specialty,
+                "department": doc.department,
+                "department_role": doc.department_role,
                 "phone": phone,
                 "joinedAt": doc.created_at
             })
@@ -317,18 +322,24 @@ class HospitalService:
         }
         
     async def get_patient_records(self, organization_id: UUID, patient_id: UUID) -> dict:
-        """Fetch all health metrics and documents for a specific patient."""
+        """Fetch all health metrics and documents for a specific patient, including basic profile info."""
         
-        # 1. Verify Patient belongs to the organization
-        patient_check = await self.db.execute(
-            select(Patient.id).where(
+        from app.services.patient_service import PatientService
+        patient_service = PatientService(self.db)
+        
+        # 1. Fetch and Decrypt Patient Profile
+        result = await self.db.execute(
+            select(Patient).where(
                 Patient.id == patient_id,
                 Patient.organization_id == organization_id,
                 Patient.deleted_at.is_(None)
             )
         )
-        if not patient_check.scalar_one_or_none():
+        patient = result.scalar_one_or_none()
+        if not patient:
             raise ValueError("Patient not found or does not belong to this organization.")
+
+        patient_info = patient_service.decrypt_patient_data(patient)
 
         # 2. Fetch Health Metrics (Vitals)
         metrics_stmt = select(HealthMetric).where(
@@ -341,10 +352,9 @@ class HospitalService:
             Document.deleted_at.is_(None)
         ).order_by(Document.uploaded_at.desc())
 
-        # Execute queries sequentially to avoid session concurrency issues
+        # Execute queries sequentially
         metrics_result = await self.db.execute(metrics_stmt)
         docs_result = await self.db.execute(docs_stmt)
-
 
         metrics = metrics_result.scalars().all()
         docs = docs_result.scalars().all()
@@ -370,8 +380,29 @@ class HospitalService:
             "status": "indexed" if d.total_chunks > 0 else "processing"
         } for d in docs]
 
+        # Calculate Age
+        age = "N/A"
+        if patient_info.get("date_of_birth"):
+            try:
+                dob = patient_info["date_of_birth"]
+                if isinstance(dob, str):
+                    dob = date.fromisoformat(dob)
+                today = date.today()
+                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            except Exception:
+                pass
+
         return {
-            "patient_id": str(patient_id),
+            "patient_info": {
+                "id": str(patient_info["id"]),
+                "full_name": patient_info["full_name"],
+                "mrn": patient_info["mrn"],
+                "gender": patient_info["gender"],
+                "age": age,
+                "date_of_birth": str(patient_info["date_of_birth"]),
+                "phone_number": patient_info.get("phone_number"),
+                "email": patient_info.get("email")
+            },
             "health_metrics": metrics_list,
             "documents": docs_list
         }

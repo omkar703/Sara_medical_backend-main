@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 class DoctorProfileUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, description="Doctor's full display name")
     specialty: Optional[str] = Field(None, description="Doctor specialty")
     license_number: Optional[str] = Field(None, description="Medical license number")
     department: Optional[str] = Field(None, description="Assigned department")

@@ -854,6 +854,7 @@ async def get_current_user_info(
                 age=age,
                 date_of_birth=dob_str,
                 gender=patient.gender,
+                role="patient",
                 avatar_url=avatar_link,
                 phone_number=phone,
                 email=email,
@@ -885,7 +886,15 @@ async def get_current_user_info(
         decrypted_full_name = current_user.full_name if current_user.full_name else "Unknown User"
         
     name_parts = decrypted_full_name.split(" ", 1)
-    
+
+    # Generate temporary Avatar URL for doctor/admin
+    avatar_link = None
+    if current_user.avatar_url:
+        avatar_link = minio_service.generate_presigned_url(
+            bucket_name=settings.MINIO_BUCKET_AVATARS,
+            object_name=current_user.avatar_url
+        )
+
     return UserResponse(
         id=current_user.id,
         name=decrypted_full_name,
@@ -897,6 +906,7 @@ async def get_current_user_info(
         organization_id=current_user.organization_id,
         email_verified=current_user.email_verified,
         mfa_enabled=current_user.mfa_enabled,
+        avatar_url=avatar_link,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at
     )

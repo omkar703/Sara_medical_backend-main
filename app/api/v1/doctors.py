@@ -63,7 +63,7 @@ async def search_doctors(
         try:
             full_name = pii_encryption.decrypt(d.full_name)
         except:
-            full_name = "Encrypted"
+            full_name = d.full_name or "Unknown"
             
         if query:
             if query.lower() not in full_name.lower():

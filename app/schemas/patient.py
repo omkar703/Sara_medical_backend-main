@@ -160,6 +160,7 @@ class PatientDetailResponse(BaseModel):
     address: Optional[Dict[str, Any]] = None
     emergency_contact: Optional[Dict[str, Any]] = None
     avatar_url: Optional[str] = None
+    role: str = "patient"
     
     # Medical Profile
     medical_history: Optional[str] = None

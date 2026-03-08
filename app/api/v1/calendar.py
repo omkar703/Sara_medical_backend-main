@@ -24,6 +24,14 @@ from app.schemas.calendar import (
 
 def _map_event_to_response(event) -> CalendarEventResponse:
     """Helper to map ORM event to response model, handling metadata field collision"""
+    # 1. Decrypt Staff Member Name (user_name)
+    user_name = None
+    if hasattr(event, "user") and event.user:
+        try:
+            user_name = pii_encryption.decrypt(event.user.full_name) if event.user.full_name else "Staff"
+        except Exception:
+            user_name = event.user.full_name or "Staff"
+
     event_dict = {
         "id": event.id,
         "user_id": event.user_id,
@@ -41,13 +49,51 @@ def _map_event_to_response(event) -> CalendarEventResponse:
         "status": event.status,
         "created_at": event.created_at,
         "updated_at": event.updated_at,
-        "metadata": None
+        "user_name": user_name,
+        "metadata": {}
     }
     
-    if event.event_type == "appointment" and hasattr(event, "appointment") and event.appointment:
+    # 2. Add metadata for appointment events (Patient & Doctor names)
+    if event.event_type == "appointment":
+        appt = getattr(event, "appointment", None)
+        
+        # Safe Decryption helper
+        def safe_decrypt(cipher, default):
+            if not cipher: return default
+            try: return pii_encryption.decrypt(cipher)
+            except: return cipher or default
+
+        patient_name = "Patient"
+        doctor_name = "Doctor"
+        visit_type = "in-person"
+        zoom_link = None
+        appt_status = event.status
+
+        if appt:
+            patient_name = safe_decrypt(getattr(appt.patient, "full_name", None), "Patient")
+            doctor_name = safe_decrypt(getattr(appt.doctor, "full_name", None), "Doctor")
+            # Correct visit type logic: check for meet link
+            visit_type = "video" if (getattr(appt, "meet_link", None) or getattr(appt, "google_event_id", None)) else "in-person"
+            zoom_link = getattr(appt, "meet_link", None)
+            appt_status = appt.status
+        else:
+            # Fallback: Recover names from title if relationship is missing (e.g. mock data)
+            title = event.title or ""
+            if "with Dr. " in title:
+                # Patient's view: "Appointment with Dr. Name"
+                doctor_name = title.split("with Dr. ")[-1]
+                patient_name = user_name if user_name and user_name != "Staff" else "Patient"
+            elif "with " in title:
+                # Doctor's view: "Appointment with Name"
+                patient_name = title.split("with ")[-1]
+                doctor_name = user_name if user_name and user_name != "Staff" else "Doctor"
+
         event_dict["metadata"] = {
-            "appointment_status": event.appointment.status,
-            "zoom_link": getattr(event.appointment, "join_url", None) or getattr(event.appointment, "meet_link", None)
+            "appointment_status": appt_status,
+            "patient_name": patient_name,
+            "doctor_name": doctor_name,
+            "visit_type": visit_type,
+            "zoom_link": zoom_link
         }
     
     return CalendarEventResponse(**event_dict)
@@ -219,7 +265,13 @@ async def get_day_view(
     Returns appointments, custom events, and tasks for that day.
     """
     calendar_service = CalendarService(db)
-    events = await calendar_service.get_day_view(current_user.id, date)
+    
+    # If hospital/admin, fetch for the whole organization
+    org_id = None
+    if current_user.role in ["hospital", "admin"]:
+        org_id = current_user.organization_id
+        
+    events = await calendar_service.get_day_view(current_user.id, date, organization_id=org_id)
     
     # Transform events to response model
     response_events = [_map_event_to_response(event) for event in events]
@@ -243,7 +295,13 @@ async def get_month_view(
     Returns day-by-day breakdown with event counts and types.
     """
     calendar_service = CalendarService(db)
-    month_data = await calendar_service.get_month_view(current_user.id, year, month)
+    
+    # If hospital/admin, fetch for the whole organization
+    org_id = None
+    if current_user.role in ["hospital", "admin"]:
+        org_id = current_user.organization_id
+
+    month_data = await calendar_service.get_month_view(current_user.id, year, month, organization_id=org_id)
     
     # Convert dict to response model
     days_summary = [MonthDaySummary(**day) for day in month_data["days"]]
@@ -260,6 +318,8 @@ async def get_organization_events(
     start_date: datetime = Query(..., description="Start of date range"),
     end_date: datetime = Query(..., description="End of date range"),
     event_type: Optional[str] = Query(None, pattern="^(appointment|custom|task)$", description="Filter by event type"),
+    doctor_id: Optional[UUID] = Query(None, description="Filter by doctor ID"),
+    visit_type: Optional[str] = Query(None, pattern="^(video|in-person)$", description="Filter by visit mode"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     organization_id: UUID = Depends(get_organization_id)
@@ -280,7 +340,9 @@ async def get_organization_events(
         organization_id=organization_id,
         start_date=start_date,
         end_date=end_date,
-        event_type=event_type
+        event_type=event_type,
+        doctor_id=doctor_id,
+        visit_type=visit_type
     )
     
     return [_map_event_to_response(event) for event in events]
