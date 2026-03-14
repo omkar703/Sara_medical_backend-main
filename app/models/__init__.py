@@ -19,14 +19,16 @@ from app.models.chat_history import ChatHistory
 from app.models.data_access_grant import DataAccessGrant
 from app.models.chat_session import ChatSession, ChatMessage
 from app.models.notification import Notification
+from app.models.doctor_status import DoctorStatus  # ← Required: creates doctor_statuses table on startup
 
 __all__ = [
-    "Organization", "User", "RefreshToken", "Patient", "AuditLog", 
-    "Document", "Consultation", "Task", "Appointment", "ActivityLog", 
-    "CalendarEvent", "RecentDoctor", "RecentPatient", "HealthMetric", 
+    "Organization", "User", "RefreshToken", "Patient", "AuditLog",
+    "Document", "Consultation", "Task", "Appointment", "ActivityLog",
+    "CalendarEvent", "RecentDoctor", "RecentPatient", "HealthMetric",
     "ChatHistory", "DataAccessGrant", "ChatSession", "ChatMessage",
-    "Notification"
+    "Notification", "DoctorStatus"
 ]
+
 
 # Future imports:
 # from app.models.document import Document

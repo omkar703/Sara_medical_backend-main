@@ -32,6 +32,7 @@ class StaffMemberResponse(BaseModel):
     name: str
     email: str
     role: str # E.g., 'Chief Cardiologist', 'Senior Physician'
+    specialty: Optional[str] = None
     last_accessed: Optional[datetime] = None
     status: str # 'Active', 'On Leave', 'Inactive'
 
