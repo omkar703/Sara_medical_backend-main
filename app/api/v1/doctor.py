@@ -966,7 +966,21 @@ async def extract_credentials(
     Extract doctor credentials from an uploaded certificate image using Vision LLM.
     """
     allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
-    if certificate_image.content_type not in allowed_types:
+    ext_to_mime = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
+
+    # Browsers occasionally send an empty or generic content_type (e.g. application/octet-stream)
+    # for perfectly valid image files. Fall back to the file extension in those cases.
+    resolved_type = certificate_image.content_type or ""
+    if resolved_type not in allowed_types:
+        ext = (certificate_image.filename or "").rsplit(".", 1)[-1].lower()
+        resolved_type = ext_to_mime.get(ext, resolved_type)
+
+    if resolved_type not in allowed_types:
         return JSONResponse(
             status_code=400,
             content={"error": "Unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP"}
@@ -981,7 +995,7 @@ async def extract_credentials(
         
     from app.services.aws_service import AWSService
     aws = AWSService()
-    result = await aws.extract_credentials_from_image(file_bytes, certificate_image.content_type)
+    result = await aws.extract_credentials_from_image(file_bytes, resolved_type)
     
     if not result:
         return JSONResponse(
