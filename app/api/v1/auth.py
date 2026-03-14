@@ -960,44 +960,47 @@ async def google_login(request: Request):
     return await google_sso.get_login_redirect(redirect_uri=redirect_uri)
 
 
-@router.get("/google/callback", response_model=LoginResponse)
+@router.get("/google/callback")
 async def google_callback(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Handle Google Login Callback"""
+    """Handle Google Login Callback — redirects browser to frontend with tokens"""
+    # Determine the frontend origin from settings
+    frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+    frontend_callback = f"{frontend_url}/auth/google/callback"
+
     try:
         user_info = await google_sso.verify_and_process(request)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Google Auth Failed: {str(e)}")
+        import urllib.parse
+        error_msg = urllib.parse.quote(f"Google Auth Failed: {str(e)}")
+        return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
 
     if not user_info or not user_info.email:
-        raise HTTPException(status_code=400, detail="No email provided by Google")
+        import urllib.parse
+        return RedirectResponse(url=f"{frontend_callback}?error={urllib.parse.quote('No email provided by Google')}")
 
     # Find user by email
     result = await db.execute(select(User).where(User.email == user_info.email.lower()))
     user = result.scalar_one_or_none()
 
     if not user:
-        # STRICT SECURITY: Do not auto-register.
-        # Patients must be added by doctors first.
-        # Doctors must register via the specific doctor flow.
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account not found. Please register or ask your provider to onboard you first."
-        )
+        import urllib.parse
+        error_msg = urllib.parse.quote("Account not found. Please register or ask your provider to onboard you first.")
+        return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
 
     # Link Google ID if not linked
     if not user.google_id:
         user.google_id = user_info.id
-        user.email_verified = True # Trust Google verification
+        user.email_verified = True  # Trust Google verification
         await db.commit()
         await db.refresh(user)
 
-    # Generate Tokens (reuse existing logic)
+    # Generate Tokens
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
     refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-    
+
     refresh_token_hash = hash_token(refresh_token_value)
     refresh_token = RefreshToken(
         user_id=user.id,
@@ -1008,30 +1011,41 @@ async def google_callback(
     user.last_login = datetime.utcnow()
     await db.commit()
 
-    # Prepare response
+    # Build user data for frontend
     pii_encryption = PIIEncryption()
-    decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    try:
+        decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    except Exception:
+        decrypted_full_name = user.full_name or "Unknown User"
     name_parts = decrypted_full_name.split(" ", 1)
 
-    return LoginResponse(
-        success=True,
-        access_token=access_token,
-        refresh_token=refresh_token_value,
-        token_type="bearer",
-        user=UserResponse(
-            id=user.id,
-            name=decrypted_full_name,
-            email=user.email,
-            first_name=name_parts[0],
-            last_name=name_parts[1] if len(name_parts) > 1 else "",
-            role=user.role,
-            organization_id=user.organization_id,
-            email_verified=user.email_verified,
-            mfa_enabled=user.mfa_enabled,
-            created_at=user.created_at,
-            updated_at=user.updated_at
-        )
+    import json as _json
+    import urllib.parse
+
+    user_data = {
+        "id": str(user.id),
+        "name": decrypted_full_name,
+        "email": user.email,
+        "first_name": name_parts[0],
+        "last_name": name_parts[1] if len(name_parts) > 1 else "",
+        "role": str(user.role).split(".")[-1],
+        "organization_id": str(user.organization_id) if user.organization_id else None,
+        "email_verified": user.email_verified,
+        "mfa_enabled": user.mfa_enabled,
+    }
+
+    # Redirect browser to frontend callback page with tokens as query params
+    encoded_user = urllib.parse.quote(_json.dumps(user_data))
+    encoded_access = urllib.parse.quote(access_token)
+    encoded_refresh = urllib.parse.quote(refresh_token_value)
+
+    redirect_url = (
+        f"{frontend_callback}"
+        f"?access_token={encoded_access}"
+        f"&refresh_token={encoded_refresh}"
+        f"&user={encoded_user}"
     )
+    return RedirectResponse(url=redirect_url)
 
 
 # @router.get("/apple/login")

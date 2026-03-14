@@ -79,6 +79,7 @@ class DoctorCreateRequest(BaseModel):
     department: str
     department_role: str
     license_number: str
+    specialty: Optional[str] = None
 
 class DoctorCreateResponse(BaseModel):
     """Response schema after attempting to create a doctor"""
@@ -92,6 +93,7 @@ class DoctorUpdateRequest(BaseModel):
     department_role: Optional[str] = None
     specialty: Optional[str] = None
     license_number: Optional[str] = None
+    status: Optional[str] = None  # enum: active | inactive | on_leave
 
 class DoctorUpdateResponse(BaseModel):
     """Response schema after attempting to update a doctor"""

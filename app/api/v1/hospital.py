@@ -183,6 +183,7 @@ async def create_doctor_account(
         email_verified=True,  # Trust the hospital's creation
         department=request.department,
         department_role=request.department_role,
+        specialty=request.specialty,
         license_number=pii_encryption.encrypt(request.license_number)
     )
     
@@ -276,8 +277,40 @@ async def update_doctor_account(
     if request.license_number is not None:
         doctor.license_number = pii_encryption.encrypt(request.license_number)
 
-    # 5. Save changes
+    # 5. Handle status update via DoctorStatus table
+    if request.status is not None:
+        VALID_STATUSES = {"active", "inactive", "on_leave"}
+        if request.status not in VALID_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status '{request.status}'. Must be one of: {', '.join(sorted(VALID_STATUSES))}"
+            )
+
+        # Flush any pending User changes before touching DoctorStatus
+        await db.flush()
+
+        # Cast to UUID explicitly to avoid silent type-mismatch in the WHERE clause
+        from uuid import UUID as PyUUID
+        doctor_uuid = PyUUID(str(doctor_id))
+
+        status_result = await db.execute(
+            select(DoctorStatus).where(DoctorStatus.doctor_id == doctor_uuid)
+        )
+        doctor_status_record = status_result.scalar_one_or_none()
+
+        if doctor_status_record:
+            doctor_status_record.status = request.status
+            await db.flush()  # Ensure the UPDATE is written before commit
+        else:
+            new_status_record = DoctorStatus(doctor_id=doctor_uuid, status=request.status)
+            db.add(new_status_record)
+            await db.flush()  # Ensure the INSERT is written before commit
+
+    # 6. Commit all changes
     await db.commit()
+
+    # Expire all loaded objects so next GET reads fresh data from DB
+    db.expire_all()
 
     return DoctorUpdateResponse(
         message="Doctor details updated successfully.",
