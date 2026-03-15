@@ -48,6 +48,8 @@ class StorageService:
         """
         Generate a presigned PUT URL for uploading a file
         """
+        if not storage_path or not storage_path.strip():
+            raise Exception("Cannot generate upload URL: storage_path is empty")
         from datetime import timedelta
         try:
             # Use presign_client initialized with the external endpoint
@@ -64,33 +66,39 @@ class StorageService:
         self, 
         storage_path: str, 
         expires_in: int = 3600
-    ) -> str:
+    ) -> Optional[str]:
         """
-        Generate a presigned GET URL for downloading a file
+        Generate a presigned GET URL for downloading a file.
+        Returns None if storage_path is empty (file not yet uploaded).
         """
+        if not storage_path or not storage_path.strip():
+            print(f"generate_download_url: skipping, storage_path is empty")
+            return None
         from datetime import timedelta
         try:
             # Use presign_client initialized with the external endpoint
             url = self.presign_client.presigned_get_object(
                 bucket_name=self.bucket_name,
-                object_name=storage_path,
+                object_name=storage_path.strip(),
                 expires=timedelta(seconds=expires_in)
             )
             return url
         except S3Error as e:
-            raise Exception(f"Failed to generate download URL: {str(e)}")
+            print(f"Failed to generate download URL for '{storage_path}': {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error generating download URL for '{storage_path}': {e}")
+            return None
     
     async def file_exists(self, storage_path: str) -> bool:
         """
-        Check if a file exists in storage
-        
-        Args:
-            storage_path: Full storage path
-        
-        Returns:
-            True if file exists, False otherwise
+        Check if a file exists in storage.
+        Returns False immediately if storage_path is empty.
         """
-        clean_path = storage_path.strip() if storage_path else storage_path
+        clean_path = storage_path.strip() if storage_path else ""
+        if not clean_path:
+            print(f"file_exists: storage_path is empty, returning False")
+            return False
         try:
             print(f"Checking storage: bucket={self.bucket_name}, path='{clean_path}'")
             self.client.stat_object(

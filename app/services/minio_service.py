@@ -105,12 +105,16 @@ class MinIOService:
         """
         Generate a presigned URL for secure, temporary file access.
         Default: 15 minutes (900 seconds) for HIPAA compliance.
+        Returns None if object_name is empty.
         """
+        if not object_name or not object_name.strip():
+            print(f"generate_presigned_url: skipping, object_name is empty")
+            return None
         try:
             # Use presign_client (configured with the external endpoint) to generate the URL.
             url = self.presign_client.presigned_get_object(
                 bucket_name,
-                object_name,
+                object_name.strip(),
                 expires=timedelta(seconds=expiry_seconds),
                 response_headers=response_headers
             )
