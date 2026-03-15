@@ -14,7 +14,7 @@ from app.schemas.consultation import ClinicalDashboardMetrics
 from app.models.task import Task
 
 from app.database import get_db
-from app.core.deps import get_current_user, get_organization_id
+from app.core.deps import get_current_user, get_organization_id, require_role
 from app.models.user import User
 from app.models.patient import Patient
 from app.models.appointment import Appointment
