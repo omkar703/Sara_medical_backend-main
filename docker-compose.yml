@@ -233,11 +233,15 @@ services:
       context: ${FRONTEND_PATH:-./Frontend/saramedico-deploy-main}
       dockerfile: Dockerfile
       args:
-        # Internal Docker DNS name for proxy communication
+        # Internal Docker DNS name for proxy communication (server-side Next.js calls)
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000/api/v1}
     container_name: saramedico_frontend
     ports:
       - "3000:3000"
+    environment:
+      # Runtime env: allows client-side code to know the REAL public API URL for WebSocket
+      # On EC2 this should be http://<PUBLIC_IP>:8000/api/v1
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000/api/v1}
     depends_on:
       - backend
     restart: unless-stopped

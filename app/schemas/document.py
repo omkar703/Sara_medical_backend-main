@@ -45,15 +45,35 @@ class DocumentConfirmRequest(BaseModel):
         if v is None:
             return v
         
-        # Validate category if present
-        if 'category' in v:
+        # Normalize category: map legacy/variant names to allowed values
+        if 'category' in v and v['category']:
+            category_map = {
+                'medical_record': 'other',
+                'chart review': 'other',
+                'chart-review': 'other',
+                'general': 'other',
+                'lab': 'lab-result',
+                'lab-results': 'lab-result',
+                'lab result': 'lab-result',
+                'labs': 'lab-result',
+                'prescription': 'prescription',
+                'rx': 'prescription',
+                'imaging': 'imaging',
+                'radiology': 'imaging',
+                'xray': 'imaging',
+                'mri': 'imaging',
+            }
+            normalized = category_map.get(v['category'].lower(), v['category'])
             allowed_categories = ['lab-result', 'prescription', 'imaging', 'other']
-            if v['category'] not in allowed_categories:
-                raise ValueError(f'Category must be one of: {", ".join(allowed_categories)}')
+            if normalized not in allowed_categories:
+                # Gracefully fall back to 'other' instead of raising an error
+                v['category'] = 'other'
+            else:
+                v['category'] = normalized
         
         # Validate title length
-        if 'title' in v and len(v['title']) > 500:
-            raise ValueError('Title must be at most 500 characters')
+        if 'title' in v and v['title'] and len(v['title']) > 500:
+            v['title'] = v['title'][:500]  # Truncate instead of erroring
         
         return v
 
