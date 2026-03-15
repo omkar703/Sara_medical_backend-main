@@ -121,6 +121,19 @@ class HospitalService:
             except Exception:
                 phone = doc.phone_number
 
+            # Generate avatar preview URL if available
+            avatar_preview = None
+            if doc.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=doc.avatar_url
+                    )
+                except Exception:
+                    pass
+
             doctors_list.append({
                 "id": str(doc.id),
                 "name": name,
@@ -129,6 +142,7 @@ class HospitalService:
                 "department": doc.department,
                 "department_role": doc.department_role,
                 "phone": phone,
+                "avatar_url": avatar_preview,
                 "joinedAt": doc.created_at
             })
 
@@ -147,12 +161,26 @@ class HospitalService:
             except Exception:
                 dob = pat.date_of_birth
 
+            # Patient avatar logic: check linked user if possible
+            avatar_preview = None
+            if hasattr(pat, 'user') and pat.user and pat.user.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=pat.user.avatar_url
+                    )
+                except Exception:
+                    pass
+
             patients_list.append({
                 "id": str(pat.id),
                 "name": name,
                 "mrn": pat.mrn,
                 "gender": pat.gender,
                 "dateOfBirth": dob,
+                "avatar_url": avatar_preview,
                 "joinedAt": pat.created_at
             })
 
@@ -251,11 +279,25 @@ class HospitalService:
                 print(f"[Warning] Failed to format last_visit for patient {pat.id}: {e}")
                 formatted_last_visit = str(last_visit_dt) if last_visit_dt else None
 
+            # Generate avatar preview URL if available for patient (via linked user)
+            avatar_preview = None
+            if hasattr(pat, 'user') and pat.user and pat.user.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=pat.user.avatar_url
+                    )
+                except Exception:
+                    pass
+
             patients_list.append({
                 "id": str(pat.id),
                 "mrn": pat.mrn,
                 "name": name,
                 "gender": pat.gender,
+                "avatar_url": avatar_preview,
                 "lastVisit": formatted_last_visit
             })
 
@@ -304,13 +346,28 @@ class HospitalService:
             # Determine Status
             display_status = getattr(u, 'staff_status', None) or "Active"
 
+            # Generate avatar preview URL if available
+            avatar_preview = None
+            if u.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=u.avatar_url
+                    )
+                except Exception:
+                    pass
+
             staff_list.append({
                 "id": str(u.id),
                 "name": name,
                 "role": display_role,
+                "system_role": u.role, # Base role for reliable filtering (e.g., 'doctor')
                 "specialty": u.specialty,
                 "email": u.email,
                 "phone": phone,
+                "avatar_url": avatar_preview,
                 "status": display_status
             })
 

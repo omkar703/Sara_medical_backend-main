@@ -77,6 +77,7 @@ class UserResponse(BaseModel):
     
     role: str
     organization_id: UUID
+    organization_name: Optional[str] = "Default Org"
     mfa_enabled: bool
     email_verified: bool
     avatar_url: Optional[str] = None

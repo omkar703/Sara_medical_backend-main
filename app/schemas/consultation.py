@@ -59,6 +59,7 @@ class ConsultationResponse(BaseModel):
     # Participants
     doctorId: str
     doctorName: Optional[str] = None
+    doctorAvatar: Optional[str] = None
     patientId: str
     patientName: Optional[str] = None
     patientMrn: Optional[str] = None

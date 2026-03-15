@@ -203,6 +203,7 @@ async def register(
         phone_number=pii_encryption2.decrypt(user.phone_number) if user.phone_number else None,
         role=user.role,
         organization_id=user.organization_id,
+        organization_name=getattr(user.organization, "name", "Default Org"),
         email_verified=user.email_verified,
         mfa_enabled=user.mfa_enabled,
         created_at=user.created_at,
@@ -257,10 +258,14 @@ async def login(
     - MFA challenge if MFA is enabled
     """
     # Find user by email
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(User).where(
+        select(User)
+        .options(selectinload(User.organization))
+        .where(
             User.email == credentials.email.lower(),
-            User.deleted_at.is_(None)
+            User.deleted_at.is_(None),
+            User.is_active.is_(True)
         )
     )
     user = result.scalar_one_or_none()
@@ -356,8 +361,11 @@ async def verify_mfa(
             detail="Invalid user ID"
         )
     
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(User).where(User.id == user_uuid, User.deleted_at.is_(None))
+        select(User)
+        .options(selectinload(User.organization))
+        .where(User.id == user_uuid, User.deleted_at.is_(None))
     )
     user = result.scalar_one_or_none()
     
@@ -757,8 +765,10 @@ async def get_current_user_info(
                 
             try:
                 phone = pii_encryption.decrypt(patient.phone_number) if patient.phone_number else None
+                home_phone = pii_encryption.decrypt(patient.home_phone) if patient.home_phone else None
             except:
                 phone = patient.phone_number
+                home_phone = patient.home_phone
 
             try:
                 email = pii_encryption.decrypt(patient.email) if patient.email else None
@@ -874,6 +884,7 @@ async def get_current_user_info(
                 role="patient",
                 avatar_url=avatar_link,
                 phone_number=phone,
+                home_phone=home_phone,
                 email=email,
                 organization_id=current_user.organization_id,
                 address=address_dict,
@@ -920,8 +931,9 @@ async def get_current_user_info(
         first_name=name_parts[0],
         last_name=name_parts[1] if len(name_parts) > 1 else "",
         phone_number=pii_encryption.decrypt(current_user.phone_number) if current_user.phone_number else None,
-        role=current_user.role,
+        role=user_role_str,
         organization_id=current_user.organization_id,
+        organization_name=getattr(current_user.organization, "name", "Default Org"),
         email_verified=current_user.email_verified,
         mfa_enabled=current_user.mfa_enabled,
         avatar_url=avatar_link,

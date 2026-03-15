@@ -22,6 +22,9 @@ class AppointmentResponse(AppointmentBase):
     status: str
     doctor_notes: Optional[str] = None
     doctor_name: Optional[str] = None
+    patient_name: Optional[str] = None  # Decrypted patient name from PII encryption
+    patient_avatar: Optional[str] = None  # Presigned URL for patient's profile picture
+    doctor_avatar: Optional[str] = None  # Presigned URL for doctor's profile picture
     
     # Google Meet / Zoom Implementation
     google_event_id: Optional[str] = None

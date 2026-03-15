@@ -29,6 +29,7 @@ from typing import List
 
 from app.schemas.patient import PatientDetailResponse
 from app.models.consultation import Consultation
+from app.schemas.consultation import ConsultationListResponse
 from datetime import date, datetime
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
@@ -79,7 +80,7 @@ async def list_patients(
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
 async def create_patient(
     patient_in: PatientOnboard,
-    current_user: User = Depends(require_role("doctor")), # Or admin/hospital
+    current_user: User = Depends(require_role(["doctor", "hospital", "admin"])),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
@@ -87,14 +88,6 @@ async def create_patient(
     """
     Onboard a new patient by creating both User account and Patient profile.
     Requires 'doctor', 'admin', or 'hospital' role.
-    
-    This is the primary patient onboarding endpoint that:
-    1. Creates a User account with encrypted credentials
-    2. Creates a Patient profile with encrypted PII
-    3. Links the two records
-    4. Returns patient details
-    
-    The patient can then log in using the email and password provided.
     """
     from app.core.security import hash_password, PIIEncryption
     from app.models.user import User as UserModel
@@ -129,13 +122,14 @@ async def create_patient(
     
     # Create Patient profile
     service = PatientService(db)
-    patient_data = patient_in.model_dump(exclude={"password"})
+    patient_dict = patient_in.model_dump(exclude={"password", "doctor_id"}, by_alias=False)
     
     patient = await service.create_patient(
-        patient_data=patient_data,
+        patient_data=patient_dict,
         organization_id=organization_id,
         created_by=current_user.id,
-        patient_id=new_user.id  # Link to User account
+        patient_id=new_user.id,  # Link to User account
+        primary_doctor_id=getattr(patient_in, 'doctor_id', None)
     )
     
     await db.commit()
@@ -156,10 +150,56 @@ async def create_patient(
     return patient
 
 
+
+@router.get("/my-consultations", response_model=ConsultationListResponse)
+async def get_my_consultations(
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+):
+    """
+    Patient views their own consultations.
+    """
+    from app.api.v1.consultations import _consultation_to_response
+    
+    # SECURITY: Ensure non-patients (doctors/admins) don't use this intended for patient dashboard
+    if current_user.role != "patient":
+        # Doctors should use the main /consultations endpoint with patient_id filter
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is reserved for patient users."
+        )
+
+    from sqlalchemy.orm import selectinload
+    
+    stmt = (
+        select(Consultation)
+        .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+        .where(
+            Consultation.patient_id == current_user.id,
+            Consultation.deleted_at.is_(None)
+        )
+        .order_by(Consultation.scheduled_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    consultations = result.scalars().all()
+    
+    response_list = []
+    for c in consultations:
+        response_list.append(await _consultation_to_response(c))
+        
+    return ConsultationListResponse(
+        consultations=response_list,
+        total=len(response_list)
+    )
+
+
 @router.get("/{patient_id}", response_model=PatientResponse)
 async def get_patient(
     patient_id: UUID,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_role(["patient", "doctor", "hospital", "admin"])),
     organization_id: UUID = Depends(get_organization_id),
     db: AsyncSession = Depends(get_db),
     request: Request = None,
@@ -429,6 +469,7 @@ async def get_patient_details_for_dashboard(
     # Decrypt Basics
     decrypted_name = try_decrypt(patient.full_name)
     decrypted_phone = try_decrypt(patient.phone_number)
+    decrypted_home_phone = try_decrypt(patient.home_phone)
     dob_str = try_decrypt(patient.date_of_birth)
 
     # Calculate Age
@@ -604,6 +645,7 @@ async def get_patient_details_for_dashboard(
         age=age,
         gender=try_decrypt(patient.gender) or patient.gender,
         phone_number=decrypted_phone,
+        home_phone=decrypted_home_phone,
         email=decrypted_email,
         address=address_components,  # structured decrypted address
         emergency_contact=decrypted_emergency_contact,

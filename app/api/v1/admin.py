@@ -86,10 +86,23 @@ async def get_dashboard_overview(
                 else:
                     display_name = encrypted_val
                 
+        # Generate avatar preview URL if available
+        avatar_preview = None
+        if log.user and log.user.avatar_url:
+            try:
+                from app.services.minio_service import minio_service
+                from app.config import settings
+                avatar_preview = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=log.user.avatar_url
+                )
+            except Exception:
+                pass
+
         recent_activity_items.append(ActivityFeedItem(
             id=log.id,
             user_name=display_name,
-            user_avatar=None,
+            user_avatar=avatar_preview,
             event_description=log.activity_type or "System Event",
             resource_type=log.related_entity_type or "System",
             timestamp=log.created_at,
@@ -328,8 +341,8 @@ async def get_admin_accounts(
     """
     from sqlalchemy.orm import selectinload
     
-    # Query all users and eagerly load their organization relationship
-    result = await db.execute(select(User).options(selectinload(User.organization)))
+    # Query all active (non-deleted) users and eagerly load their organization relationship
+    result = await db.execute(select(User).options(selectinload(User.organization)).where(User.deleted_at.is_(None)))
     users = result.scalars().all()
     
     try:
@@ -352,7 +365,7 @@ async def get_admin_accounts(
             name=full_name or "Unknown User",
             email=email or "No Email",
             role=user.role,
-            status="active" if user.deleted_at is None else "inactive",
+            status="active" if user.is_active else "inactive",
             last_login=user.last_login.strftime("%Y-%m-%d") if user.last_login else None,
             type="user",
             organization_id=user.organization_id,
@@ -411,7 +424,7 @@ async def get_admin_account_detail(
         name=name or "Unknown User",
         email=user.email,
         role=user.role,
-        status="active" if user.deleted_at is None else "inactive",
+        status="active" if user.is_active else "inactive",
         phone_number=phone,
         avatar_url=user.avatar_url,
         gender=gender,
@@ -450,51 +463,95 @@ async def update_admin_account(
     except ImportError:
         pii_encryption = None
         
+    # Determine the user's role string cleanly
+    user_role_str = str(user.role).split('.')[-1] if hasattr(user.role, 'value') else str(user.role)
+
     # 1. Base User Fields
     if update_data.name:
         user.full_name = pii_encryption.encrypt(update_data.name) if pii_encryption else update_data.name
         
-    if update_data.email:
-        conflict_check = await db.execute(select(User).where(User.email == update_data.email, User.id != id))
+    if update_data.email and update_data.email.lower() != user.email:
+        new_email = update_data.email.lower()
+        conflict_check = await db.execute(select(User).where(User.email == new_email, User.id != id))
         if conflict_check.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email is already in use by another account.")
-        user.email = update_data.email
+        old_email = user.email
+        user.email = new_email
+    else:
+        old_email = user.email
         
     if update_data.phone_number:
         user.phone_number = pii_encryption.encrypt(update_data.phone_number) if pii_encryption else update_data.phone_number
 
-    # 2. Role Specific metadata & Model Sync
+    if update_data.password:
+        from app.core.security import hash_password
+        user.password_hash = hash_password(update_data.password)
+
+    # 2. Doctor-specific fields on User table
     if update_data.specialty:
         user.specialty = update_data.specialty
     if update_data.license_number:
         user.license_number = pii_encryption.encrypt(update_data.license_number) if pii_encryption else update_data.license_number
     if update_data.department:
         user.department = update_data.department
-    
-    if user.role == "patient" or update_data.role == "patient":
-        from app.models.patient import Patient
-        # Find linked patient by email
-        p_res = await db.execute(select(Patient).where(Patient.email == user.email))
-        patient = p_res.scalar_one_or_none()
-        if patient:
-            if update_data.name: patient.full_name = pii_encryption.encrypt(update_data.name) if pii_encryption else update_data.name
-            if update_data.phone_number: patient.phone_number = pii_encryption.encrypt(update_data.phone_number) if pii_encryption else update_data.phone_number
-            if update_data.gender: patient.gender = update_data.gender
-            if update_data.email: patient.email = update_data.email
+    if update_data.gender:
+        # Store gender if model supports it (best-effort)
+        try:
+            user.gender = update_data.gender
+        except AttributeError:
+            pass
 
-    # 3. Organization Updates
+    # 3. Patient model sync – keep Patient table in sync with User
+    if user_role_str == "patient" or update_data.role == "patient":
+        from app.models.patient import Patient
+        # Find by old_email (before any email change)
+        p_res = await db.execute(select(Patient).where(Patient.id == user.id))
+        patient = p_res.scalar_one_or_none()
+        if not patient:
+            # Try by email fallback
+            p_res2 = await db.execute(select(Patient).where(Patient.email == old_email))
+            patient = p_res2.scalar_one_or_none()
+        if patient:
+            if update_data.name:
+                patient.full_name = pii_encryption.encrypt(update_data.name) if pii_encryption else update_data.name
+            if update_data.phone_number:
+                patient.phone_number = pii_encryption.encrypt(update_data.phone_number) if pii_encryption else update_data.phone_number
+            if update_data.gender:
+                patient.gender = update_data.gender
+            if update_data.email:
+                patient.email = update_data.email
+
+    # 4. Organization Name Update
+    # ✅ CRITICAL FIX: Rename the user's EXISTING organization IN-PLACE.
+    # This ensures every user linked to the same org (hospital, doctors, patients)
+    # sees the updated name immediately — no reassignment needed.
+    if update_data.organization_display_name:
+        org_res = await db.execute(
+            select(Organization).where(Organization.id == user.organization_id)
+        )
+        existing_org = org_res.scalar_one_or_none()
+        if existing_org:
+            existing_org.name = update_data.organization_display_name
+        else:
+            # Edge case: org doesn't exist — create and assign
+            new_org = Organization(name=update_data.organization_display_name)
+            db.add(new_org)
+            await db.flush()
+            user.organization_id = new_org.id
+
+    # 5. Role Change
     if update_data.role:
         user.role = update_data.role
         
+    # 6. Active/Inactive Status Toggle
     if update_data.status:
         status_lower = update_data.status.lower()
         if status_lower == "inactive":
             if user.id == current_user.id:
                 raise HTTPException(status_code=400, detail="You cannot deactivate your own admin account.")
-            if user.deleted_at is None:
-                user.deleted_at = datetime.utcnow()
+            user.is_active = False
         elif status_lower == "active":
-            user.deleted_at = None
+            user.is_active = True
             
     user.updated_at = datetime.utcnow()
     await db.commit()

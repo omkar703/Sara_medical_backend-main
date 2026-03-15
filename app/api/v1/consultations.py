@@ -50,6 +50,19 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         
     patient_mrn = consultation.patient.mrn if consultation.patient else None
 
+    # Doctor Avatar URL
+    doctor_avatar = None
+    if consultation.doctor and consultation.doctor.avatar_url:
+        try:
+            from app.services.minio_service import minio_service
+            from app.config import settings
+            doctor_avatar = minio_service.generate_presigned_url(
+                bucket_name=settings.MINIO_BUCKET_AVATARS,
+                object_name=consultation.doctor.avatar_url
+            )
+        except Exception:
+            pass
+
     return ConsultationResponse(
         id=str(consultation.id),
         scheduledAt=consultation.scheduled_at,
@@ -57,6 +70,7 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         status=consultation.status,
         doctorId=str(consultation.doctor_id),
         doctorName=doctor_name,
+        doctorAvatar=doctor_avatar,
         patientId=str(consultation.patient_id),
         patientName=patient_name,
         patientMrn=patient_mrn,

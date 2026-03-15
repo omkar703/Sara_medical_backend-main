@@ -175,12 +175,13 @@ async def create_doctor_account(
 
     # 5. Create the Doctor Account
     new_doctor = User(
-        email=request.email,
+        email=request.email.lower(),
         password_hash=hash_password(request.password),
         full_name=pii_encryption.encrypt(request.name),
         role="doctor",
         organization_id=organization_id,
         email_verified=True,  # Trust the hospital's creation
+        is_active=True,
         department=request.department,
         department_role=request.department_role,
         specialty=request.specialty,
@@ -188,6 +189,13 @@ async def create_doctor_account(
     )
     
     db.add(new_doctor)
+    await db.flush() # Ensure ID is generated
+    
+    # Initialize Doctor Status as 'active' by default
+    from app.models.doctor_status import DoctorStatus
+    new_status = DoctorStatus(doctor_id=new_doctor.id, status="active")
+    db.add(new_status)
+    
     await db.commit()
     await db.refresh(new_doctor)
 
@@ -244,26 +252,27 @@ async def update_doctor_account(
 
     # 3. Prevent duplicate license numbers if a new one is being set
     if request.license_number:
+        # Optimization: only select the license_number column to avoid overhead
         doc_check = await db.execute(
-            select(User).where(
+            select(User.license_number).where(
                 User.role == "doctor", 
                 User.organization_id == organization_id,
-                User.id != doctor_id # Exclude the current doctor from the check
+                User.id != doctor_id,
+                User.license_number.is_not(None)
             )
         )
-        existing_doctors = doc_check.scalars().all()
+        existing_licenses = doc_check.scalars().all()
         
-        for doc in existing_doctors:
-            if doc.license_number:
-                try:
-                    decrypted_license = pii_encryption.decrypt(doc.license_number)
-                    if decrypted_license == request.license_number:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Another doctor in the system is already using this license number."
-                        )
-                except Exception:
-                    continue
+        for encrypted_license in existing_licenses:
+            try:
+                decrypted_license = pii_encryption.decrypt(encrypted_license)
+                if decrypted_license == request.license_number:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Another doctor in the system is already using this license number."
+                    )
+            except Exception:
+                continue
 
     # 4. Apply updates securely
     if request.name is not None:
@@ -279,42 +288,34 @@ async def update_doctor_account(
 
     # 5. Handle status update via DoctorStatus table
     if request.status is not None:
+        status_val = request.status.strip().lower()
         VALID_STATUSES = {"active", "inactive", "on_leave"}
-        if request.status not in VALID_STATUSES:
+        if status_val not in VALID_STATUSES:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid status '{request.status}'. Must be one of: {', '.join(sorted(VALID_STATUSES))}"
             )
 
-        # Flush any pending User changes before touching DoctorStatus
-        await db.flush()
-
-        # Cast to UUID explicitly to avoid silent type-mismatch in the WHERE clause
-        from uuid import UUID as PyUUID
-        doctor_uuid = PyUUID(str(doctor_id))
-
+        # Query and update status record cleanly
         status_result = await db.execute(
-            select(DoctorStatus).where(DoctorStatus.doctor_id == doctor_uuid)
+            select(DoctorStatus).where(DoctorStatus.doctor_id == doctor_id)
         )
         doctor_status_record = status_result.scalar_one_or_none()
 
         if doctor_status_record:
-            doctor_status_record.status = request.status
-            await db.flush()  # Ensure the UPDATE is written before commit
+            doctor_status_record.status = status_val
         else:
-            new_status_record = DoctorStatus(doctor_id=doctor_uuid, status=request.status)
+            new_status_record = DoctorStatus(doctor_id=doctor_id, status=status_val)
             db.add(new_status_record)
-            await db.flush()  # Ensure the INSERT is written before commit
 
     # 6. Commit all changes
+    # The get_db dependency handles a final commit, but we commit here 
+    # to catch any database-level constraints issues before returning.
     await db.commit()
-
-    # Expire all loaded objects so next GET reads fresh data from DB
-    db.expire_all()
 
     return DoctorUpdateResponse(
         message="Doctor details updated successfully.",
-        doctor_id=str(doctor.id)
+        doctor_id=str(doctor_id)
     )
     
 @router.get("/doctors/status", response_model=HospitalDoctorStatusListResponse)
@@ -432,6 +433,67 @@ async def get_patient_health_records(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
+
+@router.get("/patients/documents/{document_id}/url")
+async def get_patient_document_url(
+    document_id: UUID,
+    disposition: str = "inline", # 'inline' for view, 'attachment' for download
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate a presigned URL for viewing or downloading a patient document.
+    """
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access patient records."
+        )
+
+    # 1. Fetch document and verify ownership/org
+    from app.models.document import Document
+    stmt = select(Document).where(
+        Document.id == document_id,
+        Document.organization_id == organization_id,
+        Document.deleted_at.is_(None)
+    )
+    result = await db.execute(stmt)
+    doc = result.scalar_one_or_none()
+    
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found."
+        )
+
+    # 2. Generate URL
+    from app.services.minio_service import minio_service
+    from app.config import settings
+    
+    # Optional: Customize content-disposition if downloading
+    # Minio presigned_get_object doesn't directly expose response-headers in the simple wrapper,
+    # but our generate_presigned_url is a wrapper itself. 
+    # Let's check minio_service.py if it supports extra params.
+    # If not, the current generate_presigned_url just gives a standard GET link.
+    
+    response_headers = {}
+    if disposition == "attachment":
+        response_headers["response-content-disposition"] = f'attachment; filename="{doc.file_name}"'
+    else:
+        response_headers["response-content-disposition"] = "inline"
+    
+    url = minio_service.generate_presigned_url(
+        bucket_name=settings.MINIO_BUCKET_DOCUMENTS,
+        object_name=doc.storage_path,
+        expiry_seconds=3600,
+        response_headers=response_headers
+    )
+
+    if not url:
+         raise HTTPException(status_code=500, detail="Failed to generate secure link.")
+
+    return {"url": url, "file_name": doc.file_name}
 
 # --- Settings Management (Hospital Specific) ---
 

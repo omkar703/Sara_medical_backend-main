@@ -25,6 +25,7 @@ class DoctorDirectoryItem(BaseModel):
     department: Optional[str] = None
     department_role: Optional[str] = None
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     joinedAt: datetime
 
 class PatientDirectoryItem(BaseModel):
@@ -33,6 +34,7 @@ class PatientDirectoryItem(BaseModel):
     mrn: str
     gender: Optional[str] = None
     dateOfBirth: Optional[str] = None
+    avatar_url: Optional[str] = None
     joinedAt: datetime
 
 class HospitalDirectoryResponse(BaseModel):
@@ -49,6 +51,7 @@ class PatientTableItem(BaseModel):
     mrn: str
     name: str
     gender: Optional[str] = None
+    avatar_url: Optional[str] = None
     lastVisit: Optional[str] = None
 
 class HospitalPatientsResponse(BaseModel):
@@ -62,9 +65,11 @@ class StaffTableItem(BaseModel):
     id: str
     name: str
     role: str
+    system_role: str # E.g., 'doctor', 'admin', 'hospital'
     specialty: Optional[str] = None
     email: str
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
     status: str
 
 class HospitalStaffResponse(BaseModel):

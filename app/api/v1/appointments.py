@@ -62,6 +62,43 @@ async def create_appointment(
     await db.commit()
     await db.refresh(appointment)
     
+    # Decrypt names and generate avatars for a full response
+    from app.core.security import pii_encryption
+    from app.services.minio_service import minio_service
+    from app.config import settings
+    
+    doctor_name = "Unknown Doctor"
+    if appointment.doctor:
+        try:
+            doctor_name = pii_encryption.decrypt(appointment.doctor.full_name)
+        except:
+            doctor_name = appointment.doctor.full_name or "Unknown Doctor"
+            
+    patient_name = "Unknown Patient"
+    if current_user:
+        try:
+            patient_name = pii_encryption.decrypt(current_user.full_name)
+        except:
+            patient_name = current_user.full_name or "Unknown Patient"
+
+    doctor_avatar = None
+    if appointment.doctor and appointment.doctor.avatar_url:
+        try:
+            doctor_avatar = minio_service.generate_presigned_url(
+                bucket_name=settings.MINIO_BUCKET_AVATARS,
+                object_name=appointment.doctor.avatar_url
+            )
+        except: pass
+
+    patient_avatar = None
+    if current_user and current_user.avatar_url:
+        try:
+            patient_avatar = minio_service.generate_presigned_url(
+                bucket_name=settings.MINIO_BUCKET_AVATARS,
+                object_name=current_user.avatar_url
+            )
+        except: pass
+
     # Notify Doctor
     notification_service = NotificationService(db)
     await notification_service.create_notification(
@@ -72,12 +109,28 @@ async def create_appointment(
         action_url=f"/appointments/{appointment.id}"
     )
     
-    return appointment
+    # Construct response dictionary
+    response_dict = {
+        "id": appointment.id,
+        "doctor_id": appointment.doctor_id,
+        "patient_id": appointment.patient_id,
+        "requested_date": appointment.requested_date,
+        "reason": appointment.reason,
+        "status": appointment.status,
+        "doctor_name": doctor_name,
+        "patient_name": patient_name,
+        "doctor_avatar": doctor_avatar,
+        "patient_avatar": patient_avatar,
+        "created_at": appointment.created_at,
+        "updated_at": appointment.updated_at
+    }
+    
+    return AppointmentResponse(**response_dict)
 
 @router.get("/patient-appointments", response_model=List[AppointmentResponse])
 async def get_patient_appointments(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(["patient", "hospital", "admin"]))
 ):
     """
     Patient views their own appointments.
@@ -93,7 +146,16 @@ async def get_patient_appointments(
     
     result = await db.execute(query)
     appointments = result.scalars().all()
-    
+
+    # Build doctor_id -> User lookup for avatars
+    from app.models.user import User as UserModel
+    doctor_ids = list({appt.doctor_id for appt in appointments if appt.doctor_id})
+    doctor_user_map = {}
+    if doctor_ids:
+        du_result = await db.execute(select(UserModel).where(UserModel.id.in_(doctor_ids)))
+        for u in du_result.scalars().all():
+            doctor_user_map[u.id] = u
+
     response_list = []
     for appt in appointments:
         doc_name = "Unknown Doctor"
@@ -102,7 +164,21 @@ async def get_patient_appointments(
                 doc_name = pii_encryption.decrypt(appt.doctor.full_name)
             except:
                 doc_name = appt.doctor.full_name or "Unknown Doctor"
-        
+
+        # Generate doctor avatar presigned URL
+        doctor_avatar = None
+        doctor_user = doctor_user_map.get(appt.doctor_id)
+        if doctor_user and doctor_user.avatar_url:
+            from app.services.minio_service import minio_service
+            from app.config import settings
+            try:
+                doctor_avatar = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=doctor_user.avatar_url
+                )
+            except Exception as e:
+                print(f"Error generating doctor avatar URL for {appt.doctor_id}: {e}")
+
         # Pydantic will auto-map the rest, but we need to inject doctor_name
         response_dict = {
             "id": appt.id,
@@ -120,7 +196,8 @@ async def get_patient_appointments(
             "meeting_password": getattr(appt, 'meeting_password', None),
             "created_at": appt.created_at,
             "updated_at": appt.updated_at,
-            "doctor_name": doc_name
+            "doctor_name": doc_name,
+            "doctor_avatar": doctor_avatar
         }
         response_list.append(AppointmentResponse(**response_dict))
 

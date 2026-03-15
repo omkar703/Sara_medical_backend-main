@@ -157,6 +157,7 @@ class AdminAccountUpdate(BaseModel):
     department: Optional[str] = None
     organization_display_name: Optional[str] = None
     gender: Optional[str] = None
+    password: Optional[str] = None
     
 class AdminGlobalAppointmentItem(BaseModel):
     """

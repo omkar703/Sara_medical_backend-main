@@ -30,6 +30,7 @@ class Patient(Base):
     date_of_birth: Mapped[str] = mapped_column(String(500), nullable=False)  # Encrypted date string
     gender: Mapped[str] = mapped_column(String(20), nullable=True)
     phone_number: Mapped[str] = mapped_column(String(500), nullable=True)
+    home_phone: Mapped[str] = mapped_column(String(500), nullable=True)
     email: Mapped[str] = mapped_column(String(500), nullable=True)
     
     # JSON Encrypted fields
@@ -42,6 +43,7 @@ class Patient(Base):
     medications: Mapped[List[str]] = mapped_column(JSONB, nullable=True)
     
     # Metadata
+    primary_doctor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

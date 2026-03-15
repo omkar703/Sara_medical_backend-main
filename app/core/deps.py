@@ -69,8 +69,11 @@ async def get_current_user(
             detail="Invalid user ID format",
         )
     
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(User).where(User.id == user_uuid, User.deleted_at.is_(None))
+        select(User)
+        .options(selectinload(User.organization))
+        .where(User.id == user_uuid, User.deleted_at.is_(None))
     )
     user = result.scalar_one_or_none()
     
@@ -120,24 +123,27 @@ async def get_current_active_user(
     return current_user
 
 
-def require_role(required_role: str):
+def require_role(required_role):
     """
-    Dependency factory to require specific user role
+    Dependency factory to require specific user role(s)
     
     Args:
-        required_role: Required role (patient, doctor, admin)
+        required_role: Required role as a string ('doctor') or list of roles (['doctor', 'hospital', 'admin'])
     
     Returns:
         Dependency function that checks role
     """
+    # Normalize to a list for uniform handling
+    allowed_roles = [required_role] if isinstance(required_role, str) else list(required_role)
+
     async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
         # Normalize role to string for comparison
         user_role_str = str(current_user.role).split('.')[-1] if hasattr(current_user.role, 'value') else str(current_user.role)
         
-        if user_role_str != required_role:
+        if user_role_str not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"This endpoint requires {required_role} role",
+                detail=f"This endpoint requires one of: {', '.join(allowed_roles)}",
             )
         return current_user
     

@@ -100,8 +100,13 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
     
-    # Soft delete
+    # Soft delete & Status
+    is_active = Column(Boolean, default=True, nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
     
     # Relationships
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")

@@ -30,6 +30,7 @@ class RequestAccessRequest(BaseModel):
 
 class RevokeAccessRequest(BaseModel):
     doctor_id: UUID
+    patient_id: UUID
 
 class CheckPermissionResponse(BaseModel):
     success: bool
@@ -111,8 +112,12 @@ async def revoke_access(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # Only the involved patient or doctor can revoke
+    if current_user.id != request.patient_id and current_user.id != request.doctor_id:
+        raise HTTPException(status_code=403, detail="Not authorized to revoke this access")
+
     stmt = select(DataAccessGrant).where(
-        DataAccessGrant.patient_id == current_user.id,
+        DataAccessGrant.patient_id == request.patient_id,
         DataAccessGrant.doctor_id == request.doctor_id,
         DataAccessGrant.is_active == True
     )
