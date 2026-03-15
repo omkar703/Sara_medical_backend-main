@@ -227,7 +227,7 @@ services:
   # ============================================
   frontend:
     build:
-      # On EC2, if frontend is a sibling, set FRONTEND_PATH=../saramedico-deploy
+      # Default points to local folder. On EC2, use: export FRONTEND_PATH=../saramedico-deploy
       context: ${FRONTEND_PATH:-./Frontend/saramedico-deploy-main}
       dockerfile: Dockerfile
       args:
