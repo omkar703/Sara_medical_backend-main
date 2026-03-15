@@ -231,8 +231,8 @@ services:
       context: ${FRONTEND_PATH:-./Frontend/saramedico-deploy-main}
       dockerfile: Dockerfile
       args:
-        # Pass the Next.js build-time variables for internal proxy routing
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+        # Internal Docker DNS name for proxy communication
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000/api/v1}
     container_name: saramedico_frontend
     ports:
       - "3000:3000"
