@@ -83,7 +83,7 @@ def process_document_task(document_id_str: str):
 @celery_app.task(
     name="app.workers.tasks.generate_soap_note",
     bind=True,
-    max_retries=3,
+    max_retries=10,
     default_retry_delay=30,
 )
 def generate_soap_note(self, consultation_id: str) -> dict:

@@ -54,19 +54,44 @@ class GoogleMeetService:
                 eventId=google_event_id
             ).execute()
             
+            summary = event.get('summary', 'Consultation')
             attachments = event.get('attachments', [])
             transcript_file_id = None
             
-            # 2. Find the Google Doc attachment that contains the transcript
+            # 2. Primary check: Find the Google Doc attachment linked to the event
             for att in attachments:
-                if att.get('mimeType') == 'application/vnd.google-apps.document' and 'Transcript' in att.get('title', ''):
+                mime_type = att.get('mimeType', '')
+                title = att.get('title', '')
+                if 'application/vnd.google-apps' in mime_type and 'Transcript' in title:
                     transcript_file_id = att.get('fileId')
+                    print(f"[GoogleMeetService] Found transcript attached to event: {title}")
                     break
                     
+            # 3. Fallback check: Search Drive for files matching the meeting summary
             if not transcript_file_id:
+                print(f"[GoogleMeetService] Transcript not attached to event. Searching Drive for: {summary}")
+                # Search for files with the summary in name and 'Transcript'
+                # Google naming pattern is usually "[Summary] - [Date] [Time] - Transcript"
+                safe_summary = summary.replace("'", "\\'")
+                query = f"name contains '{safe_summary}' and name contains 'Transcript' and trashed = false"
+                drive_results = self.drive_service.files().list(
+                    q=query,
+                    pageSize=5,
+                    fields="files(id, name, createdTime)",
+                    orderBy="createdTime desc"
+                ).execute()
+                
+                drive_files = drive_results.get('files', [])
+                if drive_files:
+                    # Pick the most recent one
+                    transcript_file_id = drive_files[0].get('id')
+                    print(f"[GoogleMeetService] Found transcript in Drive search: {drive_files[0].get('name')}")
+
+            if not transcript_file_id:
+                print(f"[GoogleMeetService] No transcript found for Event ID {google_event_id}")
                 return None 
                 
-            # 3. Download the Google Doc as plain text
+            # 4. Download and export as plain text
             request = self.drive_service.files().export_media(
                 fileId=transcript_file_id, 
                 mimeType='text/plain'
