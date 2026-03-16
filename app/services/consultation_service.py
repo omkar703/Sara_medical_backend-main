@@ -83,8 +83,9 @@ class ConsultationService:
         except Exception as e:
             print(f"[Consultation Service] ⚠ Meet service failed: {e}. Falling back to hardcoded mock.")
             from uuid import uuid4
+            _id1, _id2 = str(uuid4()), str(uuid4())
             google_event_id = str(uuid4())
-            meet_link = f"https://meet.google.com/mock-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+            meet_link = f"https://meet.google.com/mock-{_id1[:4]}-{_id2[:4]}"
         
         print(f"[Consultation Service] Resulting meet_link: {meet_link}")
 
@@ -355,14 +356,14 @@ class ConsultationService:
             if hasattr(consultation, field) and value is not None:
                 setattr(consultation, field, value)
         
-        # Trigger the sync and SOAP note generation on completion
+        # Update completion time if finishing
         if is_completing:
+            consultation.completion_time = datetime.utcnow()
             await self._sync_recent_connections(consultation)
-            # Dispatch background task: fetch transcript + generate SOAP note via Bedrock
-            # Added a slight delay (countdown=3) to prevent Race Conditions 
-            # where the celery task fires before the DB commits its status.
-            from app.workers.tasks import generate_soap_note
-            generate_soap_note.apply_async(args=[str(consultation.id)], countdown=3)
+            # We no longer trigger AI SOAP generation automatically here.
+            # The doctor now triggers it manually from the SOAP page 
+            # after the transcript is confirmed as 'Available'.
+            # This ensures better data quality and follows the new workflow.
         
         await self.db.flush()
         return consultation

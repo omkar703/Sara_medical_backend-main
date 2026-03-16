@@ -88,7 +88,9 @@ async def _consultation_to_response(consultation) -> ConsultationResponse:
         hasTranscript=bool(getattr(consultation, 'transcript', False)),
         hasSoapNote=bool(getattr(consultation, 'soap_note', False)),
         urgencyLevel=getattr(consultation, 'urgency_level', 'normal'),
-        visitState=getattr(consultation, 'visit_state', 'scheduled')
+        visitState=getattr(consultation, 'visit_state', 'scheduled'),
+        checkInTime=getattr(consultation, 'check_in_time', None),
+        completionTime=getattr(consultation, 'completion_time', None),
     )
 
 @router.post("", response_model=ConsultationResponse)
@@ -321,6 +323,93 @@ async def update_consultation(
     return await _consultation_to_response(consultation)
 
 
+@router.patch("/{consultation_id}/soap-note")
+async def patch_soap_note(
+    consultation_id: UUID,
+    request: Request,
+    current_user: User = Depends(require_role("doctor")),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update (overwrite) the SOAP note for a consultation.
+    Accepts a JSON body with any/all of:
+      { subjective, objective, assessment, plan, patient_summary }
+    Merges the provided fields into the existing soap_note JSONB column
+    and keeps ai_status as 'completed' so the patient can see it.
+    Only doctors may call this endpoint.
+    """
+    from sqlalchemy.orm import selectinload
+
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+
+    # Fetch the consultation
+    service = ConsultationService(db)
+    consultation = await service.get_consultation(consultation_id, organization_id)
+    if not consultation:
+        # Cross-org fallback
+        result = await db.execute(
+            select(Consultation)
+            .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+            .where(
+                Consultation.id == consultation_id,
+                Consultation.deleted_at.is_(None)
+            )
+        )
+        consultation = result.scalar_one_or_none()
+
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    # Merge incoming fields into the existing soap_note
+    existing_note = getattr(consultation, "soap_note", None) or {}
+    if isinstance(existing_note, str):
+        import json as _json
+        try:
+            existing_note = _json.loads(existing_note)
+        except Exception:
+            existing_note = {}
+
+    # Only allow the known SOAP fields plus patient_summary
+    allowed_fields = {"subjective", "objective", "assessment", "plan", "patient_summary"}
+    updated_note = {**existing_note}
+    for k, v in body.items():
+        if k in allowed_fields:
+            updated_note[k] = v
+
+    # SQLAlchemy JSONB needs explicit assignment to detect mutation
+    from sqlalchemy.orm.attributes import flag_modified
+    consultation.soap_note = updated_note
+    flag_modified(consultation, "soap_note")
+
+    # Keep ai_status as completed so /soap-note GET returns the data
+    consultation.ai_status = "completed"
+
+    await db.commit()
+    await db.refresh(consultation)
+
+    await log_action(
+        db=db,
+        user_id=current_user.id,
+        organization_id=organization_id,
+        action="update_soap_note",
+        resource_type="consultation",
+        resource_id=consultation_id,
+        request=request,
+        metadata={"updated_fields": list(body.keys())}
+    )
+    await db.commit()
+
+    return {
+        "message": "SOAP note updated successfully.",
+        "consultation_id": str(consultation_id),
+        "ai_status": "completed",
+        "soap_note": consultation.soap_note,
+    }
+
+
 @router.post("/{consultation_id}/complete")
 async def complete_consultation(
     consultation_id: UUID,
@@ -362,10 +451,6 @@ async def complete_consultation(
         updates={"status": "completed", "ai_status": "awaiting_transcript"},
     )
     await db.commit()
-
-    # Dispatch background Celery task to check for real transcript and generate SOAP
-    from app.workers.tasks import generate_soap_note as soap_task
-    soap_task.delay(str(consultation_id))
 
     await log_action(
         db=db,
@@ -513,6 +598,137 @@ async def generate_demo_soap(
         consultation.ai_status = "failed"
         await db.commit()
         raise HTTPException(status_code=500, detail=f"SOAP generation failed: {str(e)}")
+
+
+@router.get("/{consultation_id}/transcript-status")
+async def get_transcript_status(
+    consultation_id: UUID,
+    current_user: User = Depends(require_role("doctor")),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Check whether the Google Meet transcript is available in Google Drive.
+
+    Returns:
+        { "status": "available" | "processing" | "not_found", ... }
+    """
+    from app.services.google_meet_service import google_meet_service
+    from app.services.consultation_service import ConsultationService
+
+    service = ConsultationService(db)
+    consultation = await service.get_consultation(consultation_id, organization_id)
+
+    if not consultation:
+        # Cross-org lookup (fallback)
+        from sqlalchemy.orm import selectinload
+        result = await db.execute(
+            select(Consultation)
+            .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+            .where(
+                Consultation.id == consultation_id,
+                Consultation.deleted_at.is_(None)
+            )
+        )
+        consultation = result.scalar_one_or_none()
+
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    # If transcript is already stored in the DB we're done
+    if getattr(consultation, 'transcript', None):
+        return {
+            "status": "available",
+            "has_google_event": bool(getattr(consultation, 'google_event_id', None)),
+            "transcript_in_db": True,
+            "message": "Transcript is already stored and ready for SOAP generation."
+        }
+
+    # No Google Meet event linked → can never get a transcript
+    if not getattr(consultation, 'google_event_id', None):
+        return {
+            "status": "not_found",
+            "has_google_event": False,
+            "transcript_in_db": False,
+            "message": "No Google Meet event linked to this consultation."
+        }
+
+    # Live check: try to fetch transcript from Google Drive
+    try:
+        transcript_text = await google_meet_service.get_meeting_transcript(consultation.google_event_id)
+        if transcript_text and transcript_text.strip():
+            return {
+                "status": "available",
+                "has_google_event": True,
+                "transcript_in_db": False,
+                "message": "Transcript found in Google Drive and ready for processing."
+            }
+        else:
+            return {
+                "status": "processing",
+                "has_google_event": True,
+                "transcript_in_db": False,
+                "message": "Transcript not yet available in Google Drive. Google Meet typically takes 2-5 minutes to upload it."
+            }
+    except Exception as e:
+        print(f"[transcript-status] Error checking Google Drive: {e}")
+        return {
+            "status": "not_found",
+            "has_google_event": True,
+            "transcript_in_db": False,
+            "message": f"Could not reach Google Drive: {str(e)}"
+        }
+
+
+@router.post("/{consultation_id}/generate-soap")
+async def generate_soap_from_transcript(
+    consultation_id: UUID,
+    current_user: User = Depends(require_role("doctor")),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Explicitly trigger SOAP note generation.
+    Call this AFTER /transcript-status returns 'available'.
+    """
+    from app.services.consultation_service import ConsultationService
+    from app.workers.tasks import generate_soap_note as soap_task
+
+    service = ConsultationService(db)
+    consultation = await service.get_consultation(consultation_id, organization_id)
+
+    if not consultation:
+        # Cross-org lookup (fallback)
+        from sqlalchemy.orm import selectinload
+        result = await db.execute(
+            select(Consultation)
+            .options(selectinload(Consultation.doctor), selectinload(Consultation.patient))
+            .where(
+                Consultation.id == consultation_id,
+                Consultation.deleted_at.is_(None)
+            )
+        )
+        consultation = result.scalar_one_or_none()
+
+    if not consultation:
+        raise HTTPException(status_code=404, detail="Consultation not found")
+
+    if getattr(consultation, 'ai_status', None) == "completed" and getattr(consultation, 'soap_note', None):
+        return {
+            "message": "SOAP note already generated for this consultation.",
+            "consultation_id": str(consultation_id),
+            "ai_status": "completed"
+        }
+
+    consultation.ai_status = "processing"
+    await db.commit()
+    soap_task.delay(str(consultation_id))
+
+    return {
+        "message": "SOAP note generation started. Poll GET /soap-note for results.",
+        "consultation_id": str(consultation_id),
+        "ai_status": "processing"
+    }
 
 
 @router.get("/{consultation_id}/soap-note")
