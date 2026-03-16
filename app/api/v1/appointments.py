@@ -1,10 +1,10 @@
-
 from typing import List
 from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -60,7 +60,14 @@ async def create_appointment(
     await calendar_service.sync_appointment_to_calendar(appointment, "create")
     
     await db.commit()
-    await db.refresh(appointment)
+    
+    # Eagerly load relationships to avoid lazy loading issues in async
+    stmt = select(Appointment).where(Appointment.id == appointment.id).options(
+        selectinload(Appointment.doctor),
+        selectinload(Appointment.patient)
+    )
+    result = await db.execute(stmt)
+    appointment = result.scalars().unique().one_or_none()
     
     # Decrypt names and generate avatars for a full response
     from app.core.security import pii_encryption
@@ -307,11 +314,9 @@ async def approve_appointment(
     if appointment.status != "pending":
         raise HTTPException(status_code=400, detail=f"Appointment is already {appointment.status}")
 
-    # Generate Google Meet link using mock/real service
+    # Generate real Google Meet link
     from app.core.security import pii_encryption
-    from app.services.mock_google_meet import google_meet_service as mock_meet_service
     from app.services.google_meet_service import google_meet_service as real_meet_service
-    from app.config import settings
 
     try:
         doctor_name = pii_encryption.decrypt(current_user.full_name)
@@ -319,40 +324,24 @@ async def approve_appointment(
         doctor_name = "Doctor"
 
     meeting_summary = f"Consultation with Dr. {doctor_name}"
-    meet_link = None
-    google_event_id = None
-
-    # Determine which service to use
-    use_real = settings.FEATURE_VIDEO_CALLS and getattr(real_meet_service, "_available", False)
-    meet_service = real_meet_service if use_real else mock_meet_service
-    
-    print(f"[Appointments] Using {'REAL' if use_real else 'MOCK'} Google Meet service")
     
     try:
-        google_event_id, meet_link = await meet_service.create_meeting(
+        print(f"[Appointments] Generating real Google Meet link...")
+        google_event_id, meet_link = await real_meet_service.create_meeting(
             start_time=approval_in.appointment_time,
             duration_minutes=30,
             summary=meeting_summary,
             description="Medical consultation session",
             attendees=[current_user.email]
         )
-        print(f"[Appointments] ✅ Meet link generated successfully via {'REAL' if use_real else 'MOCK'} service")
+        print(f"[Appointments] ✅ Real Google Meet link generated successfully: {meet_link}")
     except Exception as e:
-        print(f"[Appointments] ❌ Meet service error ({type(e).__name__}): {e}")
-        print(f"[Appointments] Falling back to generated stub link.")
-        from uuid import uuid4
-        u1 = uuid4().hex
-        u2 = uuid4().hex
-        google_event_id = str(uuid4())
-        meet_link = f"https://meet.google.com/fallback-{u1[:4]}-{u2[:4]}"
-
-    print(f"[Appointments] Generated meet_link: {meet_link}")
-
-    # Store the meet link so both doctor & patient can join
-    if not meet_link:
-        print("[Appointments] ⚠ meet_link was None after service call. Generating immediate fallback.")
-        from uuid import uuid4
-        meet_link = f"https://meet.google.com/fallback-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+        print(f"[Appointments] ❌ Google Meet service error ({type(e).__name__}): {e}")
+        print(f"[Appointments] Ensure Google credentials are configured in .env:")
+        print(f"[Appointments]   - GOOGLE_CLIENT_ID")
+        print(f"[Appointments]   - GOOGLE_CLIENT_SECRET")
+        print(f"[Appointments]   - GOOGLE_REFRESH_TOKEN")
+        raise
         
     appointment.meet_link = meet_link
     appointment.google_event_id = google_event_id

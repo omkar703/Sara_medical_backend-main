@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str
     SMTP_TLS: bool = False
     SMTP_SSL: bool = False
+    ENTERPRISE_EMAIL: str = "enterprise@saramedico.com"
     
     # Celery
     CELERY_BROKER_URL: str

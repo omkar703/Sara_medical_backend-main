@@ -22,7 +22,6 @@ from app.schemas.consultation import (
 )
 from app.schemas.document import MessageResponse
 from app.services.audit_service import log_action
-from app.services.mock_google_meet import google_meet_service
 from app.services.consultation_service import ConsultationService
 from app.api.v1.websockets import manager
 from app.core.security import pii_encryption
@@ -239,6 +238,8 @@ async def get_consultation(
 ):
     """
     Get consultation details.
+    - Doctors can view any consultation in their organization
+    - Patients can only view their own consultations
     """
     service = ConsultationService(db)
     
@@ -253,14 +254,13 @@ async def get_consultation(
             detail="Consultation not found"
         )
         
-    # Security check: Doctors can see all in org (or assigned), Patients only their own
-    # Current list_consultations logic handles filtering implicitly, but direct access needs check
+    # Security check: Patients can only view their own consultations
     if current_user.role == "patient":
-        # Check if patient owns this
-        # Note: current implementation assumes 'user' table users. 
-        # If 'patient' table entities log in differently, logic adjusts.
-        # Assuming doctor access for now based on 'require_role' usage elsewhere.
-        pass
+        if consultation.patient_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to view this consultation"
+            )
 
     # Audit Log
     await log_action(
