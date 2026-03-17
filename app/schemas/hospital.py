@@ -136,3 +136,12 @@ class PatientRecordsResponse(BaseModel):
     patient_info: PatientInfo
     health_metrics: List[HealthMetricItem]
     documents: List[DocumentItem]
+
+class AppointmentsOverviewMetrics(BaseModel):
+    scheduledAppointments: int
+    acceptedAppointments: int
+    transcriptionsInQueue: int
+    pendingNotes: int
+
+class HospitalAppointmentsOverviewResponse(BaseModel):
+    metrics: AppointmentsOverviewMetrics

@@ -34,16 +34,14 @@ class HospitalService:
             ).subquery()
         )
 
-        # Query 2: Today's Appointments (from CalendarEvents)
-        from app.models.calendar_event import CalendarEvent
-        
+        # Query 2: Today's Appointments (from Consultations)
         appointments_stmt = select(func.count()).select_from(
-            select(CalendarEvent).where(
-                CalendarEvent.organization_id == organization_id,
-                CalendarEvent.event_type == "appointment",
-                CalendarEvent.start_time >= start_of_today,
-                CalendarEvent.start_time <= end_of_today,
-                CalendarEvent.status != "cancelled"
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.scheduled_at >= start_of_today,
+                Consultation.scheduled_at <= end_of_today,
+                Consultation.status != "cancelled",
+                Consultation.deleted_at.is_(None)
             ).subquery()
         )
 
@@ -80,6 +78,74 @@ class HospitalService:
                 "todayAppointments": today_appointments
             },
             "recentActivities": recent_activities
+        }
+        
+    async def get_appointments_overview(self, organization_id: UUID) -> dict:
+        """
+        Get overview metrics for appointments including:
+        - Total scheduled appointments
+        - Total accepted appointments
+        - Transcriptions in queue (AI processing pending)
+        - Pending notes (consultations needing doctor notes/SOAP)
+        """
+        from app.models.ai_processing_queue import AIProcessingQueue
+        
+        # Query 1: Count scheduled appointments
+        scheduled_stmt = select(func.count()).select_from(
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.status == "scheduled",
+                Consultation.deleted_at.is_(None)
+            ).subquery()
+        )
+        
+        # Query 2: Count accepted appointments
+        accepted_stmt = select(func.count()).select_from(
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.status == "completed",
+                Consultation.deleted_at.is_(None)
+            ).subquery()
+        )
+        
+        # Query 3: Count transcriptions in queue (pending or processing AI requests)
+        transcriptions_stmt = select(func.count()).select_from(
+            select(AIProcessingQueue).where(
+                AIProcessingQueue.organization_id == organization_id,
+                AIProcessingQueue.status.in_(["pending", "processing"]),
+                AIProcessingQueue.request_type == "transcription"
+            ).subquery()
+        )
+        
+        # Query 4: Count pending notes (completed consultations with visit_state needing review)
+        pending_notes_stmt = select(func.count()).select_from(
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.status == "completed",
+                Consultation.visit_state.in_(["Needs Review", "Draft Ready"]),
+                Consultation.deleted_at.is_(None)
+            ).subquery()
+        )
+        
+        # Execute queries sequentially to avoid session concurrency issues
+        scheduled_result = await self.db.execute(scheduled_stmt)
+        accepted_result = await self.db.execute(accepted_stmt)
+        transcriptions_result = await self.db.execute(transcriptions_stmt)
+        pending_notes_result = await self.db.execute(pending_notes_stmt)
+        
+        # Extract values
+        scheduled_count = scheduled_result.scalar() or 0
+        accepted_count = accepted_result.scalar() or 0
+        transcriptions_count = transcriptions_result.scalar() or 0
+        pending_notes_count = pending_notes_result.scalar() or 0
+        
+        return {
+            "metrics": {
+                "scheduledAppointments": scheduled_count,
+                "acceptedAppointments": accepted_count,
+                "transcriptionsInQueue": transcriptions_count,
+                "pendingNotes": pending_notes_count
+            }
         }
         
     async def get_hospital_directory(self, organization_id: UUID) -> dict:

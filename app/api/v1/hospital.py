@@ -19,7 +19,8 @@ from app.schemas.hospital import (
     HospitalOverviewResponse, 
     HospitalDirectoryResponse, 
     HospitalPatientsResponse, 
-    HospitalStaffResponse
+    HospitalStaffResponse,
+    HospitalAppointmentsOverviewResponse
 )
 from app.schemas.admin import (
     AllSettingsResponse,
@@ -56,6 +57,28 @@ async def get_hospital_overview(
 
     service = HospitalService(db)
     data = await service.get_dashboard_overview(organization_id)
+    
+    return data
+
+@router.get("/appointments/overview", response_model=HospitalAppointmentsOverviewResponse)
+async def get_appointments_overview(
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get appointments overview metrics including scheduled, accepted, 
+    transcriptions in queue, and pending notes.
+    Requires 'hospital' or 'admin' role.
+    """
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access the appointments overview."
+        )
+
+    service = HospitalService(db)
+    data = await service.get_appointments_overview(organization_id)
     
     return data
 

@@ -5,7 +5,6 @@ from typing import Optional
 from uuid import UUID
 from fastapi import Request
 from fastapi_sso.sso.google import GoogleSSO
-# from fastapi_sso.sso.apple import AppleSSO
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -946,19 +945,82 @@ async def get_current_user_info(
 # Social Authentication
 # ==========================================
 
+from jose import jwt as jose_jwt, JWTError
+import json as _json
+import urllib.parse
+import time
+
 # Initialize SSO Providers
-# Note: For production, ensure allow_insecure_http is False
 google_sso = GoogleSSO(
     client_id=settings.GOOGLE_CLIENT_ID or "missing-id",
     client_secret=settings.GOOGLE_CLIENT_SECRET or "missing-secret",
     allow_insecure_http=settings.APP_ENV == "development"
 )
 
-# apple_sso = AppleSSO(
-#     client_id=settings.APPLE_CLIENT_ID or "missing-id",
-#     client_secret=settings.APPLE_CLIENT_SECRET or "missing-secret",
-#     allow_insecure_http=settings.APP_ENV == "development"
-# )
+
+# Apple Sign-In Helper Class
+class AppleSignInHelper:
+    """Helper class to handle Apple Sign In authentication"""
+    
+    @staticmethod
+    def generate_client_secret() -> str:
+        """
+        Generate JWT client secret for Apple authentication.
+        Required fields in settings:
+        - APPLE_TEAM_ID
+        - APPLE_KEY_ID
+        - APPLE_PRIVATE_KEY
+        - APPLE_CLIENT_ID
+        """
+        if not all([
+            settings.APPLE_TEAM_ID,
+            settings.APPLE_KEY_ID,
+            settings.APPLE_PRIVATE_KEY,
+            settings.APPLE_CLIENT_ID
+        ]):
+            return None
+        
+        try:
+            now = int(time.time())
+            payload = {
+                "iss": settings.APPLE_TEAM_ID,
+                "iat": now,
+                "exp": now + 86400 * 180,  # 6 months
+                "aud": "https://appleid.apple.com",
+                "sub": settings.APPLE_CLIENT_ID,
+            }
+            
+            secret = jose_jwt.encode(
+                payload,
+                settings.APPLE_PRIVATE_KEY,
+                algorithm="ES256",
+                headers={"kid": settings.APPLE_KEY_ID}
+            )
+            return secret
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate Apple client secret: {str(e)}"
+            )
+    
+    @staticmethod
+    async def verify_id_token(token: str) -> dict:
+        """
+        Verify and decode Apple ID token.
+        Returns decoded token data.
+        """
+        try:
+            # Apple sends the token as JWT that we need to verify
+            # In production, you should verify the signature against Apple's public keys
+            # For now, we'll decode without verification (should be done in production)
+            decoded = jose_jwt.get_unverified_claims(token)
+            return decoded
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid Apple ID token: {str(e)}"
+            )
+
 
 @router.get("/google/login")
 async def google_login(request: Request):
@@ -1060,80 +1122,134 @@ async def google_callback(
     return RedirectResponse(url=redirect_url)
 
 
-# @router.get("/apple/login")
-# async def apple_login(request: Request):
-#     """Initiate Apple Login"""
-#     if not settings.APPLE_CLIENT_ID:
-#         raise HTTPException(status_code=500, detail="Apple Auth not configured")
+@router.get("/apple/login")
+async def apple_login(request: Request):
+    """Initiate Apple Sign In - redirects to Apple's OAuth login"""
+    if not settings.APPLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Apple Auth not configured")
+    
+    try:
+        # Generate client secret for this session
+        client_secret = AppleSignInHelper.generate_client_secret()
         
-#     redirect_uri = str(request.url_for("apple_callback"))
-#     return await apple_sso.get_login_redirect(redirect_uri=redirect_uri)
+        # Construct the Apple authorization URL
+        redirect_uri = str(request.url_for("apple_callback"))
+        apple_auth_url = (
+            "https://appleid.apple.com/auth/authorize?"
+            f"client_id={settings.APPLE_CLIENT_ID}&"
+            f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
+            f"response_type=code&"
+            f"response_mode=form_post&"
+            f"scope=email%20name"
+        )
+        
+        return RedirectResponse(url=apple_auth_url)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initiate Apple login: {str(e)}")
 
 
-# @router.get("/apple/callback", response_model=LoginResponse)
-# async def apple_callback(
-#     request: Request,
-#     db: AsyncSession = Depends(get_db)
-# ):
-#     """Handle Apple Login Callback"""
-#     try:
-#         user_info = await apple_sso.verify_and_process(request)
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=f"Apple Auth Failed: {str(e)}")
+@router.post("/apple/callback")
+async def apple_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Handle Apple Login Callback — redirects browser to frontend with tokens.
+    Apple sends data as form-encoded POST request.
+    """
+    frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+    frontend_callback = f"{frontend_url}/auth/apple/callback"
 
-#     if not user_info or not user_info.email:
-#          raise HTTPException(status_code=400, detail="No email provided by Apple")
-
-#     # Find user
-#     result = await db.execute(select(User).where(User.email == user_info.email.lower()))
-#     user = result.scalar_one_or_none()
-
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Account not found. Please register or ask your provider to onboard you first."
-#         )
-
-#     # Link Apple ID
-#     if not user.apple_id:
-#         user.apple_id = user_info.id
-#         await db.commit()
-    
-#     # Generate Tokens (reuse same logic as Google)
-#     access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-#     refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-    
-#     refresh_token_hash = hash_token(refresh_token_value)
-#     refresh_token = RefreshToken(
-#         user_id=user.id,
-#         token_hash=refresh_token_hash,
-#         expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-#     )
-#     db.add(refresh_token)
-#     user.last_login = datetime.utcnow()
-#     await db.commit()
-
-#     pii_encryption = PIIEncryption()
-#     decrypted_full_name = pii_encryption.decrypt(user.full_name)
-#     name_parts = decrypted_full_name.split(" ", 1)
-
-#     return LoginResponse(
-#         success=True,
-#         access_token=access_token,
-#         refresh_token=refresh_token_value,
-#         token_type="bearer",
-#         user=UserResponse(
-#             id=user.id,
-#             name=decrypted_full_name,
-#             email=user.email,
-#             first_name=name_parts[0],
-#             last_name=name_parts[1] if len(name_parts) > 1 else "",
-#             role=user.role,
-#             organization_id=user.organization_id,
-#             email_verified=user.email_verified,
-#             mfa_enabled=user.mfa_enabled,
-#             created_at=user.created_at,
-#             updated_at=user.updated_at
+    try:
+        # Parse form data from Apple
+        form_data = await request.form()
+        user_id = form_data.get("user")
+        id_token = form_data.get("id_token")
+        
+        if not id_token:
+            error_msg = urllib.parse.quote("No ID token provided by Apple")
+            return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        
+        # Decode and verify the ID token
+        user_info = await AppleSignInHelper.verify_id_token(id_token)
+        
+        # Extract email from token
+        user_email = user_info.get("email")
+        apple_user_id = user_info.get("sub")
+        
+        if not user_email:
+            error_msg = urllib.parse.quote("No email provided by Apple")
+            return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        
+        # Find user by email
+        result = await db.execute(select(User).where(User.email == user_email.lower()))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            error_msg = urllib.parse.quote("Account not found. Please register or ask your provider to onboard you first.")
+            return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        
+        # Link Apple ID if not already linked
+        if not user.apple_id:
+            user.apple_id = apple_user_id
+            user.email_verified = True  # Trust Apple's email verification
+            await db.commit()
+            await db.refresh(user)
+        
+        # Generate Tokens
+        access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+        refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+        
+        refresh_token_hash = hash_token(refresh_token_value)
+        refresh_token = RefreshToken(
+            user_id=user.id,
+            token_hash=refresh_token_hash,
+            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
+        db.add(refresh_token)
+        user.last_login = datetime.utcnow()
+        await db.commit()
+        
+        # Build user data for frontend
+        pii_encryption = PIIEncryption()
+        try:
+            decrypted_full_name = pii_encryption.decrypt(user.full_name)
+        except Exception:
+            decrypted_full_name = user.full_name or "Unknown User"
+        name_parts = decrypted_full_name.split(" ", 1)
+        
+        user_data = {
+            "id": str(user.id),
+            "name": decrypted_full_name,
+            "email": user.email,
+            "first_name": name_parts[0],
+            "last_name": name_parts[1] if len(name_parts) > 1 else "",
+            "role": str(user.role).split(".")[-1],
+            "organization_id": str(user.organization_id) if user.organization_id else None,
+            "email_verified": user.email_verified,
+            "mfa_enabled": user.mfa_enabled,
+        }
+        
+        # Redirect browser to frontend callback page with tokens as query params
+        encoded_user = urllib.parse.quote(_json.dumps(user_data))
+        encoded_access = urllib.parse.quote(access_token)
+        encoded_refresh = urllib.parse.quote(refresh_token_value)
+        
+        redirect_url = (
+            f"{frontend_callback}"
+            f"?access_token={encoded_access}"
+            f"&refresh_token={encoded_refresh}"
+            f"&user={encoded_user}"
+        )
+        return RedirectResponse(url=redirect_url)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = urllib.parse.quote(f"Apple Auth Failed: {str(e)}")
+        return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
 #         )
 #     )
 

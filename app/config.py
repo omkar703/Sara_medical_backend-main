@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://saramedico-deploy.vercel.app"
-    FRONTEND_URL: str = "https://saramedico-deploy.vercel.app"  # Used in email links
+    # FRONTEND_URL: str = "https://saramedico-deploy.vercel.app"  # Used in email links
+    FRONTEND_URL: str = "http://localhost:3000"
     
     @property
     def cors_origins_list(self) -> List[str]:
@@ -146,7 +147,10 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
     GOOGLE_REFRESH_TOKEN: str = ""
     APPLE_CLIENT_ID: Optional[str] = None
-    APPLE_CLIENT_SECRET: Optional[str] = None  # This must be the generated JWT
+    APPLE_TEAM_ID: Optional[str] = None
+    APPLE_KEY_ID: Optional[str] = None
+    APPLE_PRIVATE_KEY: Optional[str] = None
+    APPLE_CLIENT_SECRET: Optional[str] = None  # This is auto-generated JWT or can be pre-set
     APPLE_REDIRECT_URI: Optional[str] = None
 
     model_config = SettingsConfigDict(
