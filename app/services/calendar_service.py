@@ -393,13 +393,37 @@ class CalendarService:
             await self.db.delete(event)
             await self.db.flush()
     
+    async def _get_org_tz(self, user_id: UUID):
+        import pytz
+        from app.models.user import User, Organization
+        
+        # Query the Organization's timezone linked to the user
+        query = select(Organization.timezone).join(
+            User, User.organization_id == Organization.id
+        ).where(User.id == user_id)
+        
+        result = await self.db.execute(query)
+        org_tz_str = result.scalar_one_or_none()
+        
+        try:
+            return pytz.timezone(org_tz_str or "UTC")
+        except Exception:
+            return pytz.UTC
+
     async def get_day_view(self, user_id: UUID, target_date: date, organization_id: Optional[UUID] = None) -> List[CalendarEvent]:
         """
         Get all events for a specific day.
         If organization_id is provided, returns all organization events for that day.
         """
-        start_datetime = datetime.combine(target_date, datetime.min.time())
-        end_datetime = datetime.combine(target_date, datetime.max.time())
+        tz = await self._get_org_tz(user_id)
+        
+        # Localize target date boundaries and convert to UTC for DB queries
+        local_start = tz.localize(datetime.combine(target_date, datetime.min.time()))
+        local_end = tz.localize(datetime.combine(target_date, datetime.max.time()))
+        
+        import pytz
+        start_datetime = local_start.astimezone(pytz.UTC)
+        end_datetime = local_end.astimezone(pytz.UTC)
         
         if organization_id:
             return await self.get_organization_events(organization_id, start_datetime, end_datetime)
@@ -411,12 +435,19 @@ class CalendarService:
         Get summary of all days in a month with event counts.
         If organization_id is provided, returns counts for the entire organization.
         """
-        # Get first and last day of month
-        start_date = datetime(year, month, 1)
+        import pytz
+        tz = await self._get_org_tz(user_id)
+        
+        # Calculate month range using user's timezone mapped to UTC
+        local_start_date = tz.localize(datetime(year, month, 1))
+        
         if month == 12:
-            end_date = datetime(year + 1, 1, 1) - timedelta(seconds=1)
+            local_end_date = tz.localize(datetime(year + 1, 1, 1)) - timedelta(seconds=1)
         else:
-            end_date = datetime(year, month + 1, 1) - timedelta(seconds=1)
+            local_end_date = tz.localize(datetime(year, month + 1, 1)) - timedelta(seconds=1)
+            
+        start_date = local_start_date.astimezone(pytz.UTC)
+        end_date = local_end_date.astimezone(pytz.UTC)
         
         # Get all events for the month
         if organization_id:
@@ -424,10 +455,15 @@ class CalendarService:
         else:
             events = await self.get_events_by_date_range(user_id, start_date, end_date)
         
-        # Group events by day
+        # Group events by day based on the user's localized time
         days_summary = {}
         for event in events:
-            day = event.start_time.day
+            ev_start = event.start_time
+            if ev_start.tzinfo is None:
+                ev_start = pytz.UTC.localize(ev_start)
+            local_ev_start = ev_start.astimezone(tz)
+            
+            day = local_ev_start.day
             if day not in days_summary:
                 days_summary[day] = {
                     "day": day,
