@@ -1028,9 +1028,10 @@ async def google_login(request: Request):
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google Auth not configured")
     
-    # Construct callback URL dynamically to match the request host
-    # e.g., http://localhost:8000/api/v1/auth/google/callback
-    redirect_uri = str(request.url_for("google_callback"))
+    # Use the explicit redirect URI from settings so it matches Google Console exactly.
+    # request.url_for() builds the URL from the Host header, which behind Nginx/Docker
+    # produces an internal address (e.g. backend:8000) that won't match.
+    redirect_uri = settings.GOOGLE_REDIRECT_URI
     return await google_sso.get_login_redirect(redirect_uri=redirect_uri)
 
 
