@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://saramedico-deploy.vercel.app"
-    # FRONTEND_URL: str = "https://saramedico-deploy.vercel.app"  # Used in email links
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "https://saramedico-deploy.vercel.app"  # Used in email links
+    # FRONTEND_URL: str = "http://localhost:3000"
     
     @property
     def cors_origins_list(self) -> List[str]:
