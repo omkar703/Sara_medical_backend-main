@@ -1024,14 +1024,11 @@ class AppleSignInHelper:
 
 
 @router.get("/google/login")
-async def google_login(request: Request, redirect_uri: Optional[str] = None):
+async def google_login(request: Request, redirect_uri: Optional[str] = None, role: Optional[str] = None):
     """Initiate Google Login"""
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google Auth not configured")
     
-    # Use the explicit redirect URI from settings so it matches Google Console exactly.
-    # request.url_for() builds the URL from the Host header, which behind Nginx/Docker
-    # produces an internal address (e.g. backend:8000) that won't match.
     google_redirect = settings.GOOGLE_REDIRECT_URI
     response = await google_sso.get_login_redirect(redirect_uri=google_redirect)
     
@@ -1039,6 +1036,16 @@ async def google_login(request: Request, redirect_uri: Optional[str] = None):
         response.set_cookie(
             key="app_redirect_uri",
             value=redirect_uri,
+            max_age=600,
+            httponly=True,
+            samesite="lax"
+        )
+
+    # Store role hint so the callback can create the account with the right role
+    if role and role in ("doctor", "hospital", "patient"):
+        response.set_cookie(
+            key="google_signup_role",
+            value=role,
             max_age=600,
             httponly=True,
             samesite="lax"
@@ -1072,11 +1079,39 @@ async def google_callback(
     # Find user by email
     result = await db.execute(select(User).where(User.email == user_info.email.lower()))
     user = result.scalar_one_or_none()
+    is_new_user = False
 
     if not user:
-        import urllib.parse
-        error_msg = urllib.parse.quote("Account not found. Please register or ask your provider to onboard you first.")
-        return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        # Auto-create account for new Google users
+        role_cookie = request.cookies.get("google_signup_role", "doctor")
+        # Validate role is one we accept via Google signup
+        if role_cookie not in ("doctor", "hospital", "patient"):
+            role_cookie = "doctor"
+
+        pii_enc = PIIEncryption()
+        display_name = user_info.display_name or user_info.email.split("@")[0]
+
+        # Create a default personal organization for the user
+        new_org = Organization(
+            name=f"{display_name}'s Organization",
+            subscription_tier="free-trial",
+            subscription_status="trialing"
+        )
+        db.add(new_org)
+        await db.flush()
+
+        user = User(
+            email=user_info.email.lower(),
+            password_hash=hash_password(user_info.id + settings.SECRET_KEY),  # Unusable password
+            full_name=pii_enc.encrypt(display_name),
+            role=role_cookie,
+            google_id=user_info.id,
+            email_verified=True,
+            organization_id=new_org.id,
+        )
+        db.add(user)
+        await db.flush()
+        is_new_user = True
 
     # Link Google ID if not linked
     if not user.google_id:
@@ -1120,6 +1155,7 @@ async def google_callback(
         "organization_id": str(user.organization_id) if user.organization_id else None,
         "email_verified": user.email_verified,
         "mfa_enabled": user.mfa_enabled,
+        "onboarding_complete": not is_new_user,
     }
 
     # Redirect browser to frontend callback page with tokens as query params
