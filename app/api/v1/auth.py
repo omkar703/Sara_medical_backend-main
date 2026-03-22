@@ -1023,7 +1023,7 @@ class AppleSignInHelper:
 
 
 @router.get("/google/login")
-async def google_login(request: Request):
+async def google_login(request: Request, redirect_uri: Optional[str] = None):
     """Initiate Google Login"""
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google Auth not configured")
@@ -1031,8 +1031,19 @@ async def google_login(request: Request):
     # Use the explicit redirect URI from settings so it matches Google Console exactly.
     # request.url_for() builds the URL from the Host header, which behind Nginx/Docker
     # produces an internal address (e.g. backend:8000) that won't match.
-    redirect_uri = settings.GOOGLE_REDIRECT_URI
-    return await google_sso.get_login_redirect(redirect_uri=redirect_uri)
+    google_redirect = settings.GOOGLE_REDIRECT_URI
+    response = await google_sso.get_login_redirect(redirect_uri=google_redirect)
+    
+    if redirect_uri:
+        response.set_cookie(
+            key="app_redirect_uri",
+            value=redirect_uri,
+            max_age=600,
+            httponly=True,
+            samesite="lax"
+        )
+        
+    return response
 
 
 @router.get("/google/callback")
@@ -1115,13 +1126,42 @@ async def google_callback(
     encoded_access = urllib.parse.quote(access_token)
     encoded_refresh = urllib.parse.quote(refresh_token_value)
 
-    redirect_url = (
-        f"{frontend_callback}"
-        f"?access_token={encoded_access}"
-        f"&refresh_token={encoded_refresh}"
-        f"&user={encoded_user}"
-    )
-    return RedirectResponse(url=redirect_url)
+    app_redirect_uri = request.cookies.get("app_redirect_uri")
+    
+    if app_redirect_uri and app_redirect_uri.startswith("saramedico://"):
+        from fastapi.responses import HTMLResponse
+        
+        final_qs = (
+            f"access_token={encoded_access}"
+            f"&refresh_token={encoded_refresh}"
+            f"&user={encoded_user}"
+        )
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirecting to App...</title>
+            <script>
+                window.location.href = "{app_redirect_uri}?{final_qs}";
+            </script>
+        </head>
+        <body>
+            Redirecting to app...
+        </body>
+        </html>
+        """
+        response = HTMLResponse(content=html_content)
+        response.delete_cookie("app_redirect_uri")
+        return response
+    else:
+        redirect_url = (
+            f"{frontend_callback}"
+            f"?access_token={encoded_access}"
+            f"&refresh_token={encoded_refresh}"
+            f"&user={encoded_user}"
+        )
+        return RedirectResponse(url=redirect_url)
 
 
 @router.get("/apple/login")
