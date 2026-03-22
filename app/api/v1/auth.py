@@ -1078,8 +1078,8 @@ async def google_callback(
         import urllib.parse
         return RedirectResponse(url=f"{frontend_callback}?error={urllib.parse.quote('No email provided by Google')}")
 
-    # Find user by email
-    result = await db.execute(select(User).where(User.email == user_info.email.lower()))
+    # Find user by email, ignoring soft-deleted users
+    result = await db.execute(select(User).where(User.email == user_info.email.lower(), User.deleted_at.is_(None)))
     user = result.scalar_one_or_none()
     is_new_user = False
     if not user:
