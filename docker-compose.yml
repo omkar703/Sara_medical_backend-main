@@ -255,8 +255,10 @@ services:
     container_name: saramedico_nginx
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt
     ports:
-      - "8080:80"
+      - "80:80"
+      - "443:443"
     depends_on:
       - frontend
       - backend

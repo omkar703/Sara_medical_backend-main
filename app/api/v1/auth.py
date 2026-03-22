@@ -1046,7 +1046,8 @@ async def google_callback(
     frontend_callback = f"{frontend_url}/auth/google/callback"
 
     try:
-        user_info = await google_sso.verify_and_process(request)
+        redirect_uri = settings.GOOGLE_REDIRECT_URI
+        user_info = await google_sso.verify_and_process(request, redirect_uri=redirect_uri)
     except Exception as e:
         import urllib.parse
         error_msg = urllib.parse.quote(f"Google Auth Failed: {str(e)}")
