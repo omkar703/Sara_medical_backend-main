@@ -54,6 +54,7 @@ from app.schemas.auth import (
     VerifyEmailRequest,
     VerifyMFARequest,
     VerifyMFASetupRequest,
+    OnboardingUpdateRequest,
 )
 from app.services.email import send_password_reset_email, send_verification_email
 
@@ -1329,7 +1330,7 @@ async def register_hospital(
             email=data.email,
             password_hash=hash_password(data.password),
             full_name=pii_encryption.encrypt(data.admin_name),
-            phone_number=pii_encryption.encrypt(data.phone_number),
+            phone_number=pii_encryption.encrypt(data.phone_number) if data.phone_number else None,
             role="hospital", # Assign the root hospital role
             organization_id=new_org.id,
             email_verified=True # Standard security practice
@@ -1354,3 +1355,39 @@ async def register_hospital(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while registering the hospital. Please try again."
         )
+
+@router.patch("/onboarding", response_model=MessageResponse)
+async def update_onboarding(
+    update_data: OnboardingUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update onboarding details after initial simple registration.
+    """
+    pii_encryption = PIIEncryption()
+    
+    if update_data.phone_number:
+        current_user.phone_number = pii_encryption.encrypt(update_data.phone_number)
+        
+    if update_data.first_name and update_data.last_name:
+        current_user.full_name = pii_encryption.encrypt(f"{update_data.first_name} {update_data.last_name}")
+        
+    if update_data.organization_name:
+        # Get or create organization
+        org_result = await db.execute(
+            select(Organization).where(Organization.name == update_data.organization_name)
+        )
+        organization = org_result.scalar_one_or_none()
+        if not organization:
+            organization = Organization(name=update_data.organization_name)
+            db.add(organization)
+            await db.flush()
+        current_user.organization_id = organization.id
+
+    # For patient model updates if needed, though they don't do this directly.
+    # We mainly update the User model.
+    # Note: DOB/Gender is usually in Patient or Doctor profile, but we store minimal here.
+    
+    await db.commit()
+    return MessageResponse(message="Onboarding details updated successfully")
