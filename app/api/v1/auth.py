@@ -1103,7 +1103,7 @@ async def google_callback(
 
             user = User(
                 email=user_info.email.lower(),
-                password_hash=hash_password(user_info.id + settings.SECRET_KEY),
+                password_hash=hash_password(user_info.id + settings.JWT_SECRET_KEY),
                 full_name=pii_enc.encrypt(display_name),
                 role=role_cookie,
                 google_id=user_info.id,
