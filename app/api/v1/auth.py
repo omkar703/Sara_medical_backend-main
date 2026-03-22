@@ -1038,7 +1038,8 @@ async def google_login(request: Request, redirect_uri: Optional[str] = None, rol
             value=redirect_uri,
             max_age=600,
             httponly=True,
-            samesite="lax"
+            samesite="lax",
+            path="/"
         )
 
     # Store role hint so the callback can create the account with the right role
@@ -1048,7 +1049,8 @@ async def google_login(request: Request, redirect_uri: Optional[str] = None, rol
             value=role,
             max_age=600,
             httponly=True,
-            samesite="lax"
+            samesite="lax",
+            path="/"
         )
         
     return response
@@ -1080,45 +1082,65 @@ async def google_callback(
     result = await db.execute(select(User).where(User.email == user_info.email.lower()))
     user = result.scalar_one_or_none()
     is_new_user = False
-
     if not user:
         # Auto-create account for new Google users
         role_cookie = request.cookies.get("google_signup_role", "doctor")
-        # Validate role is one we accept via Google signup
         if role_cookie not in ("doctor", "hospital", "patient"):
             role_cookie = "doctor"
 
         pii_enc = PIIEncryption()
         display_name = user_info.display_name or user_info.email.split("@")[0]
 
-        # Create a default personal organization for the user
-        new_org = Organization(
-            name=f"{display_name}'s Organization",
-            subscription_tier="free-trial",
-            subscription_status="trialing"
-        )
-        db.add(new_org)
-        await db.flush()
+        try:
+            # Create a default personal organization for the user
+            new_org = Organization(
+                name=f"{display_name}'s Organization",
+                subscription_tier="free-trial",
+                subscription_status="trialing"
+            )
+            db.add(new_org)
+            await db.flush()
 
-        user = User(
-            email=user_info.email.lower(),
-            password_hash=hash_password(user_info.id + settings.SECRET_KEY),  # Unusable password
-            full_name=pii_enc.encrypt(display_name),
-            role=role_cookie,
-            google_id=user_info.id,
-            email_verified=True,
-            organization_id=new_org.id,
-        )
-        db.add(user)
-        await db.flush()
-        is_new_user = True
+            user = User(
+                email=user_info.email.lower(),
+                password_hash=hash_password(user_info.id + settings.SECRET_KEY),
+                full_name=pii_enc.encrypt(display_name),
+                role=role_cookie,
+                google_id=user_info.id,
+                email_verified=True,
+                organization_id=new_org.id,
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+            is_new_user = True
+        except Exception as e:
+            await db.rollback()
+            print(f"[Google Signup Error] {str(e)}")
+            import urllib.parse
+            return RedirectResponse(url=f"{frontend_callback}?error={urllib.parse.quote('Account creation failed')}")
 
     # Link Google ID if not linked
     if not user.google_id:
         user.google_id = user_info.id
-        user.email_verified = True  # Trust Google verification
+        user.email_verified = True
         await db.commit()
         await db.refresh(user)
+
+    # Heuristic for determining onboarding status (since no column exists yet)
+    # If a doctor has no phone or specialty, they likely need onboarding.
+    # If a hospital admin has no phone, they likely need onboarding.
+    onboarding_complete = True
+    user_role_str = str(user.role).split(".")[-1]
+    if user_role_str == "doctor":
+        if not user.phone_number or not user.specialty:
+            onboarding_complete = False
+    elif user_role_str == "hospital":
+        if not user.phone_number:
+            onboarding_complete = False
+    
+    if is_new_user:
+        onboarding_complete = False
 
     # Generate Tokens
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
@@ -1155,7 +1177,7 @@ async def google_callback(
         "organization_id": str(user.organization_id) if user.organization_id else None,
         "email_verified": user.email_verified,
         "mfa_enabled": user.mfa_enabled,
-        "onboarding_complete": not is_new_user,
+        "onboarding_complete": onboarding_complete,
     }
 
     # Redirect browser to frontend callback page with tokens as query params
@@ -1189,7 +1211,8 @@ async def google_callback(
         </html>
         """
         response = HTMLResponse(content=html_content)
-        response.delete_cookie("app_redirect_uri")
+        response.delete_cookie("app_redirect_uri", path="/")
+        response.delete_cookie("google_signup_role", path="/")
         return response
     else:
         redirect_url = (
