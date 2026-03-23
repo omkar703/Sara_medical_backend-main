@@ -95,6 +95,15 @@ async def get_doctor_patients(
         Patient.organization_id == organization_id, 
         Patient.deleted_at == None
     )
+    
+    if current_user.role == "doctor":
+        query = query.where(
+            or_(
+                Patient.primary_doctor_id == current_user.id,
+                Patient.created_by == current_user.id
+            )
+        )
+        
     result = await db.execute(query)
     rows = result.all()
 
