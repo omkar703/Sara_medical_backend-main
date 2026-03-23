@@ -716,7 +716,7 @@ async def logout(
     
     # Revoke the token if it exists
     # If current_user is provided, only revoke if it belongs to them
-    stmt = update(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    stmt = update(RefreshToken).where(RefreshToken.token_hash == token_hash).values(revoked=True)
     
     if current_user:
         stmt = stmt.where(RefreshToken.user_id == current_user.id)
