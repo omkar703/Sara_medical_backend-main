@@ -200,7 +200,7 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = None
     
 class HospitalRegistrationRequest(BaseModel):
-    organization_name: str = Field(..., description="The name of the hospital/clinic")
+    organization_name: Optional[str] = Field("Default Hospital", description="The name of the hospital/clinic")
     admin_name: str = Field(..., description="Full name of the hospital administrator")
     email: EmailStr = Field(..., description="Login email for the hospital admin")
     phone_number: str = Field(..., description="Contact phone number")
@@ -255,3 +255,13 @@ class HospitalOnboardingRequest(BaseOnboardingRequest):
 class SelectRoleRequest(BaseModel):
     role: str = Field(..., pattern="^(doctor|hospital)$", description="Role to select")
     temp_token: str = Field(..., description="Temporary token from Google callback")
+    phone_number: Optional[str] = Field(None, description="Contact phone number")
+    password: str = Field(..., min_length=8, description="Secure password")
+
+class OnboardingUpdateRequest(BaseModel):
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    gender: Optional[str] = None
+    organization_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
