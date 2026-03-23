@@ -166,11 +166,22 @@ async def create_doctor_account(
 
     # 2. Check if the email already exists in the system
     email_check = await db.execute(select(User).where(User.email == request.email))
-    if email_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email address is already registered."
-        )
+    existing_user = email_check.scalar_one_or_none()
+    if existing_user:
+        if existing_user.deleted_at is not None:
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            existing_user.email = f"{existing_user.email[:255-len(suffix)]}{suffix}"
+            if existing_user.google_id:
+                existing_user.google_id = f"{existing_user.google_id[:255-len(suffix)]}{suffix}"
+            if existing_user.apple_id:
+                existing_user.apple_id = f"{existing_user.apple_id[:255-len(suffix)]}{suffix}"
+            await db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user with this email address is already registered."
+            )
 
     # 3. Check for existing license numbers (in-memory due to Fernet encryption)
     # Fetch all doctors in the organization to verify license uniqueness

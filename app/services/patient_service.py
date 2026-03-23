@@ -345,4 +345,20 @@ class PatientService:
             return False
             
         patient.deleted_at = datetime.utcnow()
+        
+        # Also soft-delete the linked User and reclaim their email
+        from app.models.user import User
+        user_result = await self.db.execute(select(User).where(User.id == patient_id))
+        linked_user = user_result.scalar_one_or_none()
+        if linked_user:
+            linked_user.deleted_at = datetime.utcnow()
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            if linked_user.email:
+                linked_user.email = f"{linked_user.email[:255-len(suffix)]}{suffix}"
+            if linked_user.google_id:
+                linked_user.google_id = f"{linked_user.google_id[:255-len(suffix)]}{suffix}"
+            if linked_user.apple_id:
+                linked_user.apple_id = f"{linked_user.apple_id[:255-len(suffix)]}{suffix}"
+        
         return True

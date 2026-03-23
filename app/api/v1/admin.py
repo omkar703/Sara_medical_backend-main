@@ -590,6 +590,14 @@ async def remove_team_member(
             
         # Soft delete: Set deleted_at timestamp
         user_to_remove.deleted_at = datetime.utcnow()
+        import uuid
+        suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+        if user_to_remove.email:
+            user_to_remove.email = f"{user_to_remove.email[:255-len(suffix)]}{suffix}"
+        if user_to_remove.google_id:
+            user_to_remove.google_id = f"{user_to_remove.google_id[:255-len(suffix)]}{suffix}"
+        if user_to_remove.apple_id:
+            user_to_remove.apple_id = f"{user_to_remove.apple_id[:255-len(suffix)]}{suffix}"
         await db.commit()
         return {"status": "deactivated_user", "id": str(id)}
 

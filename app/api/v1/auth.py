@@ -82,11 +82,22 @@ async def onboarding_signup(
     """
     # Validate email uniqueness
     result = await db.execute(select(User).where(User.email == request.email.lower()))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+    existing_user = result.scalar_one_or_none()
+    if existing_user:
+        if existing_user.deleted_at is not None:
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            existing_user.email = f"{existing_user.email[:255-len(suffix)]}{suffix}"
+            if existing_user.google_id:
+                existing_user.google_id = f"{existing_user.google_id[:255-len(suffix)]}{suffix}"
+            if existing_user.apple_id:
+                existing_user.apple_id = f"{existing_user.apple_id[:255-len(suffix)]}{suffix}"
+            await db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
         
     # For email auth provider (default), password is required
     if not request.password:
@@ -797,11 +808,22 @@ async def register(
     result = await db.execute(
         select(User).where(User.email == user_data.email.lower())
     )
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+    existing_user = result.scalar_one_or_none()
+    if existing_user:
+        if existing_user.deleted_at is not None:
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            existing_user.email = f"{existing_user.email[:255-len(suffix)]}{suffix}"
+            if existing_user.google_id:
+                existing_user.google_id = f"{existing_user.google_id[:255-len(suffix)]}{suffix}"
+            if existing_user.apple_id:
+                existing_user.apple_id = f"{existing_user.apple_id[:255-len(suffix)]}{suffix}"
+            await db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
     
     # Get or create organization
     org_result = await db.execute(
@@ -2149,11 +2171,22 @@ async def register_hospital(
     # 1. Check if the email is already registered
     existing_user_query = select(User).where(User.email == data.email)
     result = await db.execute(existing_user_query)
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email already exists."
-        )
+    existing_user = result.scalar_one_or_none()
+    if existing_user:
+        if existing_user.deleted_at is not None:
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            existing_user.email = f"{existing_user.email[:255-len(suffix)]}{suffix}"
+            if existing_user.google_id:
+                existing_user.google_id = f"{existing_user.google_id[:255-len(suffix)]}{suffix}"
+            if existing_user.apple_id:
+                existing_user.apple_id = f"{existing_user.apple_id[:255-len(suffix)]}{suffix}"
+            await db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user with this email already exists."
+            )
 
     pii_encryption = PIIEncryption()
 

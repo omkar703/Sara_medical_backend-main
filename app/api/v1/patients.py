@@ -97,11 +97,22 @@ async def create_patient(
     email_check = await db.execute(
         select(UserModel).where(UserModel.email == patient_in.email.lower())
     )
-    if email_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists"
-        )
+    existing_user = email_check.scalar_one_or_none()
+    if existing_user:
+        if existing_user.deleted_at is not None:
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            existing_user.email = f"{existing_user.email[:255-len(suffix)]}{suffix}"
+            if existing_user.google_id:
+                existing_user.google_id = f"{existing_user.google_id[:255-len(suffix)]}{suffix}"
+            if existing_user.apple_id:
+                existing_user.apple_id = f"{existing_user.apple_id[:255-len(suffix)]}{suffix}"
+            await db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
     
     # Create User account
     pii_encryption = PIIEncryption()
