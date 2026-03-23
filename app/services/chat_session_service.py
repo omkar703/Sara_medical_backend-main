@@ -172,6 +172,35 @@ class ChatSessionService:
         )
         await self.db.commit()
 
+    async def delete_session(
+        self,
+        session_id: UUID,
+        doctor_id: UUID,
+    ) -> bool:
+        """
+        Delete a chat session and all its messages.
+        Ensures the session belongs to the requesting doctor.
+        """
+        from sqlalchemy import delete
+        
+        # Verify ownership first
+        session = await self.get_session(session_id, doctor_id)
+        if not session:
+            return False
+
+        # Delete all messages first
+        await self.db.execute(
+            delete(ChatMessage).where(ChatMessage.session_id == session_id)
+        )
+        
+        # Delete the session
+        await self.db.execute(
+            delete(ChatSession).where(ChatSession.id == session_id)
+        )
+        
+        await self.db.commit()
+        return True
+
     # ── Title Auto-Generation ──────────────────────────────────────────────────
 
     async def auto_generate_title(self, first_message: str) -> str:

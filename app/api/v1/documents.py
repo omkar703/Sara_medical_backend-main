@@ -317,7 +317,9 @@ async def confirm_upload(
     )
     await db.commit()
     
-    # TODO: Trigger virus scan Celery task
+    # Trigger Processing
+    from app.workers.tasks import process_document_task
+    process_document_task.delay(str(document_id))
     # from app.workers.tasks import scan_document_for_viruses
     # scan_document_for_viruses.delay(str(document_id))
     
