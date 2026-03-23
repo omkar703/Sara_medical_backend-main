@@ -147,6 +147,19 @@ async def global_exception_handler(request, exc):
             }
         )
 
+from app.core.deps import OnboardingRequiredException
+
+@app.exception_handler(OnboardingRequiredException)
+async def onboarding_exception_handler(request: Request, exc: OnboardingRequiredException):
+    """Handle OnboardingRequiredException with custom JSON payload"""
+    return JSONResponse(
+        status_code=403,
+        content={
+            "detail": "Please complete onboarding",
+            "redirect": "/onboarding"
+        }
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

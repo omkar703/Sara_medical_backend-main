@@ -11,6 +11,10 @@ from app.core.security import decode_token
 from app.database import get_db
 from app.models.user import User
 
+class OnboardingRequiredException(Exception):
+    """Exception raised when a user must complete onboarding."""
+    pass
+
 # Security scheme for JWT bearer token
 security = HTTPBearer()
 
@@ -121,6 +125,92 @@ async def get_current_active_user(
             detail="Email not verified. Please verify your email first.",
         )
     return current_user
+
+from fastapi import Request
+
+async def require_active_account(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """
+    Dependency to require an active account.
+    Blocks requests if user is still pending onboarding,
+    unless the route starts with /api/v1/auth/onboarding/.
+    """
+    if current_user.account_status == "pending_onboarding":
+        if not request.url.path.startswith("/api/v1/auth/onboarding/"):
+            raise OnboardingRequiredException()
+    return current_user
+
+
+async def require_onboarding_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    Dependency to require an onboarding token.
+    Enforces token type 'onboarding' and correct scopes.
+    """
+    token = credentials.credentials
+    
+    # Decode token
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify token type
+    if payload.get("type") != "onboarding":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type. Expected onboarding token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    # Verify scopes
+    scopes = payload.get("scopes", [])
+    if "onboarding:write" not in scopes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing required scope: onboarding:write",
+        )
+    
+    # Get user ID from payload
+    user_id: Optional[str] = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Fetch user from database
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID format",
+        )
+    
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.organization))
+        .where(User.id == user_uuid, User.deleted_at.is_(None))
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    
+    return user
 
 
 def require_role(required_role):

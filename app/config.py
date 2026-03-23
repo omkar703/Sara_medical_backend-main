@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://saramedico-deploy.vercel.app,http://107.20.98.130.nip.io:8080"
-    FRONTEND_URL: str = "http://107.20.98.130.nip.io:8080"  # Used in email links
-    # FRONTEND_URL: str = "http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://saramedico-deploy.vercel.app"
+    # FRONTEND_URL: str = "http://107.20.98.130.nip.io:8080"  # Used in email links
+    FRONTEND_URL: str = "http://localhost:3000"
     
     @property
     def cors_origins_list(self) -> List[str]:
