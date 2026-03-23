@@ -15,11 +15,12 @@ class StorageService:
     def __init__(self):
         """Initialize MinIO clients"""
         # Internal client for backend-to-MinIO communication
+        # Internal Docker network does not use SSL, so secure=False always.
         self.client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ROOT_USER,
             secret_key=settings.MINIO_ROOT_PASSWORD,
-            secure=settings.MINIO_USE_SSL
+            secure=False
         )
         
         # IMPORTANT: presign_client uses the EXTERNAL endpoint (localhost:9010).
