@@ -151,14 +151,18 @@ class HospitalService:
     async def get_hospital_directory(self, organization_id: UUID) -> dict:
         pii_encryption = PIIEncryption()
         
-        # Query 1: Fetch all active doctors for this organization
+        # Query 1: Fetch all active doctors CREATED by this hospital organization
         doctors_stmt = select(User).where(
             User.organization_id == organization_id,
             User.role == "doctor",
             User.deleted_at.is_(None)
         ).order_by(User.created_at.desc())
 
-        # Query 2: Fetch all active patients for this organization
+        # Query 2: Fetch all active patients onboarded through this hospital's organization.
+        # This covers both:
+        #   (a) Patients directly onboarded by the hospital admin (created_by = hospital user)
+        #   (b) Patients onboarded by doctors belonging to this hospital (same organization_id)
+        # The organization_id on Patient is always set to the creator's org at onboarding time.
         patients_stmt = select(Patient).where(
             Patient.organization_id == organization_id,
             Patient.deleted_at.is_(None)
@@ -302,7 +306,8 @@ class HospitalService:
             .subquery()
         )
 
-        # Outer join the Patient table to the subquery
+        # Outer join the Patient table to the subquery.
+        # Only show patients onboarded through this hospital's organization.
         patients_table_stmt = (
             select(Patient, last_visit_subq.c.last_visit)
             .outerjoin(last_visit_subq, Patient.id == last_visit_subq.c.patient_id)
@@ -380,9 +385,11 @@ class HospitalService:
         pii_encryption = PIIEncryption()
 
         # Query: Fetch all non-patient users (doctors, admins, hospital managers)
+        # Only users belonging to this hospital's organization, explicitly excluding
+        # patients and any soft-deleted accounts.
         staff_stmt = select(User).where(
             User.organization_id == organization_id,
-            User.role != "patient",
+            User.role.in_(["doctor", "hospital", "admin"]),
             User.deleted_at.is_(None)
         ).order_by(User.created_at.desc())
 
