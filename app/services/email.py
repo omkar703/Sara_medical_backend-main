@@ -8,6 +8,8 @@ from typing import Optional
 from jinja2 import Template
 
 from app.config import settings
+import logging
+logger = logging.getLogger(__name__)
 
 
 async def send_email(
@@ -50,13 +52,12 @@ async def send_email(
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER or None,
             password=settings.SMTP_PASSWORD or None,
-            use_tls=settings.SMTP_TLS,
-            start_tls=settings.SMTP_SSL,
+            use_tls=settings.SMTP_SSL,
+            start_tls=settings.SMTP_TLS,
         )
         return True
     except Exception as e:
-        # Log error in production
-        print(f"Failed to send email to {to_email}: {str(e)}")
+        logger.error(f"Failed to send email to {to_email}: {type(e).__name__}: {str(e)}")
         return False
 
 
@@ -64,7 +65,6 @@ async def send_verification_email(to_email: str, verification_token: str, user_n
     """
     Send email verification email
 """
-    from typing import Optional
         
     verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={verification_token}"
     

@@ -71,13 +71,13 @@ class Settings(BaseSettings):
     
     # Email
     SMTP_HOST: str
-    SMTP_PORT: int
+    SMTP_PORT: int = 465
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str
-    SMTP_FROM_NAME: str
+    SMTP_FROM_NAME: str = "SaraMedico Platform"
     SMTP_TLS: bool = False
-    SMTP_SSL: bool = False
+    SMTP_SSL: bool = True
     ENTERPRISE_EMAIL: str = "enterprise@saramedico.com"
     
     # Celery
