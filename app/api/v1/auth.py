@@ -62,6 +62,9 @@ from app.schemas.auth import (
     OnboardingUpdateRequest,
 )
 from app.services.email import send_password_reset_email, send_verification_email
+import httpx
+from jose import jwt as jose_jwt, JWTError
+from fastapi import HTTPException
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -2011,15 +2014,41 @@ class AppleSignInHelper:
     @staticmethod
     async def verify_id_token(token: str) -> dict:
         """
-        Verify and decode Apple ID token.
-        Returns decoded token data.
+        PRODUCTION SECURE: Verify and decode Apple ID token against Apple's public JWKS.
         """
         try:
-            # Apple sends the token as JWT that we need to verify
-            # In production, you should verify the signature against Apple's public keys
-            # For now, we'll decode without verification (should be done in production)
-            decoded = jose_jwt.get_unverified_claims(token)
+            # 1. Fetch Apple's public keys (JWKS)
+            async with httpx.AsyncClient() as client:
+                response = await client.get("https://appleid.apple.com/auth/keys")
+                response.raise_for_status()
+                apple_jwks = response.json().get("keys", [])
+
+            # 2. Extract the unverified header to find the Key ID (kid) used to sign this token
+            unverified_header = jose_jwt.get_unverified_header(token)
+            kid = unverified_header.get("kid")
+
+            # 3. Find the matching public key from Apple's JWKS
+            rsa_key = next((key for key in apple_jwks if key["kid"] == kid), None)
+            if not rsa_key:
+                raise ValueError("Apple Public Key not found for this token.")
+
+            # 4. Cryptographically verify the token signature
+            # This ensures the token wasn't forged and was intended for your app
+            decoded = jose_jwt.decode(
+                token,
+                rsa_key,
+                algorithms=["RS256"],
+                audience=settings.APPLE_CLIENT_ID,
+                issuer="https://appleid.apple.com"
+            )
+            
             return decoded
+
+        except JWTError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cryptographic verification failed: {str(e)}"
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=400,
