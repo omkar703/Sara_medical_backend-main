@@ -15,9 +15,11 @@ class Appointment(Base):
     patient_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     
     requested_date = Column(DateTime(timezone=True), nullable=False)
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)
     reason = Column(Text, nullable=True)
     
-    status = Column(Enum("pending", "accepted", "declined", "completed", "cancelled", name="appointment_status"), default="pending", nullable=False)
+    status = Column(Enum("pending", "accepted", "declined", "completed", "cancelled", "rejected", name="appointment_status"), default="pending", nullable=False)
+    created_by = Column(String(50), default="patient", nullable=False)
     
     # Google Meet Integration Fields
     google_event_id = Column(String(255), nullable=True)

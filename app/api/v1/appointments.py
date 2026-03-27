@@ -15,7 +15,8 @@ from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentResponse,
     AppointmentStatusUpdate,
-    AppointmentApproval
+    AppointmentApproval,
+    DoctorAppointmentCreate
 )
 from app.services.zoom_service import zoom_service
 from app.services.notification_service import NotificationService
@@ -54,10 +55,11 @@ async def create_appointment(
             grant_reason="Patient granted access during appointment booking"
         )
     
-    # Sync appointment to calendar (create events for patient and doctor)
-    from app.services.calendar_service import CalendarService
-    calendar_service = CalendarService(db)
-    await calendar_service.sync_appointment_to_calendar(appointment, "create")
+    # Sync appointment to calendar only if accepted (usually patient creates pending)
+    if appointment.status == "accepted":
+        from app.services.calendar_service import CalendarService
+        calendar_service = CalendarService(db)
+        await calendar_service.sync_appointment_to_calendar(appointment, "create")
     
     await db.commit()
     await db.refresh(appointment)
@@ -72,7 +74,107 @@ async def create_appointment(
         action_url=f"/appointments/{appointment.id}"
     )
     
+<<<<<<< Updated upstream
     return appointment
+=======
+    # Construct response dictionary
+    response_dict = {
+        "id": appointment.id,
+        "doctor_id": appointment.doctor_id,
+        "patient_id": appointment.patient_id,
+        "requested_date": appointment.requested_date,
+        "reason": appointment.reason,
+        "status": appointment.status,
+        "doctor_name": doctor_name,
+        "patient_name": patient_name,
+        "doctor_avatar": doctor_avatar,
+        "patient_avatar": patient_avatar,
+        "created_by": appointment.created_by,
+        "created_at": appointment.created_at,
+        "updated_at": appointment.updated_at
+    }
+    
+    return AppointmentResponse(**response_dict)
+
+@router.post("/doctor-create", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
+async def create_appointment_by_doctor(
+    appointment_in: DoctorAppointmentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(["doctor"]))
+):
+    """
+    Doctor creates an appointment request for a patient.
+    Status is set to pending, patient must accept/reject.
+    """
+    appointment = Appointment(
+        doctor_id=current_user.id,
+        patient_id=appointment_in.patient_id,
+        requested_date=appointment_in.requested_date,
+        reason=appointment_in.reason,
+        status="pending",
+        created_by="doctor"
+    )
+    
+    db.add(appointment)
+    await db.flush()
+    
+    # Sync appointment to calendar
+    from app.services.calendar_service import CalendarService
+    calendar_service = CalendarService(db)
+    await calendar_service.sync_appointment_to_calendar(appointment, "create")
+    
+    await db.commit()
+    
+    # Eagerly load relationships
+    stmt = select(Appointment).where(Appointment.id == appointment.id).options(
+        selectinload(Appointment.doctor),
+        selectinload(Appointment.patient)
+    )
+    result = await db.execute(stmt)
+    appointment = result.scalars().unique().one_or_none()
+    
+    # Decrypt names
+    from app.core.security import pii_encryption
+    doctor_name = "Unknown Doctor"
+    if current_user:
+        try:
+            doctor_name = pii_encryption.decrypt(current_user.full_name)
+        except:
+            doctor_name = current_user.full_name or "Unknown Doctor"
+            
+    patient_name = "Unknown Patient"
+    if appointment.patient:
+        try:
+            patient_name = pii_encryption.decrypt(appointment.patient.full_name)
+        except:
+            patient_name = appointment.patient.full_name or "Unknown Patient"
+
+    # Notify Patient
+    notification_service = NotificationService(db)
+    await notification_service.create_notification(
+        user_id=appointment.patient_id,
+        type="appointment_requested",
+        title="New Appointment Request from Doctor",
+        message=f"Dr. {doctor_name} has requested an appointment for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
+        action_url=f"/appointments/{appointment.id}"
+    )
+    
+    response_dict = {
+        "id": appointment.id,
+        "doctor_id": appointment.doctor_id,
+        "patient_id": appointment.patient_id,
+        "requested_date": appointment.requested_date,
+        "reason": appointment.reason,
+        "status": appointment.status,
+        "created_by": appointment.created_by,
+        "doctor_name": doctor_name,
+        "patient_name": patient_name,
+        "created_at": appointment.created_at,
+        "updated_at": appointment.updated_at
+    }
+    
+    return AppointmentResponse(**response_dict)
+>>>>>>> Stashed changes
 
 @router.get("/patient-appointments", response_model=List[AppointmentResponse])
 async def get_patient_appointments(
@@ -111,6 +213,7 @@ async def get_patient_appointments(
             "requested_date": appt.requested_date,
             "reason": appt.reason,
             "status": appt.status,
+            "created_by": appt.created_by,
             "doctor_notes": appt.doctor_notes,
             "google_event_id": appt.google_event_id,
             "meet_link": appt.meet_link,
@@ -147,7 +250,8 @@ async def update_appointment_status_put(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Doctor updates appointment status (PUT - alias for PATCH).
+    Update appointment status (PUT - alias for PATCH).
+    Can be used by Patient to accept/decline doctor-created appointments.
     """
     return await _do_update_appointment_status(appointment_id, status_update, db, current_user)
 
@@ -159,40 +263,113 @@ async def _do_update_appointment_status(
     current_user: User
 ):
     """Shared logic for PATCH and PUT update_appointment_status"""
-    if current_user.role != "doctor":
-        raise HTTPException(status_code=403, detail="Only doctors can update appointment status")
     
-    query = select(Appointment).where(
-        Appointment.id == appointment_id,
-        Appointment.doctor_id == current_user.id
-    )
+    query = select(Appointment).options(
+        selectinload(Appointment.doctor),
+        selectinload(Appointment.patient)
+    ).where(Appointment.id == appointment_id)
     result = await db.execute(query)
     appointment = result.scalar_one_or_none()
     
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
+
+    # Authorize
+    is_doctor = current_user.role == "doctor" and appointment.doctor_id == current_user.id
+    is_patient = current_user.role == "patient" and appointment.patient_id == current_user.id
+    
+    if not (is_doctor or is_patient):
+        raise HTTPException(status_code=403, detail="Not authorized to update this appointment")
+    
+    # Check if patient is trying to accept/decline a doctor-created appointment
+    if is_patient and appointment.created_by != "doctor":
+        if status_update.status in ["accepted", "completed"]:
+            raise HTTPException(status_code=403, detail="Patients cannot accept their own requests.")
     
     appointment.status = status_update.status
     if status_update.doctor_notes:
         appointment.doctor_notes = status_update.doctor_notes
     appointment.updated_at = datetime.utcnow()
     
+    # Special handling for when an appointment becomes 'accepted'
+    if appointment.status == "accepted":
+        # Generate Google Meet link if not exists
+        if not appointment.meet_link:
+            from app.services.google_meet_service import google_meet_service
+            from app.core.security import pii_encryption
+            
+            p_name = "Patient"
+            d_name = "Doctor"
+            # Decrypt names for Meet summary
+            try:
+                if appointment.patient:
+                    p_name = pii_encryption.decrypt(appointment.patient.full_name)
+            except:
+                pass
+            try:
+                if appointment.doctor:
+                    d_name = pii_encryption.decrypt(appointment.doctor.full_name)
+            except:
+                pass
+                
+            summary = f"Consultation: Dr. {d_name} & {p_name}"
+            # Fetch emails for attendees if possible
+            attendees = []
+            if appointment.patient.email:
+                attendees.append(appointment.patient.email)
+            if appointment.doctor.email:
+                attendees.append(appointment.doctor.email)
+                
+            try:
+                g_event_id, meet_link = await google_meet_service.create_meeting(
+                    start_time=appointment.requested_date,
+                    duration_minutes=30,
+                    summary=summary,
+                    attendees=attendees
+                )
+                appointment.google_event_id = g_event_id
+                appointment.meet_link = meet_link
+            except Exception as e:
+                print(f"Failed to create Google Meet: {e}")
+
     # Sync appointment status to calendar
     from app.services.calendar_service import CalendarService
     calendar_service = CalendarService(db)
     
-    # If declined or cancelled, mark calendar events as cancelled
-    if status_update.status in ["declined", "cancelled"]:
+    # If declined/rejected/cancelled, remove calendar events
+    if status_update.status in ["declined", "cancelled", "rejected"]:
         await calendar_service.sync_appointment_to_calendar(appointment, "cancel")
     else:
+        # If it was pending and now accepted, 'update' in calendar_service 
+        # will handle creation if events don't exist yet (thanks to our recent change)
         await calendar_service.sync_appointment_to_calendar(appointment, "update")
     
     await db.commit()
     await db.refresh(appointment)
     
-    # Notify Patient of cancellation/decline
-    if status_update.status in ["declined", "cancelled"]:
-        notification_service = NotificationService(db)
+    notification_service = NotificationService(db)
+    
+    # Patient accepted/rejected a doctor-created appointment → notify doctor
+    if is_patient and appointment.created_by == "doctor":
+        if status_update.status == "accepted":
+            await notification_service.create_notification(
+                user_id=appointment.doctor_id,
+                type="appointment_accepted",
+                title="Appointment Accepted",
+                message=f"A patient has accepted your appointment request for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
+                action_url=f"/appointments/{appointment.id}"
+            )
+        elif status_update.status in ["rejected", "declined"]:
+            await notification_service.create_notification(
+                user_id=appointment.doctor_id,
+                type="appointment_rejected",
+                title="Appointment Declined",
+                message=f"A patient has declined your appointment request for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
+                action_url=f"/appointments/{appointment.id}"
+            )
+    
+    # Doctor declined/cancelled a patient-created appointment → notify patient
+    elif is_doctor and status_update.status in ["declined", "cancelled"]:
         await notification_service.create_notification(
             user_id=appointment.patient_id,
             type=f"appointment_{status_update.status}",
@@ -363,6 +540,7 @@ async def approve_appointment(
         "requested_date": appointment.requested_date,
         "reason": appointment.reason,
         "status": appointment.status,
+        "created_by": appointment.created_by,
         "doctor_notes": appointment.doctor_notes,
         "google_event_id": appointment.google_event_id,
         "meet_link": final_link,
@@ -422,6 +600,7 @@ async def get_appointment(
         "requested_date": appointment.requested_date,
         "reason": appointment.reason,
         "status": appointment.status,
+        "created_by": appointment.created_by,
         "doctor_notes": appointment.doctor_notes,
         "google_event_id": appointment.google_event_id,
         "meet_link": appointment.meet_link,

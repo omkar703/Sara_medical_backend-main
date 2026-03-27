@@ -195,6 +195,7 @@ async def get_doctor_appointments(
             "requested_date": appt.requested_date,
             "reason": appt.reason,
             "status": appt.status,
+            "created_by": appt.created_by,
             "doctor_notes": appt.doctor_notes,
             "google_event_id": appt.google_event_id,
             "meet_link": appt.meet_link,

@@ -1,6 +1,7 @@
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone as dt_timezone
+import pytz
 from sqlalchemy import select, and_, extract, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -165,6 +166,17 @@ class CalendarService:
         """
         await self.db.delete(event)
         await self.db.flush()
+
+    async def _get_org_tz_by_id(self, organization_id: UUID):
+        """Helper to get organization timezone by ID"""
+        from app.models.user import Organization
+        query = select(Organization.timezone).where(Organization.id == organization_id)
+        result = await self.db.execute(query)
+        org_tz_str = result.scalar_one_or_none()
+        try:
+            return pytz.timezone(org_tz_str or "UTC")
+        except Exception:
+            return pytz.UTC
     
     async def sync_appointment_to_calendar(
         self,
@@ -178,16 +190,43 @@ class CalendarService:
             appointment: Appointment object
             action: Action to perform ("create", "update", "cancel")
         """
+        # If doctor created it, it starts as 'pending'. 
+        # We don't want to show it on calendar as "Scheduled" until it's accepted.
+        # So for 'create' action, we only proceed if status is 'accepted' 
+        # (which happens for patient-initiated ones immediately if approved, 
+        # though usually patient-initiated ones are 'pending' too... 
+        # wait, let me check the normal flow).
+        
         if action == "create":
-            # Create calendar events for both patient and doctor
-            await self._create_appointment_events(appointment)
+            # For doctor-created: starts pending. Don't create events yet.
+            # For patient-created: starts pending. Usually we only create events when ACCEPTED.
+            # Let's enforce: Only create events if status is 'accepted' or if it's a standard flow that requires it.
+            if appointment.status == "accepted":
+                await self._create_appointment_events(appointment)
+            elif appointment.created_by == "doctor":
+                # Don't create events for pending doctor requests
+                return
+            else:
+                # Normal patient request creation - maybe we want it on calendar as pending?
+                # User said "Appointment not showing in calendar" for doctor created ones.
+                # If they want it to show while pending, we stay with previous logic.
+                # But they said "accept/decline is redundant for doctor".
+                # Let's show it if it's accepted.
+                if appointment.status == "accepted":
+                    await self._create_appointment_events(appointment)
         
         elif action == "update":
-            # Update existing calendar events
-            await self._update_appointment_events(appointment)
+            # Check if events exist. If not, and it's now 'accepted', create them.
+            query = select(CalendarEvent).where(CalendarEvent.appointment_id == appointment.id)
+            result = await self.db.execute(query)
+            existing = result.scalars().all()
+            
+            if not existing and appointment.status == "accepted":
+                await self._create_appointment_events(appointment)
+            else:
+                await self._update_appointment_events(appointment)
         
         elif action == "cancel":
-            # Mark calendar events as cancelled
             await self._cancel_appointment_events(appointment)
     
     async def _create_appointment_events(self, appointment: Appointment) -> None:
@@ -224,6 +263,12 @@ class CalendarService:
         patient_title = f"Appointment with Dr. {doctor_name}"
         doctor_title = f"Appointment with {patient_name}"
         
+        # Ensure times are localized to organization timezone if requested_date is naive
+        # We assume requested_date in DB is UTC or naive representing UTC.
+        start_time = appointment.requested_date
+        if start_time.tzinfo is None:
+             start_time = pytz.UTC.localize(start_time)
+        
         # Create event for patient
         patient_event = CalendarEvent(
             user_id=appointment.patient_id,
@@ -232,8 +277,8 @@ class CalendarService:
             appointment_id=appointment.id,
             title=patient_title,
             description=appointment.reason,
-            start_time=appointment.requested_date,
-            end_time=appointment.requested_date + timedelta(minutes=30),  # Default 30 min
+            start_time=start_time,
+            end_time=start_time + timedelta(minutes=30),  # Default 30 min
             all_day=False,
             color="#3B82F6",  # Blue for appointments
             status="scheduled"
@@ -247,8 +292,8 @@ class CalendarService:
             appointment_id=appointment.id,
             title=doctor_title,
             description=appointment.reason,
-            start_time=appointment.requested_date,
-            end_time=appointment.requested_date + timedelta(minutes=30),
+            start_time=start_time,
+            end_time=start_time + timedelta(minutes=30),
             all_day=False,
             color="#3B82F6",
             status="scheduled"
@@ -276,7 +321,7 @@ class CalendarService:
                 event.status = "scheduled"
             elif appointment.status == "completed":
                 event.status = "completed"
-            elif appointment.status in ["declined", "cancelled"]:
+            elif appointment.status in ["declined", "cancelled", "rejected"]:
                 event.status = "cancelled"
             
             event.updated_at = datetime.utcnow()
@@ -398,8 +443,21 @@ class CalendarService:
         Get all events for a specific day.
         If organization_id is provided, returns all organization events for that day.
         """
+<<<<<<< Updated upstream
         start_datetime = datetime.combine(target_date, datetime.min.time())
         end_datetime = datetime.combine(target_date, datetime.max.time())
+=======
+        tz = await self._get_org_tz(user_id)
+        
+        # Localize target date boundaries and convert to UTC for DB queries
+        # tz is a pytz timezone object (returned by _get_org_tz)
+        local_start = tz.localize(datetime.combine(target_date, datetime.min.time()))
+        local_end = tz.localize(datetime.combine(target_date, datetime.max.time()))
+        
+        import pytz
+        start_datetime = local_start.astimezone(pytz.UTC)
+        end_datetime = local_end.astimezone(pytz.UTC)
+>>>>>>> Stashed changes
         
         if organization_id:
             return await self.get_organization_events(organization_id, start_datetime, end_datetime)

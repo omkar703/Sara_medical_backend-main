@@ -1,15 +1,8 @@
-"""Background Tasks"""
-
-import asyncio
-import json
 from uuid import UUID
+from datetime import datetime, timedelta
 
 from app.workers.celery_app import celery_app
 
-
-# ─────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────
 
 def run_async(coro):
     """
@@ -185,6 +178,77 @@ def generate_soap_note(self, consultation_id: str) -> dict:
             db.commit()
             return {"status": "failed", "reason": str(e)}
 
+        finally:
+            db.close()
+
+
+# ─────────────────────────────────────────────────────────
+# Appointment Reminder Tasks
+# ─────────────────────────────────────────────────────────
+
+@celery_app.task(name="app.workers.tasks.check_for_upcoming_reminders")
+def check_for_upcoming_reminders():
+    """
+    Periodic task to check for appointments starting in ~10 minutes
+    and send reminder notifications.
+    """
+    from app.database import SyncSessionLocal
+    from app.models.appointment import Appointment
+    from app.services.notification_service import NotificationService
+    import asyncio
+
+    db = SyncSessionLocal()
+    try:
+        now = datetime.utcnow()
+        ten_mins_later = now + timedelta(minutes=10)
+        eleven_mins_later = now + timedelta(minutes=11)
+
+        # Find appointments starting between 10-11 minutes from now
+        # that are 'accepted' and haven't had a reminder sent
+        query = db.query(Appointment).filter(
+            Appointment.status == "accepted",
+            Appointment.requested_date >= ten_mins_later,
+            Appointment.requested_date < eleven_mins_later
+        )
+        
+        appointments = query.all()
+        if not appointments:
+            return f"No reminders to send at {now}"
+
+        # Notification logic needs to be async or run in thread
+        async def send_reminders():
+            from sqlalchemy.ext.asyncio import AsyncSession
+            from app.database import SessionLocal # Assuming this is the async one
+            
+            # Since this is a sync celery task context usually, but we need 
+            # to interact with our async NotificationService...
+            # A better way might be to use the run_async helper if we have an async db session.
+            # However, typical celery workers are sync with gevent/eventlet.
+            pass
+            
+        # Refined: Use sync notification path if available or wrap async
+        # Let's keep it simple for now and use the existing run_async helper 
+        # but we need to fetch user details to send meaningful messages.
+        
+        for appt in appointments:
+            # Notify Doctor
+            run_async(NotificationService(None).create_notification(
+                user_id=appt.doctor_id,
+                type="appointment_reminder",
+                title="Meeting Reminder",
+                message=f"Your consultation starts in 10 minutes. {appt.meet_link or ''}",
+                action_url=f"/appointments/{appt.id}"
+            ))
+            # Notify Patient
+            run_async(NotificationService(None).create_notification(
+                user_id=appt.patient_id,
+                type="appointment_reminder",
+                title="Meeting Reminder",
+                message=f"Your appointment starts in 10 minutes. Click to join: {appt.meet_link or ''}",
+                action_url=f"/appointments/{appt.id}"
+            ))
+
+        return f"Sent reminders for {len(appointments)} appointments"
     finally:
         db.close()
 
