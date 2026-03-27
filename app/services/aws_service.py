@@ -14,7 +14,12 @@ class AWSService:
         self.access_key = os.getenv("AWS_ACCESS_KEY_ID")
         self.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         
+        self.model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")
+        print(f"[AWSService] Using Bedrock Model ID: {self.model_id}")
+
+        
         if not self.access_key or not self.secret_key:
+
             # warn or just allow init to fail later if not needed immediately
             pass
 
@@ -67,7 +72,7 @@ class AWSService:
 
         try:
             response = client.invoke_model_with_response_stream(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             stream = response.get('body')
@@ -157,7 +162,7 @@ Expected JSON format:
         
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             resp_body = json.loads(response.get('body').read().decode())
@@ -249,7 +254,7 @@ Expected JSON format:
 
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             response_body = json.loads(response.get('body').read())
@@ -276,7 +281,7 @@ Expected JSON format:
 
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             response_body = json.loads(response.get('body').read())
@@ -348,7 +353,7 @@ Expected JSON format:
 
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                modelId=self.model_id,
                 body=body
             )
             response_body = json.loads(response.get('body').read())
