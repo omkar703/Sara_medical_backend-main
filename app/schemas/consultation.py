@@ -33,6 +33,7 @@ class ConsultationUpdate(BaseModel):
     notes: Optional[str] = None
     diagnosis: Optional[str] = None
     prescription: Optional[str] = None
+    soap_note: Optional[dict] = None
     
     @field_validator('status')
     @classmethod
@@ -59,6 +60,7 @@ class ConsultationResponse(BaseModel):
     # Participants
     doctorId: str
     doctorName: Optional[str] = None
+    doctorAvatar: Optional[str] = None
     patientId: str
     patientName: Optional[str] = None
     patientMrn: Optional[str] = None

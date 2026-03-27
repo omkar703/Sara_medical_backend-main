@@ -14,7 +14,12 @@ class AWSService:
         self.access_key = os.getenv("AWS_ACCESS_KEY_ID")
         self.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         
+        self.model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20241022-v2:0")
+        print(f"[AWSService] Using Bedrock Model ID: {self.model_id}")
+
+        
         if not self.access_key or not self.secret_key:
+
             # warn or just allow init to fail later if not needed immediately
             pass
 
@@ -67,7 +72,7 @@ class AWSService:
 
         try:
             response = client.invoke_model_with_response_stream(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             stream = response.get('body')
@@ -157,7 +162,7 @@ Expected JSON format:
         
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             resp_body = json.loads(response.get('body').read().decode())
@@ -249,7 +254,7 @@ Expected JSON format:
 
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             response_body = json.loads(response.get('body').read())
@@ -276,7 +281,7 @@ Expected JSON format:
 
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0", 
+                modelId=self.model_id, 
                 body=body
             )
             response_body = json.loads(response.get('body').read())
@@ -318,12 +323,14 @@ Expected JSON format:
             "- Assessment: Synthesize a clinical impression or diagnosis based on the encounter. "
             "Include differential diagnoses if discussed.\n"
             "- Plan: Detail the actionable next steps: medications (name, dose, frequency), "
-            "diagnostic tests ordered, lifestyle advice, and follow-up timing.\n\n"
+            "diagnostic tests ordered, lifestyle advice, and follow-up timing.\n"
+            "- Patient Summary: A concise, empathetic summary of the visit written in simple, non-clinical language "
+            "intended for the patient to understand their health status and next steps.\n\n"
             "STRICT CONSTRAINTS:\n"
             "1. Output ONLY a raw JSON object. No markdown blocks, no commentary.\n"
-            "2. Keys MUST be: 'subjective', 'objective', 'assessment', 'plan'.\n"
+            "2. Keys MUST be: 'subjective', 'objective', 'assessment', 'plan', 'patient_summary'.\n"
             "3. Do NOT hallucinate data. If a section has no evidence, summarize as 'No data provided in transcript'.\n"
-            "4. Language must be clinical and concise.\n"
+            "4. Language for SOAP sections must be clinical and concise. Language for 'patient_summary' must be layperson-friendly.\n"
         )
 
         user_message = (
@@ -346,7 +353,7 @@ Expected JSON format:
 
         try:
             response = client.invoke_model(
-                modelId="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                modelId=self.model_id,
                 body=body
             )
             response_body = json.loads(response.get('body').read())
@@ -355,8 +362,8 @@ Expected JSON format:
             # Parse the JSON response from Claude
             soap_dict = json.loads(raw_text)
 
-            # Validate all four SOAP keys are present
-            required_keys = {"subjective", "objective", "assessment", "plan"}
+            # Validate all five SOAP keys are present
+            required_keys = {"subjective", "objective", "assessment", "plan", "patient_summary"}
             if not required_keys.issubset(soap_dict.keys()):
                 raise ValueError(f"Missing SOAP keys in response: {soap_dict.keys()}")
 
@@ -400,6 +407,10 @@ Expected JSON format:
             ),
             "plan": (
                 f"[MOCK — Bedrock unavailable] {plan_summary}"
+            ),
+            "patient_summary": (
+                f"[MOCK — Bedrock unavailable] You spoke with your doctor about your health. "
+                f"We've recorded the key points and your treatment plan below."
             ),
         }
 

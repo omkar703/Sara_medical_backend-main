@@ -14,7 +14,7 @@ from app.schemas.consultation import ClinicalDashboardMetrics
 from app.models.task import Task
 
 from app.database import get_db
-from app.core.deps import get_current_user, get_organization_id
+from app.core.deps import get_current_user, get_organization_id, require_role
 from app.models.user import User
 from app.models.patient import Patient
 from app.models.appointment import Appointment
@@ -50,8 +50,9 @@ class DoctorPatientListItem(BaseModel):
     dob: str
     mrn: str
     email: Optional[str] = None
+    avatar: Optional[str] = None
     last_visit: Optional[str] = Field(None, alias="lastVisit")
-    problem: Optional[str] = None
+    problem: Optional[str] = Field("General", alias="problem")
 
     class Config:
         populate_by_name = True
@@ -64,15 +65,16 @@ class DoctorPatientListResponse(BaseModel):
 @router.get("/patients", response_model=DoctorPatientListResponse)
 async def get_doctor_patients(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["doctor", "hospital", "admin"])),
     organization_id: UUID = Depends(get_organization_id)
 ):
     """
     Retrieve all patients associated with the doctor's organization, 
     as well as a separate list of recently visited patients.
     """
-    if current_user.role != "doctor":
-        raise HTTPException(status_code=403, detail="Only doctors can access this directory")
+    # The role check is now handled by the require_role dependency
+    # if current_user.role != "doctor":
+    #     raise HTTPException(status_code=403, detail="Only doctors can access this directory")
 
     # Fetch patients and their latest completed consultation date in a single query
     lv_subquery = (
@@ -93,6 +95,15 @@ async def get_doctor_patients(
         Patient.organization_id == organization_id, 
         Patient.deleted_at == None
     )
+    
+    if current_user.role == "doctor":
+        query = query.where(
+            or_(
+                Patient.primary_doctor_id == current_user.id,
+                Patient.created_by == current_user.id
+            )
+        )
+        
     result = await db.execute(query)
     rows = result.all()
 
@@ -127,6 +138,19 @@ async def get_doctor_patients(
             email = u.email
 
 
+        # Generate avatar presigned URL for the list
+        avatar_link = None
+        if u and u.avatar_url:
+            from app.services.minio_service import minio_service
+            from app.config import settings
+            try:
+                avatar_link = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=u.avatar_url
+                )
+            except Exception as e:
+                print(f"Error generating avatar URL for {p.id}: {e}")
+
         item = DoctorPatientListItem(
             id=p.id,
             name=name,
@@ -134,6 +158,7 @@ async def get_doctor_patients(
             dob=dob,
             mrn=p.mrn,
             email=email,
+            avatar=avatar_link,
             lastVisit=last_visit_str,
             problem=p.medical_history or "General"
         )
@@ -177,7 +202,16 @@ async def get_doctor_appointments(
     
     result = await db.execute(query)
     appointments = result.scalars().all()
-    
+
+    # Build patient_id -> User lookup for avatars
+    from app.models.user import User as UserModel
+    patient_ids = list({appt.patient_id for appt in appointments if appt.patient_id})
+    user_map = {}
+    if patient_ids:
+        u_result = await db.execute(select(UserModel).where(UserModel.id.in_(patient_ids)))
+        for u in u_result.scalars().all():
+            user_map[u.id] = u
+
     response_list = []
     for appt in appointments:
         patient_name = "Unknown Patient"
@@ -186,7 +220,21 @@ async def get_doctor_appointments(
                 patient_name = pii_encryption.decrypt(appt.patient.full_name)
             except:
                 patient_name = appt.patient.full_name or "Unknown Patient"
-        
+
+        # Generate patient avatar presigned URL
+        patient_avatar = None
+        patient_user = user_map.get(appt.patient_id)
+        if patient_user and patient_user.avatar_url:
+            from app.services.minio_service import minio_service
+            from app.config import settings
+            try:
+                patient_avatar = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=patient_user.avatar_url
+                )
+            except Exception as e:
+                print(f"Error generating patient avatar URL for {appt.patient_id}: {e}")
+
         # Construct response dict to include the decrypted name
         response_dict = {
             "id": appt.id,
@@ -205,7 +253,8 @@ async def get_doctor_appointments(
             "meeting_password": getattr(appt, 'meeting_password', None),
             "created_at": appt.created_at,
             "updated_at": appt.updated_at,
-            "patient_name": patient_name  # Injected decrypted name
+            "patient_name": patient_name,  # Injected decrypted name
+            "patient_avatar": patient_avatar  # Injected presigned avatar URL
         }
         response_list.append(AppointmentResponse(**response_dict))
 
@@ -677,6 +726,11 @@ async def get_single_patient(
         email = patient.email
 
     try:
+        home_phone = pii_encryption.decrypt(patient.home_phone) if patient.home_phone else None
+    except:
+        home_phone = patient.home_phone
+
+    try:
         medical_history = pii_encryption.decrypt(patient.medical_history) if patient.medical_history else None
     except:
         medical_history = patient.medical_history
@@ -792,6 +846,7 @@ async def get_single_patient(
         gender=patient.gender,
         avatar_url=avatar_link,
         phone_number=phone,
+        home_phone=home_phone,
         email=email,
         address=address_dict,
         emergency_contact=emergency_contact_dict,
@@ -850,6 +905,8 @@ async def update_patient_details(
             patient.date_of_birth = pii_encryption.encrypt(value.strftime("%Y-%m-%d"))
         elif field == "phone_number":
             patient.phone_number = pii_encryption.encrypt(value)
+        elif field == "home_phone":
+            patient.home_phone = pii_encryption.encrypt(value)
         elif field == "email":
             patient.email = pii_encryption.encrypt(value)
         elif field == "medical_history":
@@ -888,12 +945,13 @@ async def add_patient_health_metric(
     patient_id: UUID,
     metric_in: HealthMetricCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["doctor", "hospital", "admin"])),
     organization_id: UUID = Depends(get_organization_id)
 ):
     """Add a new health metric (vital sign) for a patient."""
-    if current_user.role != "doctor":
-        raise HTTPException(status_code=403, detail="Access denied")
+    # The role check is now handled by the require_role dependency
+    # if current_user.role != "doctor":
+    #     raise HTTPException(status_code=403, detail="Access denied")
         
     # Verify patient exists and belongs to the doctor's organization
     query = select(Patient).where(
@@ -930,12 +988,13 @@ async def edit_patient_health_metric(
     metric_id: UUID,
     metric_in: HealthMetricCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["doctor", "hospital", "admin"])),
     organization_id: UUID = Depends(get_organization_id)
 ):
     """Edit an existing health metric for a patient (e.g. fixing a typo)."""
-    if current_user.role != "doctor":
-        raise HTTPException(status_code=403, detail="Access denied")
+    # The role check is now handled by the require_role dependency
+    # if current_user.role != "doctor":
+    #     raise HTTPException(status_code=403, detail="Access denied")
         
     # Verify the specific metric exists and belongs to the patient
     query = select(HealthMetric).where(

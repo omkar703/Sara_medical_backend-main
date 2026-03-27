@@ -4,6 +4,7 @@ from datetime import datetime, date
 from typing import Optional
 from uuid import UUID
 import phonenumbers
+import re
 
 from pydantic import BaseModel, EmailStr, Field, validator
 
@@ -77,6 +78,7 @@ class UserResponse(BaseModel):
     
     role: str
     organization_id: UUID
+    organization_name: Optional[str] = "Default Org"
     mfa_enabled: bool
     email_verified: bool
     avatar_url: Optional[str] = None
@@ -198,8 +200,68 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = None
     
 class HospitalRegistrationRequest(BaseModel):
-    organization_name: str = Field(..., description="The name of the hospital/clinic")
+    organization_name: Optional[str] = Field("Default Hospital", description="The name of the hospital/clinic")
     admin_name: str = Field(..., description="Full name of the hospital administrator")
     email: EmailStr = Field(..., description="Login email for the hospital admin")
     phone_number: str = Field(..., description="Contact phone number")
     password: str = Field(..., min_length=8, description="Secure password")
+
+class OnboardingSignupRequest(BaseModel):
+    name: str = Field(..., description="Full name of the user")
+    email: EmailStr = Field(..., description="Email address")
+    password: Optional[str] = Field(None, min_length=8, description="Password (optional for social auth)")
+    role: str = Field(..., pattern="^(doctor|hospital)$", description="Role: doctor or hospital")
+
+class OnboardingSignupResponse(BaseModel):
+    message: str
+    token: str
+
+class BaseOnboardingRequest(BaseModel):
+    password: Optional[str] = Field(None, min_length=8)
+    confirm_password: Optional[str] = Field(None, min_length=8)
+    phone_number: Optional[str] = None
+    
+    @validator('confirm_password')
+    def passwords_match(cls, v, values):
+        if v and 'password' in values and values['password'] and v != values['password']:
+            raise ValueError('Passwords do not match')
+        return v
+        
+    @validator('password')
+    def password_complexity(cls, v):
+        if not v:
+            return v
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one number')
+        if not re.search(r'[^a-zA-Z0-9]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+
+class DoctorOnboardingRequest(BaseOnboardingRequest):
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    department: Optional[str] = None
+    department_role: Optional[str] = None
+
+class HospitalOnboardingRequest(BaseOnboardingRequest):
+    organization_name: str
+    departments: Optional[str] = None
+    timezone: Optional[str] = "UTC"
+    date_format: Optional[str] = "DD/MM/YYYY"
+    org_email: Optional[EmailStr] = None
+
+class SelectRoleRequest(BaseModel):
+    role: str = Field(..., pattern="^(doctor|hospital)$", description="Role to select")
+    temp_token: str = Field(..., description="Temporary token from Google callback")
+    phone_number: Optional[str] = Field(None, description="Contact phone number")
+    password: str = Field(..., min_length=8, description="Secure password")
+
+class OnboardingUpdateRequest(BaseModel):
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    gender: Optional[str] = None
+    organization_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None

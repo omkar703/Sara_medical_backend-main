@@ -126,7 +126,9 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_EXTERNAL_ENDPOINT=107.20.98.130:9010
+      # MINIO_EXTERNAL_ENDPOINT must be host:port only (no http://) - used directly by Minio() client
+      # On EC2, set this in .env to your public IP: MINIO_EXTERNAL_ENDPOINT=<EC2_IP>:9010
+      - MINIO_EXTERNAL_ENDPOINT=${MINIO_EXTERNAL_ENDPOINT:-localhost:9010}
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,6 +175,7 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_EXTERNAL_ENDPOINT=${MINIO_EXTERNAL_ENDPOINT:-localhost:9010}
     depends_on:
       postgres:
         condition: service_healthy
@@ -212,6 +215,7 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-SaraMed1c0_Redis_2024!SecurePass}@redis:6379/2
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_EXTERNAL_ENDPOINT=${MINIO_EXTERNAL_ENDPOINT:-localhost:9010}
     depends_on:
       celery_worker:
         condition: service_started
@@ -225,19 +229,43 @@ services:
   # ============================================
   frontend:
     build:
-      context: ../saramedico-deploy
+      # On EC2, set FRONTEND_PATH=../saramedico-deploy in .env or export it
+      context: ${FRONTEND_PATH:-../saramedico-deploy}
       dockerfile: Dockerfile
       args:
-        # Pass the Next.js build-time variables for internal proxy routing
-        NEXT_PUBLIC_API_URL: http://backend:8000/api/v1
+        # At BUILD time, bake the public API URL into the Next.js client bundle.
+        # When Nginx is in front, the browser hits the SAME origin on port 80,
+        # so we use a relative path.  Override with a full URL if needed.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
     container_name: saramedico_frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
     ports:
       - "3000:3000"
     depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - saramedico_network
+
+  # ============================================
+  # Nginx Reverse Proxy (Single Entry Point)
+  # ============================================
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
+    container_name: saramedico_nginx
+    ports:
+      - "8080:80"
+    depends_on:
+      - frontend
       - backend
     restart: unless-stopped
     networks:
       - saramedico_network
+
 
 # ============================================
 # Persistent Volumes

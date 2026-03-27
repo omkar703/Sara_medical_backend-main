@@ -53,14 +53,23 @@ class User(Base):
     
     # Authentication
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)
+    auth_provider = Column(
+        Enum("email", "google", "apple", name="auth_provider_enum"),
+        default="email",
+        nullable=False
+    )
     
     # Social Auth (New Fields)
     google_id = Column(String(255), unique=True, nullable=True, index=True)
     apple_id = Column(String(255), unique=True, nullable=True, index=True)
     
+    # --- ADD THESE TWO NEW FIELDS ---
+    google_access_token = Column(Text, nullable=True)
+    apple_refresh_token = Column(Text, nullable=True)
+    
     # Profile
-    full_name = Column(String(255), nullable=False)  # Encrypted
+    full_name = Column(String(255), nullable=False)
     role = Column(
         Enum("patient", "doctor", "admin", "hospital", name="user_role"),
         nullable=False
@@ -100,8 +109,23 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
     
-    # Soft delete
+    # Soft delete & Status
+    is_active = Column(Boolean, default=True, nullable=False)
+    account_status = Column(
+        Enum("pending_onboarding", "pending_verification", "active", "suspended", name="account_status"),
+        default="active",
+        nullable=False
+    )
+    onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+        
+    @property
+    def has_password(self) -> bool:
+        return bool(self.password_hash)
     
     # Relationships
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")

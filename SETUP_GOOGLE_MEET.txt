@@ -1,0 +1,72 @@
+# Real Google Meet - Quick Reference
+
+## Changes Made
+
+✅ **`app/services/consultation_service.py`**
+- Line 69: Now calls real Google Meet API
+- Line 84: Raises error if credentials missing
+- Removed unused mock import
+
+✅ **`app/api/v1/appointments.py`**
+- Line 322: Now calls real Google Meet API  
+- Removed mock service logic
+- Fails with clear error if credentials missing
+
+✅ **`app/api/v1/consultations.py`**
+- Removed unused mock import
+
+## Setup (2 minutes)
+
+1. **Get Google Credentials**
+   - Go to: https://console.cloud.google.com/
+   - Create project, enable Calendar API
+   - Create OAuth 2.0 desktop credentials
+   - Get refresh token
+
+2. **Add to .env**
+   ```env
+   GOOGLE_CLIENT_ID=your-id
+   GOOGLE_CLIENT_SECRET=your-secret
+   GOOGLE_REFRESH_TOKEN=your-token
+   ```
+
+3. **Restart Backend**
+   ```bash
+   # Stop with Ctrl+C
+   # Restart: python -m uvicorn app.main:app --reload
+   ```
+
+## Test
+
+```bash
+python3 test_google_meet_simple.py
+```
+
+Should see:
+```
+✅ Meeting created successfully!
+✅ Link format is valid (real Google Meet link)
+SUCCESS! Real Google Meet integration is working!
+```
+
+## What It Does
+
+**Before:** Mock link → `https://meet.google.com/mock-8830-ecf7` ❌  
+**After:** Real link → `https://meet.google.com/abc-defg-hij-klm` ✅
+
+When you schedule a consultation:
+1. Google Calendar API creates real event
+2. Google Meet room automatically generated
+3. Calendar invites sent to both parties
+4. Real meeting link returned
+5. Meeting can be recorded & transcribed
+
+## Files Changed
+
+- `app/services/consultation_service.py`
+- `app/api/v1/appointments.py`
+- `app/api/v1/consultations.py`
+- `test_google_meet_simple.py` (new test script)
+- `GOOGLE_MEET_FIX.md` (this guide)
+
+Done! 🚀

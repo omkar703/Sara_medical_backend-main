@@ -12,7 +12,6 @@ from app.models.consultation import Consultation
 from app.models.patient import Patient
 from app.models.user import User
 from app.services.google_meet_service import google_meet_service as real_google_meet_service
-from app.services.mock_google_meet import google_meet_service as mock_google_meet_service
 from app.config import settings
 from app.core.security import pii_encryption
 from app.models.recent_doctors import RecentDoctor  
@@ -67,24 +66,22 @@ class ConsultationService:
 
         google_event_id, meet_link = None, None
         try:
-            # Determine which service to use
-            use_real = settings.FEATURE_VIDEO_CALLS and getattr(real_google_meet_service, "_available", False)
-            meet_service = real_google_meet_service if use_real else mock_google_meet_service
-            
-            print(f"[Consultation Service] Using {'REAL' if use_real else 'MOCK'} Google Meet service")
-            
-            google_event_id, meet_link = await meet_service.create_meeting(
+            # Use real Google Meet service for consultation scheduling
+            google_event_id, meet_link = await real_google_meet_service.create_meeting(
                 start_time=scheduled_at,
                 duration_minutes=duration_minutes,
                 summary=meeting_topic,
                 description=f"Medical consultation for {patient.mrn}",
                 attendees=attendees
             )
+            print(f"[Consultation Service] ✅ Real Google Meet link generated successfully")
         except Exception as e:
-            print(f"[Consultation Service] ⚠ Meet service failed: {e}. Falling back to hardcoded mock.")
-            from uuid import uuid4
-            google_event_id = str(uuid4())
-            meet_link = f"https://meet.google.com/mock-{uuid4().hex[:4]}-{uuid4().hex[:4]}"
+            print(f"[Consultation Service] ⚠ Real Google Meet service failed: {e}")
+            print(f"[Consultation Service] Ensure Google credentials are configured in .env:")
+            print(f"[Consultation Service]   - GOOGLE_CLIENT_ID")
+            print(f"[Consultation Service]   - GOOGLE_CLIENT_SECRET")
+            print(f"[Consultation Service]   - GOOGLE_REFRESH_TOKEN")
+            raise
         
         print(f"[Consultation Service] Resulting meet_link: {meet_link}")
 
@@ -355,14 +352,14 @@ class ConsultationService:
             if hasattr(consultation, field) and value is not None:
                 setattr(consultation, field, value)
         
-        # Trigger the sync and SOAP note generation on completion
+        # Update completion time if finishing
         if is_completing:
+            consultation.completion_time = datetime.utcnow()
             await self._sync_recent_connections(consultation)
-            # Dispatch background task: fetch transcript + generate SOAP note via Bedrock
-            # Added a slight delay (countdown=3) to prevent Race Conditions 
-            # where the celery task fires before the DB commits its status.
-            from app.workers.tasks import generate_soap_note
-            generate_soap_note.apply_async(args=[str(consultation.id)], countdown=3)
+            # We no longer trigger AI SOAP generation automatically here.
+            # The doctor now triggers it manually from the SOAP page 
+            # after the transcript is confirmed as 'Available'.
+            # This ensures better data quality and follows the new workflow.
         
         await self.db.flush()
         return consultation

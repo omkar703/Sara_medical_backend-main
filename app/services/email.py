@@ -8,6 +8,8 @@ from typing import Optional
 from jinja2 import Template
 
 from app.config import settings
+import logging
+logger = logging.getLogger(__name__)
 
 
 async def send_email(
@@ -50,13 +52,12 @@ async def send_email(
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER or None,
             password=settings.SMTP_PASSWORD or None,
-            use_tls=settings.SMTP_TLS,
-            start_tls=settings.SMTP_SSL,
+            use_tls=settings.SMTP_SSL,
+            start_tls=settings.SMTP_TLS,
         )
         return True
     except Exception as e:
-        # Log error in production
-        print(f"Failed to send email to {to_email}: {str(e)}")
+        logger.error(f"Failed to send email to {to_email}: {type(e).__name__}: {str(e)}")
         return False
 
 
@@ -64,7 +65,6 @@ async def send_verification_email(to_email: str, verification_token: str, user_n
     """
     Send email verification email
 """
-    from typing import Optional
         
     verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={verification_token}"
     
@@ -286,4 +286,99 @@ async def send_doctor_credentials_email(
         subject=f"Your Saramedico Account Credentials for {org_name}",
         html_content=html_template,
         text_content=f"Your account was created. Email: {to_email}, Password: {password}. Please login at {login_url}"
+    )
+
+
+async def send_contact_form_email(
+    sender_name: str,
+    sender_email: str,
+    sender_phone: str,
+    subject: str,
+    message: str,
+    to_email: str = "enterprise@saramedico.com"
+) -> bool:
+    """
+    Send a contact form message to enterprise email
+
+    Args:
+        sender_name: Name of the person submitting the form
+        sender_email: Email of the sender
+        sender_phone: Phone number of the sender
+        subject: Subject of the message
+        message: Message content
+        to_email: Recipient email (default: enterprise@saramedico.com)
+
+    Returns:
+        True if email sent successfully, False otherwise
+    """
+    html_template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4F46E5; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9fafb; }
+            .sender-info { background-color: #E5E7EB; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+            .sender-info p { margin: 8px 0; }
+            .message-content { background-color: #fff; padding: 15px; border-left: 4px solid #4F46E5; }
+            .footer { padding: 20px; text-align: center; font-size: 12px; color: #6b7280; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>New Contact Form Submission</h1>
+            </div>
+            <div class="content">
+                <h2>Message from Contact Form</h2>
+                
+                <div class="sender-info">
+                    <p><strong>Name:</strong> {{ sender_name }}</p>
+                    <p><strong>Email:</strong> {{ sender_email }}</p>
+                    <p><strong>Phone:</strong> {{ sender_phone }}</p>
+                </div>
+                
+                <h3>Subject: {{ subject }}</h3>
+                <div class="message-content">
+                    <p>{{ message_content }}</p>
+                </div>
+                
+            </div>
+            <div class="footer">
+                <p>&copy; 2026 Saramedico. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    template = Template(html_template)
+    html_content = template.render(
+        sender_name=sender_name,
+        sender_email=sender_email,
+        sender_phone=sender_phone,
+        subject=subject,
+        message_content=message.replace("\n", "<br>")
+    )
+
+    text_content = f"""
+New Contact Form Submission
+
+Name: {sender_name}
+Email: {sender_email}
+Phone: {sender_phone}
+
+Subject: {subject}
+
+Message:
+{message}
+    """
+
+    return await send_email(
+        to_email=to_email,
+        subject=f"[Contact Form] {subject} - from {sender_name}",
+        html_content=html_content,
+        text_content=text_content
     )

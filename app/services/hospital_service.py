@@ -34,16 +34,14 @@ class HospitalService:
             ).subquery()
         )
 
-        # Query 2: Today's Appointments (from CalendarEvents)
-        from app.models.calendar_event import CalendarEvent
-        
+        # Query 2: Today's Appointments (from Consultations)
         appointments_stmt = select(func.count()).select_from(
-            select(CalendarEvent).where(
-                CalendarEvent.organization_id == organization_id,
-                CalendarEvent.event_type == "appointment",
-                CalendarEvent.start_time >= start_of_today,
-                CalendarEvent.start_time <= end_of_today,
-                CalendarEvent.status != "cancelled"
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.scheduled_at >= start_of_today,
+                Consultation.scheduled_at <= end_of_today,
+                Consultation.status != "cancelled",
+                Consultation.deleted_at.is_(None)
             ).subquery()
         )
 
@@ -82,17 +80,89 @@ class HospitalService:
             "recentActivities": recent_activities
         }
         
+    async def get_appointments_overview(self, organization_id: UUID) -> dict:
+        """
+        Get overview metrics for appointments including:
+        - Total scheduled appointments
+        - Total accepted appointments
+        - Transcriptions in queue (AI processing pending)
+        - Pending notes (consultations needing doctor notes/SOAP)
+        """
+        from app.models.ai_processing_queue import AIProcessingQueue
+        
+        # Query 1: Count scheduled appointments
+        scheduled_stmt = select(func.count()).select_from(
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.status == "scheduled",
+                Consultation.deleted_at.is_(None)
+            ).subquery()
+        )
+        
+        # Query 2: Count accepted appointments
+        accepted_stmt = select(func.count()).select_from(
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.status == "completed",
+                Consultation.deleted_at.is_(None)
+            ).subquery()
+        )
+        
+        # Query 3: Count transcriptions in queue (pending or processing AI requests)
+        transcriptions_stmt = select(func.count()).select_from(
+            select(AIProcessingQueue).where(
+                AIProcessingQueue.organization_id == organization_id,
+                AIProcessingQueue.status.in_(["pending", "processing"]),
+                AIProcessingQueue.request_type == "transcription"
+            ).subquery()
+        )
+        
+        # Query 4: Count pending notes (completed consultations with visit_state needing review)
+        pending_notes_stmt = select(func.count()).select_from(
+            select(Consultation).where(
+                Consultation.organization_id == organization_id,
+                Consultation.status == "completed",
+                Consultation.visit_state.in_(["Needs Review", "Draft Ready"]),
+                Consultation.deleted_at.is_(None)
+            ).subquery()
+        )
+        
+        # Execute queries sequentially to avoid session concurrency issues
+        scheduled_result = await self.db.execute(scheduled_stmt)
+        accepted_result = await self.db.execute(accepted_stmt)
+        transcriptions_result = await self.db.execute(transcriptions_stmt)
+        pending_notes_result = await self.db.execute(pending_notes_stmt)
+        
+        # Extract values
+        scheduled_count = scheduled_result.scalar() or 0
+        accepted_count = accepted_result.scalar() or 0
+        transcriptions_count = transcriptions_result.scalar() or 0
+        pending_notes_count = pending_notes_result.scalar() or 0
+        
+        return {
+            "metrics": {
+                "scheduledAppointments": scheduled_count,
+                "acceptedAppointments": accepted_count,
+                "transcriptionsInQueue": transcriptions_count,
+                "pendingNotes": pending_notes_count
+            }
+        }
+        
     async def get_hospital_directory(self, organization_id: UUID) -> dict:
         pii_encryption = PIIEncryption()
         
-        # Query 1: Fetch all active doctors for this organization
+        # Query 1: Fetch all active doctors CREATED by this hospital organization
         doctors_stmt = select(User).where(
             User.organization_id == organization_id,
             User.role == "doctor",
             User.deleted_at.is_(None)
         ).order_by(User.created_at.desc())
 
-        # Query 2: Fetch all active patients for this organization
+        # Query 2: Fetch all active patients onboarded through this hospital's organization.
+        # This covers both:
+        #   (a) Patients directly onboarded by the hospital admin (created_by = hospital user)
+        #   (b) Patients onboarded by doctors belonging to this hospital (same organization_id)
+        # The organization_id on Patient is always set to the creator's org at onboarding time.
         patients_stmt = select(Patient).where(
             Patient.organization_id == organization_id,
             Patient.deleted_at.is_(None)
@@ -121,6 +191,19 @@ class HospitalService:
             except Exception:
                 phone = doc.phone_number
 
+            # Generate avatar preview URL if available
+            avatar_preview = None
+            if doc.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=doc.avatar_url
+                    )
+                except Exception:
+                    pass
+
             doctors_list.append({
                 "id": str(doc.id),
                 "name": name,
@@ -129,6 +212,7 @@ class HospitalService:
                 "department": doc.department,
                 "department_role": doc.department_role,
                 "phone": phone,
+                "avatar_url": avatar_preview,
                 "joinedAt": doc.created_at
             })
 
@@ -147,12 +231,26 @@ class HospitalService:
             except Exception:
                 dob = pat.date_of_birth
 
+            # Patient avatar logic: check linked user if possible
+            avatar_preview = None
+            if hasattr(pat, 'user') and pat.user and pat.user.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=pat.user.avatar_url
+                    )
+                except Exception:
+                    pass
+
             patients_list.append({
                 "id": str(pat.id),
                 "name": name,
                 "mrn": pat.mrn,
                 "gender": pat.gender,
                 "dateOfBirth": dob,
+                "avatar_url": avatar_preview,
                 "joinedAt": pat.created_at
             })
 
@@ -208,7 +306,8 @@ class HospitalService:
             .subquery()
         )
 
-        # Outer join the Patient table to the subquery
+        # Outer join the Patient table to the subquery.
+        # Only show patients onboarded through this hospital's organization.
         patients_table_stmt = (
             select(Patient, last_visit_subq.c.last_visit)
             .outerjoin(last_visit_subq, Patient.id == last_visit_subq.c.patient_id)
@@ -251,11 +350,25 @@ class HospitalService:
                 print(f"[Warning] Failed to format last_visit for patient {pat.id}: {e}")
                 formatted_last_visit = str(last_visit_dt) if last_visit_dt else None
 
+            # Generate avatar preview URL if available for patient (via linked user)
+            avatar_preview = None
+            if hasattr(pat, 'user') and pat.user and pat.user.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=pat.user.avatar_url
+                    )
+                except Exception:
+                    pass
+
             patients_list.append({
                 "id": str(pat.id),
                 "mrn": pat.mrn,
                 "name": name,
                 "gender": pat.gender,
+                "avatar_url": avatar_preview,
                 "lastVisit": formatted_last_visit
             })
 
@@ -272,9 +385,11 @@ class HospitalService:
         pii_encryption = PIIEncryption()
 
         # Query: Fetch all non-patient users (doctors, admins, hospital managers)
+        # Only users belonging to this hospital's organization, explicitly excluding
+        # patients and any soft-deleted accounts.
         staff_stmt = select(User).where(
             User.organization_id == organization_id,
-            User.role != "patient",
+            User.role.in_(["doctor", "hospital", "admin"]),
             User.deleted_at.is_(None)
         ).order_by(User.created_at.desc())
 
@@ -304,13 +419,28 @@ class HospitalService:
             # Determine Status
             display_status = getattr(u, 'staff_status', None) or "Active"
 
+            # Generate avatar preview URL if available
+            avatar_preview = None
+            if u.avatar_url:
+                try:
+                    from app.services.minio_service import minio_service
+                    from app.config import settings
+                    avatar_preview = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=u.avatar_url
+                    )
+                except Exception:
+                    pass
+
             staff_list.append({
                 "id": str(u.id),
                 "name": name,
                 "role": display_role,
+                "system_role": u.role, # Base role for reliable filtering (e.g., 'doctor')
                 "specialty": u.specialty,
                 "email": u.email,
                 "phone": phone,
+                "avatar_url": avatar_preview,
                 "status": display_status
             })
 

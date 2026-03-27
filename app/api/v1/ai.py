@@ -84,6 +84,10 @@ class SendMessageRequest(BaseModel):
     document_id: Optional[UUID] = None
 
 
+class RenameSessionRequest(BaseModel):
+    title: str = Field(..., max_length=255, description="New title for the session")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Document Processing (existing, unchanged)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -207,6 +211,72 @@ async def create_chat_session(
         created_at=session.created_at.isoformat(),
         updated_at=session.updated_at.isoformat(),
     )
+
+
+@router.patch(
+    "/chat/session/{session_id}",
+    response_model=SessionResponse,
+    summary="Rename an AI chat session",
+)
+async def rename_chat_session(
+    session_id: UUID,
+    request: RenameSessionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Rename an existing chat session. Only the owning doctor can rename it.
+    """
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only doctors can rename chat sessions")
+
+    session_svc = ChatSessionService(db)
+    session = await session_svc.get_session(session_id=session_id, doctor_id=current_user.id)
+
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found or access denied")
+
+    await session_svc.set_title(session_id, request.title)
+    
+    # Refresh session data to return updated title
+    updated_session = await session_svc.get_session(session_id, current_user.id)
+
+    return SessionResponse(
+        session_id=updated_session.id,
+        title=updated_session.title,
+        patient_id=updated_session.patient_id,
+        created_at=updated_session.created_at.isoformat(),
+        updated_at=updated_session.updated_at.isoformat(),
+    )
+
+
+@router.delete(
+    "/chat/session/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an AI chat session",
+)
+async def delete_chat_session(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete an existing chat session and all its messages.
+    Only the owning doctor can delete it.
+    """
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only doctors can delete chat sessions")
+
+    session_svc = ChatSessionService(db)
+    success = await session_svc.delete_session(session_id=session_id, doctor_id=current_user.id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Session not found or access denied"
+        )
+    
+    return None
 
 
 @router.get(

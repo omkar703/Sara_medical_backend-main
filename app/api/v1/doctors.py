@@ -1,24 +1,17 @@
 from typing import Optional, List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_active_user
 from app.models.user import User
 from app.schemas.doctor import DoctorSearchResponse, DoctorSearchItem
 from app.core.security import pii_encryption
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from app.models.recent_patients import RecentPatient
-from app.schemas.recent_patients import RecentPatientResponse
-from fastapi import APIRouter, Depends, status
-
-from app.core.deps import get_current_active_user
 from app.models.doctor_status import DoctorStatus
 from app.schemas.doctor_status import DoctorStatusUpdateRequest, DoctorStatusResponse
-from typing import List
 
 router = APIRouter(prefix="/doctors", tags=["Public Directory"])
 
@@ -69,18 +62,31 @@ async def search_doctors(
             if query.lower() not in full_name.lower():
                 continue
         
+        # Generate avatar preview URL if available
+        avatar_preview = None
+        if d.avatar_url:
+            try:
+                from app.services.minio_service import minio_service
+                from app.config import settings
+                avatar_preview = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=d.avatar_url
+                )
+            except Exception:
+                pass
+
         filtered_doctors.append(DoctorSearchItem(
             id=d.id,
             name=full_name,
             specialty=d.specialty,
-            photo_url=d.avatar_url
+            photo_url=avatar_preview
         ))
         
     return DoctorSearchResponse(results=filtered_doctors)
 
 @router.get("/directory", response_model=DoctorSearchResponse)
 async def search_global_doctor_directory(
-    query: Optional[str] = Query(None, min_length=2, description="Search by doctor name"),
+    query: Optional[str] = Query(None, description="Search by doctor name"),
     specialty: Optional[str] = Query(None, description="Filter by specialty"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -89,9 +95,22 @@ async def search_global_doctor_directory(
     Patient-facing Directory Search.
     Allows searching for ANY doctor in the system (unlike /search which is restricted).
     """
-    # 1. Fetch ALL active doctors
+    # Patient can see all doctors in their same organization
+    organization_id_filter = None
+    if current_user.role == "patient":
+        from app.models.patient import Patient
+        p_stmt = select(Patient).where(Patient.id == current_user.id)
+        p_result = await db.execute(p_stmt)
+        patient_record = p_result.scalar_one_or_none()
+        if patient_record:
+            organization_id_filter = patient_record.organization_id
+
+    # 1. Fetch active doctors
     stmt = select(User).where(User.role == "doctor", User.deleted_at.is_(None))
     
+    if organization_id_filter:
+        stmt = stmt.where(User.organization_id == organization_id_filter)
+        
     # Filter by Specialty (Database side)
     if specialty:
         stmt = stmt.where(User.specialty.ilike(f"%{specialty}%"))
@@ -114,11 +133,24 @@ async def search_global_doctor_directory(
             if query.lower() not in name.lower():
                 continue
         
+        # Generate avatar preview URL if available
+        avatar_preview = None
+        if doc.avatar_url:
+            try:
+                from app.services.minio_service import minio_service
+                from app.config import settings
+                avatar_preview = minio_service.generate_presigned_url(
+                    bucket_name=settings.MINIO_BUCKET_AVATARS,
+                    object_name=doc.avatar_url
+                )
+            except Exception:
+                pass
+
         filtered_results.append(DoctorSearchItem(
             id=doc.id,
             name=name,
             specialty=doc.specialty,
-            photo_url=doc.avatar_url
+            photo_url=avatar_preview
         ))
         
     return DoctorSearchResponse(results=filtered_results)

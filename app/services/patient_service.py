@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.security import PIIEncryption
 from app.models.patient import Patient
@@ -43,7 +44,7 @@ class PatientService:
         encrypted_data = data.copy()
         
         # String fields
-        for field in ['full_name', 'phone_number', 'email', 'medical_history']:
+        for field in ['full_name', 'phone_number', 'home_phone', 'email', 'medical_history']:
             if field in encrypted_data and encrypted_data[field]:
                 encrypted_data[field] = self.encryption.encrypt(encrypted_data[field])
 
@@ -123,6 +124,8 @@ class PatientService:
             data['full_name'] = self.encryption.decrypt(patient.full_name)
         if patient.phone_number:
             data['phone_number'] = self.encryption.decrypt(patient.phone_number)
+        if patient.home_phone:
+            data['home_phone'] = self.encryption.decrypt(patient.home_phone)
         if patient.email:
             data['email'] = self.encryption.decrypt(patient.email)
         if patient.medical_history:
@@ -184,10 +187,32 @@ class PatientService:
                 med_data = []
         data['medications'] = [self.encryption.decrypt(i) for i in med_data] if isinstance(med_data, list) else []
 
+        # --- Health Metrics (Vitals) ---
+        try:
+            # Check if relationship is loaded
+            metrics = patient.health_metrics
+            data['health_metrics'] = [
+                {
+                    "id": m.id,
+                    "metric_type": m.metric_type,
+                    "value": m.value,
+                    "unit": m.unit,
+                    "recorded_at": m.recorded_at,
+                    "notes": m.notes
+                } for m in metrics
+            ]
+        except Exception:
+            data['health_metrics'] = []
+
         return data
 
     async def create_patient(
-        self, patient_data: Dict, organization_id: UUID, created_by: UUID, patient_id: Optional[UUID] = None
+        self, 
+        patient_data: Dict, 
+        organization_id: UUID, 
+        created_by: UUID, 
+        patient_id: Optional[UUID] = None,
+        primary_doctor_id: Optional[UUID] = None
     ) -> Dict:
         """Create new patient"""
         mrn = await self.generate_mrn(organization_id)
@@ -200,6 +225,7 @@ class PatientService:
             mrn=mrn,
             organization_id=organization_id,
             created_by=created_by,
+            primary_doctor_id=primary_doctor_id,
             **encrypted_data
         )
         
@@ -217,7 +243,9 @@ class PatientService:
     async def get_patient(self, patient_id: UUID, organization_id: UUID) -> Optional[Dict]:
         """Get patient by ID"""
         result = await self.db.execute(
-            select(Patient).where(
+            select(Patient)
+            .options(selectinload(Patient.health_metrics))
+            .where(
                 Patient.id == patient_id,
                 Patient.organization_id == organization_id,
                 Patient.deleted_at.is_(None)
@@ -317,4 +345,20 @@ class PatientService:
             return False
             
         patient.deleted_at = datetime.utcnow()
+        
+        # Also soft-delete the linked User and reclaim their email
+        from app.models.user import User
+        user_result = await self.db.execute(select(User).where(User.id == patient_id))
+        linked_user = user_result.scalar_one_or_none()
+        if linked_user:
+            linked_user.deleted_at = datetime.utcnow()
+            import uuid
+            suffix = f"__deleted_{uuid.uuid4().hex[:8]}"
+            if linked_user.email:
+                linked_user.email = f"{linked_user.email[:255-len(suffix)]}{suffix}"
+            if linked_user.google_id:
+                linked_user.google_id = f"{linked_user.google_id[:255-len(suffix)]}{suffix}"
+            if linked_user.apple_id:
+                linked_user.apple_id = f"{linked_user.apple_id[:255-len(suffix)]}{suffix}"
+        
         return True

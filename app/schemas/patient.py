@@ -51,6 +51,7 @@ class PatientBase(BaseModel):
     date_of_birth: date = Field(..., alias="dateOfBirth")
     gender: Optional[str] = Field(None, pattern="^(male|female|other|prefer_not_to_say)$")
     phone_number: Optional[str] = Field(None, alias="phoneNumber")
+    home_phone: Optional[str] = Field(None, alias="homePhone")
     email: Optional[EmailStr] = None
     address: Optional[AddressSchema] = None
     emergency_contact: Optional[EmergencyContactSchema] = Field(None, alias="emergencyContact")
@@ -67,7 +68,7 @@ class PatientBase(BaseModel):
             raise ValueError("Date of birth cannot be in the future")
         return v
 
-    @validator('phone_number')
+    @validator('phone_number', 'home_phone')
     def validate_phone(cls, v):
         if not v: return v
         try:
@@ -85,6 +86,7 @@ class PatientCreate(PatientBase):
 
 class PatientOnboard(PatientBase):
     password: str = Field(..., min_length=8, max_length=100)
+    doctor_id: Optional[UUID] = Field(None, alias="doctorId")
 
 
 class PatientUpdate(BaseModel):
@@ -92,6 +94,7 @@ class PatientUpdate(BaseModel):
     date_of_birth: Optional[date] = Field(None, alias="dateOfBirth")
     gender: Optional[str] = Field(None, pattern="^(male|female|other|prefer_not_to_say)$")
     phone_number: Optional[str] = Field(None, alias="phoneNumber")
+    home_phone: Optional[str] = Field(None, alias="homePhone")
     email: Optional[EmailStr] = None
     address: Optional[AddressSchema] = None
     emergency_contact: Optional[EmergencyContactSchema] = Field(None, alias="emergencyContact")
@@ -156,6 +159,7 @@ class PatientDetailResponse(BaseModel):
     date_of_birth: Optional[str] = None # Add this line
     gender: Optional[str] = None
     phone_number: Optional[str] = None
+    home_phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[Dict[str, Any]] = None
     emergency_contact: Optional[Dict[str, Any]] = None

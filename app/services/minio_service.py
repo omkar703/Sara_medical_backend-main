@@ -16,11 +16,12 @@ class MinIOService:
     
     def __init__(self):
         # Internal client for backend-to-MinIO communication (bucket checks, uploads, etc.)
+        # Internal Docker network does not use SSL, so secure=False always.
         self.client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ROOT_USER,
             secret_key=settings.MINIO_ROOT_PASSWORD,
-            secure=settings.MINIO_USE_SSL
+            secure=False
         )
         
         # IMPORTANT: presign_client uses the EXTERNAL endpoint (localhost:9010).
@@ -95,20 +96,28 @@ class MinIOService:
             print(f"Upload failed: {e}")
             return False
     
-    def generate_presigned_url(self, bucket_name: str, object_name: str, expiry_seconds: int = 900) -> Optional[str]:
+    def generate_presigned_url(
+        self, 
+        bucket_name: str, 
+        object_name: str, 
+        expiry_seconds: int = 900,
+        response_headers: Optional[dict] = None
+    ) -> Optional[str]:
         """
         Generate a presigned URL for secure, temporary file access.
         Default: 15 minutes (900 seconds) for HIPAA compliance.
+        Returns None if object_name is empty.
         """
+        if not object_name or not object_name.strip():
+            print(f"generate_presigned_url: skipping, object_name is empty")
+            return None
         try:
             # Use presign_client (configured with the external endpoint) to generate the URL.
-            # The signature is computed using the 'host' header, so it must match the endpoint
-            # that the browser will use. presign_client._region_map is pre-populated so no
-            # background network call is made to discover the region.
             url = self.presign_client.presigned_get_object(
                 bucket_name,
-                object_name,
-                expires=timedelta(seconds=expiry_seconds)
+                object_name.strip(),
+                expires=timedelta(seconds=expiry_seconds),
+                response_headers=response_headers
             )
             return url
         except S3Error as e:
