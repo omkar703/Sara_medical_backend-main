@@ -230,7 +230,7 @@ services:
   frontend:
     build:
       # On EC2, set FRONTEND_PATH=../saramedico-deploy in .env or export it
-      context: ${FRONTEND_PATH:-./Frontend/saramedico-deploy-main}
+      context: ${FRONTEND_PATH:-../saramedico-deploy}
       dockerfile: Dockerfile
       args:
         # At BUILD time, bake the public API URL into the Next.js client bundle.
