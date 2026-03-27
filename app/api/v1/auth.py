@@ -596,7 +596,7 @@ async def google_select_role(
     
     return {"token": access_token}
 
-@router.get("/apple")
+@router.get("/apple-json/login")
 async def apple_oauth_login(request: Request):
     """Initiate Apple Sign In"""
     if not settings.APPLE_CLIENT_ID:
@@ -620,8 +620,8 @@ async def apple_oauth_login(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initiate Apple login: {str(e)}")
 
-@router.post("/apple/callback")
-@router.get("/apple/callback") # Support both to mirror generic setups
+@router.post("/apple-json/callback")
+@router.get("/apple-json/callback") # Support both to mirror generic setups
 async def apple_oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     """Process Apple SSO callback mirroring Google's logic"""
     try:
