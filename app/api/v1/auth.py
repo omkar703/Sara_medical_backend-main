@@ -1776,7 +1776,10 @@ async def delete_my_account(
 
     # ── 5. Hard-delete the User record itself ────────────────────────────────
     try:
-        await db.delete(current_user)
+        # We use a raw execute instead of `db.delete(current_user)` in order to 
+        # bypass SQLAlchemy's ORM cascade loading of backref relationships (like 'notifications')
+        # which might crash if an unapplied migration hasn't created the table yet.
+        await db.execute(sql_delete(User).where(User.id == current_user.id))
         await db.commit()
     except Exception as e:
         await db.rollback()
