@@ -1719,32 +1719,34 @@ async def delete_my_account(
         except Exception as e: print(f"[DeleteAccount] MinIO cleanup skipped: {e}")
 
     try:
-        # Delink Google
-        # Requires storing the Google OAuth access_token during the Google callback
-        if getattr(current_user, "google_access_token", None):
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    "https://oauth2.googleapis.com/revoke",
-                    params={"token": current_user.google_access_token}
-                )
-                print(f"[DeleteAccount] Successfully revoked Google access for user {user_id}")
+        # Only delink if the user didn't sign up with email
+        if str(current_user.auth_provider) != "email":
+            # Delink Google
+            # Requires storing the Google OAuth access_token during the Google callback
+            if getattr(current_user, "google_access_token", None):
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        "https://oauth2.googleapis.com/revoke",
+                        params={"token": current_user.google_access_token}
+                    )
+                    print(f"[DeleteAccount] Successfully revoked Google access for user {user_id}")
 
-        # Delink Apple
-        # Requires storing the Apple refresh_token during the Apple callback
-        if getattr(current_user, "apple_refresh_token", None):
-            client_secret = AppleSignInHelper.generate_client_secret()
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    "https://appleid.apple.com/auth/revoke",
-                    data={
-                        "client_id": settings.APPLE_CLIENT_ID,
-                        "client_secret": client_secret,
-                        "token": current_user.apple_refresh_token,
-                        "token_type_hint": "refresh_token"
-                    },
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}
-                )
-                print(f"[DeleteAccount] Successfully revoked Apple access for user {user_id}")
+            # Delink Apple
+            # Requires storing the Apple refresh_token during the Apple callback
+            if getattr(current_user, "apple_refresh_token", None):
+                client_secret = AppleSignInHelper.generate_client_secret()
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        "https://appleid.apple.com/auth/revoke",
+                        data={
+                            "client_id": settings.APPLE_CLIENT_ID,
+                            "client_secret": client_secret,
+                            "token": current_user.apple_refresh_token,
+                            "token_type_hint": "refresh_token"
+                        },
+                        headers={"Content-Type": "application/x-www-form-urlencoded"}
+                    )
+                    print(f"[DeleteAccount] Successfully revoked Apple access for user {user_id}")
                 
     except Exception as e:
         print(f"[DeleteAccount] Warning: OAuth token revocation failed: {e}")
