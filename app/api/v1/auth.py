@@ -1549,11 +1549,12 @@ async def delete_my_account(
 
     # ── 1. Revoke all refresh tokens ────────────────────────────────────────
     try:
-        await db.execute(
-            sql_update(RefreshToken)
-            .where(RefreshToken.user_id == user_id)
-            .values(revoked=True)
-        )
+        async with db.begin_nested():
+            await db.execute(
+                sql_update(RefreshToken)
+                .where(RefreshToken.user_id == user_id)
+                .values(revoked=True)
+            )
     except Exception as e: print(f"[DeleteAccount] RefreshToken revoke skipped: {e}")
 
     # ── 2. Common cleanup (Audit, Activity, Notifications, etc.) ────────────
@@ -1561,29 +1562,33 @@ async def delete_my_account(
     # 2.1 Audit Logs
     try:
         from app.models.audit import AuditLog
-        await db.execute(sql_delete(AuditLog).where(AuditLog.user_id == user_id))
+        async with db.begin_nested():
+            await db.execute(sql_delete(AuditLog).where(AuditLog.user_id == user_id))
     except Exception as e: print(f"[DeleteAccount] AuditLog cleanup skipped: {e}")
 
     # 2.2 Activity Logs (both as actor and as subject/patient)
     try:
         from app.models.activity_log import ActivityLog
-        await db.execute(sql_delete(ActivityLog).where(
-            or_(ActivityLog.user_id == user_id, ActivityLog.patient_id == user_id)
-        ))
+        async with db.begin_nested():
+            await db.execute(sql_delete(ActivityLog).where(
+                or_(ActivityLog.user_id == user_id, ActivityLog.patient_id == user_id)
+            ))
     except Exception as e: print(f"[DeleteAccount] ActivityLog cleanup skipped: {e}")
 
     # 2.3 Notifications
     try:
         from app.models.notification import Notification
-        await db.execute(sql_delete(Notification).where(Notification.user_id == user_id))
+        async with db.begin_nested():
+            await db.execute(sql_delete(Notification).where(Notification.user_id == user_id))
     except Exception as e: print(f"[DeleteAccount] Notification cleanup skipped: {e}")
 
     # 2.4 Data Access Grants
     try:
         from app.models.data_access_grant import DataAccessGrant
-        await db.execute(sql_delete(DataAccessGrant).where(
-            or_(DataAccessGrant.patient_id == user_id, DataAccessGrant.doctor_id == user_id)
-        ))
+        async with db.begin_nested():
+            await db.execute(sql_delete(DataAccessGrant).where(
+                or_(DataAccessGrant.patient_id == user_id, DataAccessGrant.doctor_id == user_id)
+            ))
     except Exception as e: print(f"[DeleteAccount] DataAccessGrant cleanup skipped: {e}")
 
     # 2.5 Appointments and Calendar Events
@@ -1591,37 +1596,42 @@ async def delete_my_account(
         from app.models.appointment import Appointment
         # Note: CalendarEvent has ondelete="CASCADE" to users and appointments, 
         # but we handle appointments explicitly here.
-        await db.execute(sql_delete(Appointment).where(
-            or_(Appointment.patient_id == user_id, Appointment.doctor_id == user_id)
-        ))
+        async with db.begin_nested():
+            await db.execute(sql_delete(Appointment).where(
+                or_(Appointment.patient_id == user_id, Appointment.doctor_id == user_id)
+            ))
     except Exception as e: print(f"[DeleteAccount] Appointment cleanup skipped: {e}")
 
     try:
         from app.models.calendar_event import CalendarEvent
-        await db.execute(sql_delete(CalendarEvent).where(CalendarEvent.user_id == user_id))
+        async with db.begin_nested():
+            await db.execute(sql_delete(CalendarEvent).where(CalendarEvent.user_id == user_id))
     except Exception as e: print(f"[DeleteAccount] CalendarEvent cleanup skipped: {e}")
 
     # 2.6 Chat History and AI Queue
     try:
         from app.models.chat_history import ChatHistory
-        await db.execute(sql_delete(ChatHistory).where(
-            or_(ChatHistory.patient_id == user_id, ChatHistory.doctor_id == user_id)
-        ))
+        async with db.begin_nested():
+            await db.execute(sql_delete(ChatHistory).where(
+                or_(ChatHistory.patient_id == user_id, ChatHistory.doctor_id == user_id)
+            ))
     except Exception as e: print(f"[DeleteAccount] ChatHistory cleanup skipped: {e}")
 
     try:
         from app.models.ai_processing_queue import AIProcessingQueue
-        await db.execute(sql_delete(AIProcessingQueue).where(
-            or_(AIProcessingQueue.patient_id == user_id, AIProcessingQueue.doctor_id == user_id)
-        ))
+        async with db.begin_nested():
+            await db.execute(sql_delete(AIProcessingQueue).where(
+                or_(AIProcessingQueue.patient_id == user_id, AIProcessingQueue.doctor_id == user_id)
+            ))
     except Exception as e: print(f"[DeleteAccount] AIProcessingQueue cleanup skipped: {e}")
 
     # 2.7 Recent History Links
     try:
         from app.models.recent_doctors import RecentDoctor
         from app.models.recent_patients import RecentPatient
-        await db.execute(sql_delete(RecentDoctor).where(or_(RecentDoctor.patient_id == user_id, RecentDoctor.doctor_id == user_id)))
-        await db.execute(sql_delete(RecentPatient).where(or_(RecentPatient.patient_id == user_id, RecentPatient.doctor_id == user_id)))
+        async with db.begin_nested():
+            await db.execute(sql_delete(RecentDoctor).where(or_(RecentDoctor.patient_id == user_id, RecentDoctor.doctor_id == user_id)))
+            await db.execute(sql_delete(RecentPatient).where(or_(RecentPatient.patient_id == user_id, RecentPatient.doctor_id == user_id)))
     except Exception as e: print(f"[DeleteAccount] Recent history cleanup skipped: {e}")
 
     # 2.8 Documents Uploaded by User (Crucial for doctors/admins)
@@ -1629,7 +1639,8 @@ async def delete_my_account(
         from app.models.document import Document
         # First find all documents uploaded by this user to handle MinIO cleanup if needed later
         # (For now we just delete the metadata to prevent FK violations)
-        await db.execute(sql_delete(Document).where(Document.uploaded_by == user_id))
+        async with db.begin_nested():
+            await db.execute(sql_delete(Document).where(Document.uploaded_by == user_id))
     except Exception as e: print(f"[DeleteAccount] Documents uploaded by user cleanup skipped: {e}")
 
     # ── 3. Role-specific data cleanup ───────────────────────────────────────
@@ -1640,74 +1651,84 @@ async def delete_my_account(
             # ChatMessage has cascade delete on ChatSession, but we can be explicit or rely on DB
             # Since patient_id in ChatSession refers to patients.id, and we delete the patient profile below,
             # we should delete chat sessions here explicitly to avoid any FK issues.
-            await db.execute(sql_delete(ChatSession).where(ChatSession.patient_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(ChatSession).where(ChatSession.patient_id == user_id))
         except Exception as e: print(f"[DeleteAccount] ChatSession cleanup skipped: {e}")
 
         # Health Metrics, Consultations, Documents
         try:
             from app.models.health_metric import HealthMetric
-            await db.execute(sql_delete(HealthMetric).where(HealthMetric.patient_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(HealthMetric).where(HealthMetric.patient_id == user_id))
         except Exception as e: print(f"[DeleteAccount] HealthMetric cleanup skipped: {e}")
 
         try:
             from app.models.consultation import Consultation
-            await db.execute(sql_delete(Consultation).where(Consultation.patient_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(Consultation).where(Consultation.patient_id == user_id))
         except Exception as e: print(f"[DeleteAccount] Consultation cleanup skipped: {e}")
 
         try:
             from app.models.document import Document
-            await db.execute(sql_delete(Document).where(Document.patient_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(Document).where(Document.patient_id == user_id))
         except Exception as e: print(f"[DeleteAccount] Document cleanup skipped: {e}")
 
         # The actual Patient Profile
         try:
             from app.models.patient import Patient
-            await db.execute(sql_delete(Patient).where(Patient.id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(Patient).where(Patient.id == user_id))
         except Exception as e: print(f"[DeleteAccount] Patient profile cleanup skipped: {e}")
 
     elif role_str == "doctor":
         # Fully delete consultations for doctors (cannot mark-delete due to NOT NULL constraint on doctor_id)
         try:
             from app.models.consultation import Consultation
-            await db.execute(sql_delete(Consultation).where(Consultation.doctor_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(Consultation).where(Consultation.doctor_id == user_id))
         except Exception as e: print(f"[DeleteAccount] Consultation cleanup skipped: {e}")
 
         # If a doctor is deleted, we must set primary_doctor_id to NULL in patients they care for
         try:
             from app.models.patient import Patient
-            await db.execute(
-                sql_update(Patient)
-                .where(or_(Patient.primary_doctor_id == user_id, Patient.created_by == user_id))
-                .values(
-                    primary_doctor_id=None,
-                    created_by=None
+            async with db.begin_nested():
+                await db.execute(
+                    sql_update(Patient)
+                    .where(or_(Patient.primary_doctor_id == user_id, Patient.created_by == user_id))
+                    .values(
+                        primary_doctor_id=None,
+                        created_by=None
+                    )
                 )
-            )
         except Exception as e: print(f"[DeleteAccount] Patient-doctor ref cleanup skipped: {e}")
 
         # Tasks
         try:
             from app.models.task import Task
-            await db.execute(sql_delete(Task).where(Task.doctor_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(Task).where(Task.doctor_id == user_id))
         except Exception as e: print(f"[DeleteAccount] Task cleanup skipped: {e}")
 
         # Chat Sessions for Doctors
         try:
             from app.models.chat_session import ChatSession
-            await db.execute(sql_delete(ChatSession).where(ChatSession.doctor_id == user_id))
+            async with db.begin_nested():
+                await db.execute(sql_delete(ChatSession).where(ChatSession.doctor_id == user_id))
         except Exception as e: print(f"[DeleteAccount] ChatSession cleanup skipped: {e}")
 
     elif role_str in ("hospital", "admin"):
         # Organization cleanup if it's the last admin
         try:
-            other_users_result = await db.execute(select(User).where(and_(User.organization_id == org_id, User.id != user_id, User.deleted_at.is_(None))))
-            if not other_users_result.scalars().first():
-                org_result = await db.execute(select(Organization).where(Organization.id == org_id))
-                org = org_result.scalar_one_or_none()
-                if org:
-                    # Note: Organization deletion will trigger cascade on many tables if configured, 
-                    # but we've already cleaned up most user-specific data above.
-                    await db.delete(org)
+            async with db.begin_nested():
+                other_users_result = await db.execute(select(User).where(and_(User.organization_id == org_id, User.id != user_id, User.deleted_at.is_(None))))
+                if not other_users_result.scalars().first():
+                    org_result = await db.execute(select(Organization).where(Organization.id == org_id))
+                    org = org_result.scalar_one_or_none()
+                    if org:
+                        # Note: Organization deletion will trigger cascade on many tables if configured, 
+                        # but we've already cleaned up most user-specific data above.
+                        await db.delete(org)
         except Exception as e: print(f"[DeleteAccount] Organization cleanup skipped: {e}")
 
     # ── 4. MinIO avatar cleanup ──────────────────────────────────────────────
