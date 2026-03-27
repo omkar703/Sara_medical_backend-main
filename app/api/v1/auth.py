@@ -2138,6 +2138,7 @@ async def apple_login(request: Request, app_redirect_uri: Optional[str] = None, 
         raise HTTPException(status_code=500, detail=f"Failed to initiate Apple login: {str(e)}")
 
 
+@router.get("/apple/callback")
 @router.post("/apple/callback")
 async def apple_callback(
     request: Request,
@@ -2145,7 +2146,7 @@ async def apple_callback(
 ):
     """
     Handle Apple Login Callback — redirects browser to frontend with tokens.
-    Apple sends data as form-encoded POST request.
+    Apple sends data as form-encoded POST request or occasionally a GET depending on proxy behavior.
     """
     from fastapi.responses import HTMLResponse
     
@@ -2153,13 +2154,25 @@ async def apple_callback(
     frontend_callback = f"{frontend_url}/auth/apple/callback"
 
     try:
-        # Parse form data from Apple
-        form_data = await request.form()
-        user_str = form_data.get("user")
-        id_token = form_data.get("id_token")
+        # Extract fields from POST form OR GET query parameters
+        if request.method == "POST":
+            # Some reverse proxies might mess with content-type, but typically it is form-encoded
+            form_data = await request.form()
+            payload = form_data
+        else:
+            payload = request.query_params
+            
+        user_str = payload.get("user")
+        id_token = payload.get("id_token")
+        state_str = payload.get("state")
+        apple_error = payload.get("error")
+        
+        # Check if Apple returned an explicit error (e.g. user cancelled)
+        if apple_error:
+            error_msg = urllib.parse.quote(f"Apple Auth Error: {apple_error}")
+            return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
         
         # Extract state to retrieve app_redirect_uri and oauth_role
-        state_str = form_data.get("state")
         oauth_role = None
         app_redirect_uri = None
         if state_str:
@@ -2172,7 +2185,7 @@ async def apple_callback(
                 pass
         
         if not id_token:
-            error_msg = urllib.parse.quote("No ID token provided by Apple")
+            error_msg = urllib.parse.quote("No ID token provided by Apple. (Method: {}, Payload keys: {})".format(request.method, list(payload.keys())))
             return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
         
         # Decode and verify the ID token
