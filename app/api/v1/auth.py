@@ -2102,7 +2102,12 @@ async def apple_login(request: Request):
         client_secret = AppleSignInHelper.generate_client_secret()
         
         # Construct the Apple authorization URL
-        redirect_uri = str(request.url_for("apple_callback"))
+        redirect_uri = settings.APPLE_REDIRECT_URI or str(request.url_for("apple_callback"))
+        
+        # Ensure redirect_uri uses https in production, Apple strictly requires HTTPS
+        if redirect_uri.startswith("http://") and "localhost" not in redirect_uri and "127.0.0.1" not in redirect_uri:
+            redirect_uri = redirect_uri.replace("http://", "https://", 1)
+
         apple_auth_url = (
             "https://appleid.apple.com/auth/authorize?"
             f"client_id={settings.APPLE_CLIENT_ID}&"
