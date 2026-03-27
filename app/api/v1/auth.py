@@ -2125,7 +2125,7 @@ async def apple_login(request: Request, app_redirect_uri: Optional[str] = None, 
             "https://appleid.apple.com/auth/authorize?"
             f"client_id={settings.APPLE_CLIENT_ID}&"
             f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
-            f"response_type=code&"
+            f"response_type=code%20id_token&"
             f"response_mode=form_post&"
             f"scope=email%20name"
             f"{state_param}"
