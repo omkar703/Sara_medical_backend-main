@@ -2092,7 +2092,7 @@ class AppleSignInHelper:
 
 
 @router.get("/apple/login")
-async def apple_login(request: Request):
+async def apple_login(request: Request, app_redirect_uri: Optional[str] = None, role: Optional[str] = None):
     """Initiate Apple Sign In - redirects to Apple's OAuth login"""
     if not settings.APPLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Apple Auth not configured")
@@ -2108,6 +2108,19 @@ async def apple_login(request: Request):
         if redirect_uri.startswith("http://") and "localhost" not in redirect_uri and "127.0.0.1" not in redirect_uri:
             redirect_uri = redirect_uri.replace("http://", "https://", 1)
 
+        state_data = {}
+        if app_redirect_uri:
+            state_data["redirect_uri"] = app_redirect_uri
+        if role:
+            state_data["role"] = role
+            
+        state_str = ""
+        if state_data:
+            import base64
+            state_str = base64.urlsafe_b64encode(_json.dumps(state_data).encode()).decode()
+
+        state_param = f"&state={state_str}" if state_str else ""
+
         apple_auth_url = (
             "https://appleid.apple.com/auth/authorize?"
             f"client_id={settings.APPLE_CLIENT_ID}&"
@@ -2115,6 +2128,7 @@ async def apple_login(request: Request):
             f"response_type=code&"
             f"response_mode=form_post&"
             f"scope=email%20name"
+            f"{state_param}"
         )
         
         return RedirectResponse(url=apple_auth_url)
@@ -2133,14 +2147,29 @@ async def apple_callback(
     Handle Apple Login Callback — redirects browser to frontend with tokens.
     Apple sends data as form-encoded POST request.
     """
+    from fastapi.responses import HTMLResponse
+    
     frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
     frontend_callback = f"{frontend_url}/auth/apple/callback"
 
     try:
         # Parse form data from Apple
         form_data = await request.form()
-        user_id = form_data.get("user")
+        user_str = form_data.get("user")
         id_token = form_data.get("id_token")
+        
+        # Extract state to retrieve app_redirect_uri and oauth_role
+        state_str = form_data.get("state")
+        oauth_role = None
+        app_redirect_uri = None
+        if state_str:
+            import base64
+            try:
+                state_data = _json.loads(base64.urlsafe_b64decode(state_str).decode())
+                oauth_role = state_data.get("role")
+                app_redirect_uri = state_data.get("redirect_uri")
+            except:
+                pass
         
         if not id_token:
             error_msg = urllib.parse.quote("No ID token provided by Apple")
@@ -2156,69 +2185,156 @@ async def apple_callback(
         if not user_email:
             error_msg = urllib.parse.quote("No email provided by Apple")
             return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+            
+        # Optional: Extract user name if provided (Apple only sends it on FIRST login)
+        name = "Unknown User"
+        if user_str:
+            try:
+                user_json = _json.loads(user_str)
+                name_dict = user_json.get("name", {})
+                first_name = name_dict.get("firstName", "")
+                last_name = name_dict.get("lastName", "")
+                name = f"{first_name} {last_name}".strip() or name
+            except Exception:
+                pass
         
         # Find user by email
-        result = await db.execute(select(User).where(User.email == user_email.lower()))
+        result = await db.execute(select(User).where(User.email == user_email.lower(), User.deleted_at.is_(None)))
         user = result.scalar_one_or_none()
         
-        if not user:
-            error_msg = urllib.parse.quote("Account not found. Please register or ask your provider to onboard you first.")
-            return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        encoded_access = ""
+        encoded_refresh = ""
+        encoded_user = ""
         
-        # Link Apple ID if not already linked
-        if not user.apple_id:
-            user.apple_id = apple_user_id
-            user.email_verified = True  # Trust Apple's email verification
+        if user:
+            # Link Apple ID if not already linked
+            if not user.apple_id:
+                user.apple_id = apple_user_id
+                user.email_verified = True  # Trust Apple's email verification
+                await db.commit()
+                await db.refresh(user)
+            
+            # Generate Tokens
+            access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+            refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+            
+            refresh_token_hash = hash_token(refresh_token_value)
+            refresh_token = RefreshToken(
+                user_id=user.id,
+                token_hash=refresh_token_hash,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+            db.add(refresh_token)
+            user.last_login = datetime.utcnow()
+            await db.commit()
+            
+            # Build user data for frontend
+            pii_encryption = PIIEncryption()
+            try:
+                decrypted_full_name = pii_encryption.decrypt(user.full_name)
+            except Exception:
+                decrypted_full_name = user.full_name or "Unknown User"
+            name_parts = decrypted_full_name.split(" ", 1)
+            
+            user_data = {
+                "id": str(user.id),
+                "name": decrypted_full_name,
+                "email": user.email,
+                "first_name": name_parts[0],
+                "last_name": name_parts[1] if len(name_parts) > 1 else "",
+                "role": str(user.role).split(".")[-1],
+                "organization_id": str(user.organization_id) if user.organization_id else None,
+                "email_verified": user.email_verified,
+                "onboarding_complete": user.account_status == "active"
+            }
+            
+            encoded_user = urllib.parse.quote(_json.dumps(user_data))
+            encoded_access = urllib.parse.quote(access_token)
+            encoded_refresh = urllib.parse.quote(refresh_token_value)
+            
+        else:
+            # User does not exist, create with pending_onboarding status like google_callback
+            org_result = await db.execute(select(Organization).where(Organization.name == "Pending Onboarding Org"))
+            organization = org_result.scalar_one_or_none()
+            
+            if not organization:
+                organization = Organization(name="Pending Onboarding Org")
+                db.add(organization)
+                await db.flush()
+                
+            pii_encryption = PIIEncryption()
+            encrypted_full_name = pii_encryption.encrypt(name)
+            
+            assigned_role = oauth_role if oauth_role in ["doctor", "hospital", "patient"] else "doctor"
+            
+            user = User(
+                email=user_email.lower(),
+                password_hash=None, # Explicitly null for social auth
+                full_name=encrypted_full_name,
+                role=assigned_role,
+                organization_id=organization.id,
+                email_verified=True, # Trusted via Apple
+                mfa_enabled=False,
+                auth_provider="apple",
+                apple_id=apple_user_id,
+                account_status="pending_onboarding"
+            )
+            
+            db.add(user)
             await db.commit()
             await db.refresh(user)
-        
-        # Generate Tokens
-        access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-        refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-        
-        refresh_token_hash = hash_token(refresh_token_value)
-        refresh_token = RefreshToken(
-            user_id=user.id,
-            token_hash=refresh_token_hash,
-            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-        )
-        db.add(refresh_token)
-        user.last_login = datetime.utcnow()
-        await db.commit()
-        
-        # Build user data for frontend
-        pii_encryption = PIIEncryption()
-        try:
-            decrypted_full_name = pii_encryption.decrypt(user.full_name)
-        except Exception:
-            decrypted_full_name = user.full_name or "Unknown User"
-        name_parts = decrypted_full_name.split(" ", 1)
-        
-        user_data = {
-            "id": str(user.id),
-            "name": decrypted_full_name,
-            "email": user.email,
-            "first_name": name_parts[0],
-            "last_name": name_parts[1] if len(name_parts) > 1 else "",
-            "role": str(user.role).split(".")[-1],
-            "organization_id": str(user.organization_id) if user.organization_id else None,
-            "email_verified": user.email_verified,
-            "mfa_enabled": user.mfa_enabled,
-        }
-        
-        # Redirect browser to frontend callback page with tokens as query params
-        encoded_user = urllib.parse.quote(_json.dumps(user_data))
-        encoded_access = urllib.parse.quote(access_token)
-        encoded_refresh = urllib.parse.quote(refresh_token_value)
-        
-        redirect_url = (
-            f"{frontend_callback}"
-            f"?access_token={encoded_access}"
-            f"&refresh_token={encoded_refresh}"
-            f"&user={encoded_user}"
-        )
-        return RedirectResponse(url=redirect_url)
-        
+            
+            temp_token = create_access_token(
+                data={"sub": str(user.id), "role": assigned_role},
+                token_type="onboarding"
+            )
+            
+            user_data = {
+                "id": str(user.id),
+                "name": name,
+                "email": user.email,
+                "role": assigned_role,
+                "onboarding_complete": False
+            }
+            
+            encoded_user = urllib.parse.quote(_json.dumps(user_data))
+            encoded_access = urllib.parse.quote(temp_token)
+            encoded_refresh = ""
+
+        # Redirect Resolution
+        if app_redirect_uri and app_redirect_uri.startswith("saramedico://"):
+            final_qs = (
+                f"access_token={encoded_access}"
+                f"&refresh_token={encoded_refresh}"
+                f"&user={encoded_user}"
+            )
+            
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Redirecting to App...</title>
+                <script>
+                    window.location.href = "{app_redirect_uri}?{final_qs}";
+                </script>
+            </head>
+            <body>
+                Redirecting to app...
+            </body>
+            </html>
+            """
+            return HTMLResponse(content=html_content)
+            
+        else:
+            # Standard web frontend callback
+            redirect_url = (
+                f"{frontend_callback}"
+                f"?access_token={encoded_access}"
+                f"&refresh_token={encoded_refresh}"
+                f"&user={encoded_user}"
+            )
+            return RedirectResponse(url=redirect_url)
+            
     except HTTPException:
         raise
     except Exception as e:
