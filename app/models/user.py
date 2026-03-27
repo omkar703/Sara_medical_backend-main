@@ -64,8 +64,12 @@ class User(Base):
     google_id = Column(String(255), unique=True, nullable=True, index=True)
     apple_id = Column(String(255), unique=True, nullable=True, index=True)
     
+    # --- ADD THESE TWO NEW FIELDS ---
+    google_access_token = Column(Text, nullable=True)
+    apple_refresh_token = Column(Text, nullable=True)
+    
     # Profile
-    full_name = Column(String(255), nullable=False)  # Encrypted
+    full_name = Column(String(255), nullable=False)
     role = Column(
         Enum("patient", "doctor", "admin", "hospital", name="user_role"),
         nullable=False
