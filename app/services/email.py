@@ -58,6 +58,7 @@ async def send_email(
         return True
     except Exception as e:
         logger.error(f"Failed to send email to {to_email}: {type(e).__name__}: {str(e)}")
+        print(f"[EMAIL ERROR] Failed to send email to {to_email}: {type(e).__name__}: {str(e)}")
         return False
 
 
