@@ -1,5 +1,5 @@
-import asyncio
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, date
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.models.user import User
 from app.models.health_metric import HealthMetric
 from app.models.document import Document
+from app.models.appointment import Appointment
 
 
 class HospitalService:
@@ -50,32 +51,60 @@ class HospitalService:
             Invitation.organization_id == organization_id
         ).order_by(Invitation.created_at.desc()).limit(10)
 
+        # Query 4: Cleared Today (appointments transitioned from pending today)
+        cleared_today_stmt = select(func.count()).select_from(
+            select(Appointment).where(
+                Appointment.hospital_id == organization_id,
+                Appointment.status.in_(["accepted", "declined", "cancelled", "rejected"]),
+                Appointment.updated_at >= start_of_today,
+                Appointment.updated_at <= end_of_today
+            ).subquery()
+        )
+
+        # Query 5: Average Wait Time (of currently pending)
+        pending_wait_stmt = select(Appointment.created_at).where(
+            Appointment.hospital_id == organization_id,
+            Appointment.status == "pending_hospital_approval"
+        )
+
         # Execute queries sequentially to avoid session concurrency issues
         doctors_result = await self.db.execute(doctors_stmt)
         appts_result = await self.db.execute(appointments_stmt)
         activities_result = await self.db.execute(activities_stmt)
+        cleared_result = await self.db.execute(cleared_today_stmt)
+        pending_wait_res = await self.db.execute(pending_wait_stmt)
 
-
-        # Extract values
-        total_doctors = doctors_result.scalar() or 0
-        today_appointments = appts_result.scalar() or 0
-        invitations = activities_result.scalars().all()
+        # Calculate Average Wait
+        pending_times = pending_wait_res.scalars().all()
+        wait_time_str = "0m"
+        if pending_times:
+            total_wait_seconds = sum((now - (t if t.tzinfo else t.replace(tzinfo=timezone.utc))).total_seconds() for t in pending_times)
+            avg_seconds = total_wait_seconds / len(pending_times)
+            if avg_seconds < 60:
+                wait_time_str = f"{int(avg_seconds)}s"
+            elif avg_seconds < 3600:
+                wait_time_str = f"{int(avg_seconds / 60)}m"
+            else:
+                wait_time_str = f"{int(avg_seconds / 3600)}h {int((avg_seconds % 3600) / 60)}m"
 
         # Format recent activities
         recent_activities = []
+        invitations = activities_result.scalars().all()
         for inv in invitations:
             recent_activities.append({
                 "activityId": str(inv.id),
                 "activityType": "staff_invitation",
-                "subject": inv.email,
+                "subject": f"Invited {inv.email}",
                 "status": inv.status,
                 "timestamp": inv.created_at
             })
 
         return {
             "metrics": {
-                "totalDoctors": total_doctors,
-                "todayAppointments": today_appointments
+                "totalDoctors": doctors_result.scalar() or 0,
+                "todayAppointments": appts_result.scalar() or 0,
+                "clearedToday": cleared_result.scalar() or 0,
+                "avgWaitTime": wait_time_str
             },
             "recentActivities": recent_activities
         }
@@ -535,4 +564,224 @@ class HospitalService:
             },
             "health_metrics": metrics_list,
             "documents": docs_list
+        }
+
+    async def get_hospital_appointments(self, organization_id: UUID, status_filter: Optional[str] = None) -> list:
+        """Fetch all appointments for the organization's doctors."""
+        pii_encryption = PIIEncryption()
+        
+        # Fetch appointments where either the doctor belongs to the hospital OR the appointment was specifically routed to the hospital
+        stmt = select(Appointment).join(User, Appointment.doctor_id == User.id, isouter=True).where(
+            (User.organization_id == organization_id) | (Appointment.hospital_id == organization_id)
+        )
+        
+        if status_filter:
+            if status_filter == "pending":
+                stmt = stmt.where(Appointment.status.in_(["pending", "pending_hospital_approval"]))
+            else:
+                stmt = stmt.where(Appointment.status == status_filter)
+            
+        stmt = stmt.order_by(Appointment.requested_date.desc())
+        
+        result = await self.db.execute(stmt)
+        appointments = result.scalars().all()
+        
+        output = []
+        for apt in appointments:
+            output.append({
+                "id": str(apt.id),
+                "doctor_id": str(apt.doctor_id),
+                "patient_id": str(apt.patient_id),
+                "requested_date": apt.requested_date,
+                "scheduled_at": apt.scheduled_at,
+                "reason": apt.reason,
+                "status": apt.status,
+                "created_by": apt.created_by,
+                "meet_link": apt.meet_link,
+                "doctor_notes": apt.doctor_notes
+            })
+        return output
+
+    async def manage_appointment(self, organization_id: UUID, appointment_id: UUID, action: str, **kwargs) -> dict:
+        """Manage (accept, reschedule, cancel) an appointment for the organization."""
+        stmt = select(Appointment).join(User, Appointment.doctor_id == User.id).where(
+            Appointment.id == appointment_id,
+            User.organization_id == organization_id
+        )
+        result = await self.db.execute(stmt)
+        appointment = result.scalar_one_or_none()
+        
+        if not appointment:
+            # Try to find by hospital_id if the join above failed or was too restrictive
+            stmt = select(Appointment).where(
+                Appointment.id == appointment_id,
+                Appointment.hospital_id == organization_id
+            )
+            result = await self.db.execute(stmt)
+            appointment = result.scalar_one_or_none()
+            
+        if not appointment:
+            raise ValueError("Appointment not found in your organization.")
+            
+        from app.services.notification_service import NotificationService
+        notification_service = NotificationService(self.db)
+
+        if action == "approve":
+            appointment.status = "accepted"
+            if kwargs.get("scheduled_at"):
+                appointment.scheduled_at = kwargs.get("scheduled_at")
+            else:
+                appointment.scheduled_at = appointment.requested_date
+                
+            appointment.approved_by_hospital = kwargs.get("approved_by")
+            
+            # Notify Doctor: "New appointment scheduled"
+            await notification_service.create_notification(
+                user_id=appointment.doctor_id,
+                type="appointment_scheduled",
+                title="New Appointment Scheduled",
+                message=f"Hospital has approved and scheduled a new appointment with you for {appointment.scheduled_at.strftime('%Y-%m-%d %H:%M')}.",
+                action_url=f"/appointments/{appointment.id}"
+            )
+            
+            # Add to doctor's calendar
+            from app.services.calendar_service import CalendarService
+            calendar_service = CalendarService(self.db)
+            await calendar_service.sync_appointment_to_calendar(appointment, "create")
+
+        elif action == "decline":
+            appointment.status = "declined"
+            appointment.reschedule_note = kwargs.get("reschedule_note")
+            
+            # Notify Patient: "Please reschedule your appointment"
+            await notification_service.create_notification(
+                user_id=appointment.patient_id,
+                type="appointment_declined",
+                title="Appointment Request Declined",
+                message=f"Your appointment request has been declined by the hospital. Note: {appointment.reschedule_note or 'Please reschedule'}",
+                action_url=f"/appointments/request"
+            )
+
+        elif action == "accept":
+            appointment.status = "accepted"
+            if kwargs.get("scheduled_at"):
+                appointment.scheduled_at = kwargs.get("scheduled_at")
+            else:
+                appointment.scheduled_at = appointment.requested_date
+                
+        elif action == "reschedule":
+            new_date = kwargs.get("new_date")
+            if not new_date:
+                raise ValueError("New date is required for rescheduling.")
+            appointment.requested_date = new_date
+            appointment.scheduled_at = new_date
+            appointment.status = "accepted"
+            appointment.approved_by_hospital = kwargs.get("approved_by")
+            
+            # Notify Patient
+            await notification_service.create_notification(
+                user_id=appointment.patient_id,
+                type="appointment_scheduled",
+                title="Appointment Rescheduled",
+                message=f"Your appointment request has been rescheduled and approved for {appointment.scheduled_at.strftime('%Y-%m-%d %H:%M')}.",
+                action_url=f"/dashboard/patient/appointments"
+            )
+            
+            # Notify Doctor & Sync Calendar (same as approve)
+            await notification_service.create_notification(
+                user_id=appointment.doctor_id,
+                type="appointment_scheduled",
+                title="Appointment Rescheduled",
+                message=f"Hospital has rescheduled your appointment with the patient for {appointment.scheduled_at.strftime('%Y-%m-%d %H:%M')}.",
+                action_url=f"/appointments/{appointment.id}"
+            )
+            from app.services.calendar_service import CalendarService
+            calendar_service = CalendarService(self.db)
+            await calendar_service.sync_appointment_to_calendar(appointment, "create")
+            
+        elif action == "cancel":
+            appointment.status = "cancelled"
+            
+        if kwargs.get("notes"):
+            appointment.doctor_notes = kwargs.get("notes")
+            
+        await self.db.commit()
+        return {"id": str(appointment.id), "status": appointment.status}
+
+    async def get_hospital_doctors(self, organization_id: UUID, department: Optional[str] = None) -> list:
+        """Fetch all doctors for the organization, optionally filtered by department."""
+        stmt = select(User).where(
+            User.organization_id == organization_id,
+            User.role == "doctor",
+            User.deleted_at.is_(None)
+        )
+        
+        if department:
+            stmt = stmt.where(User.department == department)
+            
+        result = await self.db.execute(stmt)
+        doctors = result.scalars().all()
+        
+        from app.core.security import pii_encryption
+        from app.services.minio_service import minio_service
+        from app.config import settings
+        
+        output = []
+        for doc in doctors:
+            try:
+                full_name = pii_encryption.decrypt(doc.full_name)
+            except:
+                full_name = doc.full_name
+                
+            avatar_url = None
+            if doc.avatar_url:
+                try:
+                    avatar_url = minio_service.generate_presigned_url(
+                        bucket_name=settings.MINIO_BUCKET_AVATARS,
+                        object_name=doc.avatar_url
+                    )
+                except: pass
+                
+            output.append({
+                "id": str(doc.id),
+                "name": full_name,
+                "department": doc.department,
+                "specialty": doc.specialty,
+                "avatar_url": avatar_url,
+                "is_active": doc.is_active
+            })
+        return output
+
+    async def get_doctor_schedule(self, organization_id: UUID, doctor_id: UUID, start_date: datetime, end_date: datetime) -> dict:
+        """Fetch a doctor's schedule including booked slots and availability."""
+        # Verify doctor belongs to organization
+        stmt = select(User).where(User.id == doctor_id, User.organization_id == organization_id)
+        result = await self.db.execute(stmt)
+        if not result.scalar_one_or_none():
+            raise ValueError("Doctor not found in your organization.")
+            
+        # Fetch appointments in range
+        stmt = select(Appointment).where(
+            Appointment.doctor_id == doctor_id,
+            Appointment.requested_date >= start_date,
+            Appointment.requested_date <= end_date,
+            Appointment.status != "cancelled"
+        )
+        result = await self.db.execute(stmt)
+        appointments = result.scalars().all()
+        
+        # We can also fetch availability slots if we have an Availability model
+        # For now, we return booked slots
+        booked_slots = [{
+            "id": str(apt.id),
+            "start": apt.scheduled_at or apt.requested_date,
+            "end": apt.scheduled_at or apt.requested_date, # Add duration logic if exists
+            "status": apt.status,
+            "title": "Booked"
+        } for apt in appointments]
+        
+        return {
+            "doctor_id": str(doctor_id),
+            "booked_slots": booked_slots,
+            "availability": [] # Place holder for availability patterns
         }

@@ -18,7 +18,7 @@ class DoctorAppointmentCreate(BaseModel):
     reason: Optional[str] = None
 
 class AppointmentUpdate(BaseModel):
-    status: Optional[str] = Field(None, pattern="^(pending|accepted|declined|completed|cancelled)$")
+    status: Optional[str] = Field(None, pattern="^(pending|accepted|declined|completed|cancelled|rejected|pending_hospital_approval|approved)$")
     doctor_notes: Optional[str] = None
 
 class AppointmentResponse(AppointmentBase):
@@ -27,6 +27,7 @@ class AppointmentResponse(AppointmentBase):
     status: str
     created_by: str = "patient"
     doctor_notes: Optional[str] = None
+    reschedule_note: Optional[str] = None
     doctor_name: Optional[str] = None
     patient_name: Optional[str] = None  # Decrypted patient name from PII encryption
     patient_avatar: Optional[str] = None  # Presigned URL for patient's profile picture
@@ -51,5 +52,6 @@ class AppointmentApproval(BaseModel):
     doctor_notes: Optional[str] = None
 
 class AppointmentStatusUpdate(BaseModel):
-    status: str = Field(..., pattern="^(accepted|declined|cancelled|completed|rejected)$")
+    status: str = Field(..., pattern="^(accepted|declined|cancelled|completed|rejected|pending_hospital_approval|approved)$")
     doctor_notes: Optional[str] = None
+    reschedule_note: Optional[str] = None

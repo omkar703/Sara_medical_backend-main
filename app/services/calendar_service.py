@@ -455,12 +455,11 @@ class CalendarService:
         except Exception:
             return pytz.UTC
 
-    async def get_day_view(self, user_id: UUID, target_date: date, organization_id: Optional[UUID] = None) -> List[CalendarEvent]:
+    async def get_day_view(self, user_id: UUID, target_date: date, organization_id: Optional[UUID] = None, doctor_id: Optional[UUID] = None) -> List[CalendarEvent]:
         """
         Get all events for a specific day.
         If organization_id is provided, returns all organization events for that day.
         """
-<<<<<<< Updated upstream
         tz = await self._get_org_tz(user_id)
         
         # Localize target date boundaries and convert to UTC for DB queries
@@ -470,25 +469,13 @@ class CalendarService:
         import pytz
         start_datetime = local_start.astimezone(pytz.UTC)
         end_datetime = local_end.astimezone(pytz.UTC)
-=======
-        tz = await self._get_org_tz(user_id)
-        
-        # Localize target date boundaries and convert to UTC for DB queries
-        # tz is a pytz timezone object (returned by _get_org_tz)
-        local_start = tz.localize(datetime.combine(target_date, datetime.min.time()))
-        local_end = tz.localize(datetime.combine(target_date, datetime.max.time()))
-        
-        import pytz
-        start_datetime = local_start.astimezone(pytz.UTC)
-        end_datetime = local_end.astimezone(pytz.UTC)
->>>>>>> Stashed changes
         
         if organization_id:
-            return await self.get_organization_events(organization_id, start_datetime, end_datetime)
+            return await self.get_organization_events(organization_id, start_datetime, end_datetime, doctor_id=doctor_id)
         
         return await self.get_events_by_date_range(user_id, start_datetime, end_datetime)
     
-    async def get_month_view(self, user_id: UUID, year: int, month: int, organization_id: Optional[UUID] = None) -> dict:
+    async def get_month_view(self, user_id: UUID, year: int, month: int, organization_id: Optional[UUID] = None, doctor_id: Optional[UUID] = None) -> dict:
         """
         Get summary of all days in a month with event counts.
         If organization_id is provided, returns counts for the entire organization.
@@ -509,7 +496,7 @@ class CalendarService:
         
         # Get all events for the month
         if organization_id:
-            events = await self.get_organization_events(organization_id, start_date, end_date)
+            events = await self.get_organization_events(organization_id, start_date, end_date, doctor_id=doctor_id)
         else:
             events = await self.get_events_by_date_range(user_id, start_date, end_date)
         

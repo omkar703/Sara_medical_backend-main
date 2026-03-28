@@ -18,7 +18,22 @@ class Appointment(Base):
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
     reason = Column(Text, nullable=True)
     
-    status = Column(Enum("pending", "accepted", "declined", "completed", "cancelled", "rejected", name="appointment_status"), default="pending", nullable=False)
+    status = Column(Enum(
+        "pending", 
+        "pending_hospital_approval",
+        "accepted", 
+        "declined", 
+        "completed", 
+        "cancelled", 
+        "rejected", 
+        "approved",
+        name="appointment_status"
+    ), default="pending", nullable=False)
+    
+    hospital_id = Column(PG_UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True, index=True)
+    reschedule_note = Column(Text, nullable=True)
+    approved_by_hospital = Column(PG_UUID(as_uuid=True), nullable=True) # ID of hospital admin who approved
+    
     created_by = Column(String(50), default="patient", nullable=False)
     
     # Google Meet Integration Fields

@@ -195,6 +195,9 @@ async def get_doctor_appointments(
         selectinload(Appointment.patient)
     ).where(Appointment.doctor_id == current_user.id)
     
+    # Exclude appointments waiting for hospital middleman approval
+    query = query.where(Appointment.status != "pending_hospital_approval")
+    
     if status:
         query = query.where(Appointment.status == status)
     

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import (
+from . import (
     auth, consultations, documents, organizations, patients, websockets, 
     audit, tasks, doctor, appointments, team, doctors, medical_history, 
     doctor_records, ai, permissions, admin, voice, calendar, users, notifications, hospital, contact
@@ -35,3 +35,5 @@ api_router.include_router(notifications.router)
 api_router.include_router(users.router)
 api_router.include_router(hospital.router)
 api_router.include_router(contact.router)
+
+print(f"DEBUG: api_router built with {len(api_router.routes)} routes")

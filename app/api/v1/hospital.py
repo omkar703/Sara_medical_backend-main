@@ -2,6 +2,7 @@ import os
 import uuid
 from datetime import datetime
 from uuid import UUID
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from fastapi import BackgroundTasks
@@ -38,6 +39,8 @@ from app.schemas.doctor_status import HospitalDoctorStatusListResponse, DoctorDe
 
 router = APIRouter(prefix="/hospital", tags=["Hospital Dashboard"])
 
+
+
 @router.get("/dashboard/overview", response_model=HospitalOverviewResponse)
 async def get_hospital_overview(
     current_user: User = Depends(get_current_active_user),
@@ -59,6 +62,20 @@ async def get_hospital_overview(
     data = await service.get_dashboard_overview(organization_id)
     
     return data
+
+@router.get("/appointments", response_model=list)
+async def get_all_hospital_appointments(
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch all appointments for the hospital's doctors."""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+    
+    service = HospitalService(db)
+    return await service.get_hospital_appointments(organization_id, status)
 
 @router.get("/appointments/overview", response_model=HospitalAppointmentsOverviewResponse)
 async def get_appointments_overview(
@@ -218,7 +235,6 @@ async def create_doctor_account(
         is_active=True,
         department=request.department,
         department_role=request.department_role,
-        specialty=request.specialty,
         specialty=request.specialty,
         license_number=pii_encryption.encrypt(request.license_number)
     )
@@ -661,3 +677,67 @@ async def update_hospital_organization(
 
     await db.commit()
     return {"message": "Organization updated successfully"}
+
+@router.post("/appointments/{appointment_id}/manage")
+async def manage_hospital_appointment(
+    appointment_id: UUID,
+    action: str, # accept, reschedule, cancel, reject, approve, decline
+    scheduled_at: Optional[datetime] = None,
+    new_date: Optional[datetime] = None,
+    notes: Optional[str] = None,
+    reschedule_note: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept, Reschedule, Cancel, Approve or Decline an appointment."""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+    
+    service = HospitalService(db)
+    try:
+        return await service.manage_appointment(
+            organization_id, 
+            appointment_id, 
+            action, 
+            scheduled_at=scheduled_at, 
+            new_date=new_date, 
+            notes=notes,
+            reschedule_note=reschedule_note,
+            approved_by=current_user.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.get("/doctors", response_model=list)
+async def get_hospital_doctors_list(
+    department: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch all doctors for the organization with optional department filtering."""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+    
+    service = HospitalService(db)
+    return await service.get_hospital_doctors(organization_id, department)
+
+@router.get("/doctors/schedule")
+async def get_hospital_doctor_schedule(
+    doctor_id: UUID,
+    start_date: datetime,
+    end_date: datetime,
+    current_user: User = Depends(get_current_active_user),
+    organization_id: UUID = Depends(get_organization_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch a specific doctor's schedule for hospital approval flow."""
+    if current_user.role not in ["hospital", "admin"]:
+        raise HTTPException(status_code=403, detail="Hospital access required")
+    
+    service = HospitalService(db)
+    try:
+        return await service.get_doctor_schedule(organization_id, doctor_id, start_date, end_date)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

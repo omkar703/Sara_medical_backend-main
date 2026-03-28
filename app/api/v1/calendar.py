@@ -257,6 +257,7 @@ async def delete_calendar_event(
 @router.get("/day/{date}", response_model=DayViewResponse)
 async def get_day_view(
     date: date,
+    doctor_id: Optional[UUID] = Query(None, description="Filter by doctor ID (Hospital/Admin only)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -271,7 +272,7 @@ async def get_day_view(
     if current_user.role in ["hospital", "admin"]:
         org_id = current_user.organization_id
         
-    events = await calendar_service.get_day_view(current_user.id, date, organization_id=org_id)
+    events = await calendar_service.get_day_view(current_user.id, date, organization_id=org_id, doctor_id=doctor_id)
     
     # Transform events to response model
     response_events = [_map_event_to_response(event) for event in events]
@@ -287,6 +288,7 @@ async def get_day_view(
 async def get_month_view(
     year: int = Path(..., ge=2000, le=2100, description="Year (e.g., 2024)"),
     month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
+    doctor_id: Optional[UUID] = Query(None, description="Filter by doctor ID (Hospital/Admin only)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -301,7 +303,7 @@ async def get_month_view(
     if current_user.role in ["hospital", "admin"]:
         org_id = current_user.organization_id
 
-    month_data = await calendar_service.get_month_view(current_user.id, year, month, organization_id=org_id)
+    month_data = await calendar_service.get_month_view(current_user.id, year, month, organization_id=org_id, doctor_id=doctor_id)
     
     # Convert dict to response model
     days_summary = [MonthDaySummary(**day) for day in month_data["days"]]
