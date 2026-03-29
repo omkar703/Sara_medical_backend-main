@@ -355,10 +355,24 @@ async def onboard_hospital(
 async def google_login(request: Request, redirect_uri: Optional[str] = None, role: Optional[str] = None):
     """Initiate Google Login"""
     from fastapi.responses import RedirectResponse
+    import base64
+    import json as _json
+
+    state_data = {}
+    if role:
+        state_data["role"] = role
+    if redirect_uri:
+        state_data["app_redirect_uri"] = redirect_uri
+
+    state_str = None
+    if state_data:
+        state_str = base64.urlsafe_b64encode(_json.dumps(state_data).encode()).decode()
+
     with google_sso:
         # Pass the Google Client redirect URI as registered
         google_redirect = settings.GOOGLE_REDIRECT_URI
-        response = await google_sso.get_login_redirect(redirect_uri=google_redirect)
+        response = await google_sso.get_login_redirect(redirect_uri=google_redirect, state=state_str)
+        
         if redirect_uri:
             response.set_cookie(
                 key="app_redirect_uri",
@@ -368,7 +382,7 @@ async def google_login(request: Request, redirect_uri: Optional[str] = None, rol
                 samesite="lax"
             )
         if role:
-            # Store initial requested role as cookie for the callback to consume
+            # Store initial requested role as cookie for the callback to consume as fallback
             response.set_cookie("oauth_role", role, max_age=600, httponly=True, samesite="lax")
         return response
 
@@ -400,8 +414,21 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
     google_id = google_user.id
     avatar_url = google_user.picture
     
-    # Read intended signup role from cookie if present
-    oauth_role = request.cookies.get("oauth_role")
+    # Read intended signup role from state first, fallback to cookie
+    state_param = request.query_params.get("state")
+    oauth_role = None
+    
+    if state_param:
+        try:
+            import base64
+            import json as _json
+            state_data = _json.loads(base64.urlsafe_b64decode(state_param).decode())
+            oauth_role = state_data.get("role")
+        except Exception:
+            pass
+            
+    if not oauth_role:
+        oauth_role = request.cookies.get("oauth_role")
     
     # Check if user exists
     result = await db.execute(select(User).where(User.email == email.lower(), User.deleted_at.is_(None)))
@@ -590,158 +617,8 @@ async def google_select_role(
     
     return {"token": access_token}
 
-@router.get("/apple-json/login")
-async def apple_oauth_login(request: Request):
-    """Initiate Apple Sign In"""
-    if not settings.APPLE_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="Apple Auth not configured")
-    
-    try:
-        # Import dynamically if needed, but it's defined below in the file
-        client_secret = AppleSignInHelper.generate_client_secret()
-        redirect_uri = str(request.url_for("apple_oauth_callback"))
-        apple_auth_url = (
-            "https://appleid.apple.com/auth/authorize?"
-            f"client_id={settings.APPLE_CLIENT_ID}&"
-            f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
-            f"response_type=code&"
-            f"response_mode=form_post&"
-            f"scope=email%20name"
-        )
-        return RedirectResponse(url=apple_auth_url)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to initiate Apple login: {str(e)}")
-
-@router.post("/apple-json/callback")
-@router.get("/apple-json/callback") # Support both to mirror generic setups
-async def apple_oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
-    """Process Apple SSO callback mirroring Google's logic"""
-    try:
-        if request.method == "POST":
-            form_data = await request.form()
-            id_token = form_data.get("id_token")
-            user_str = form_data.get("user")
-        else:
-            id_token = request.query_params.get("id_token")
-            user_str = request.query_params.get("user")
-            
-        if not id_token:
-            raise HTTPException(status_code=400, detail="No ID token provided by Apple")
-            
-        user_info = await AppleSignInHelper.verify_id_token(id_token)
-        
-        email = user_info.get("email")
-        apple_user_id = user_info.get("sub")
-        
-        if not email:
-            raise HTTPException(status_code=400, detail="No email provided by Apple")
-            
-        name = "Unknown User"
-        if user_str:
-            import json
-            try:
-                user_json = json.loads(user_str)
-                name_dict = user_json.get("name", {})
-                first_name = name_dict.get("firstName", "")
-                last_name = name_dict.get("lastName", "")
-                name = f"{first_name} {last_name}".strip() or name
-            except Exception:
-                pass
-                
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Apple authentication failed: {str(e)}")
-        
-    result = await db.execute(select(User).where(User.email == email.lower(), User.deleted_at.is_(None)))
-    user = result.scalar_one_or_none()
-    
-    if user:
-        if not user.apple_id:
-            user.apple_id = apple_user_id
-            await db.commit()
-            
-        access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-        refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-        
-        refresh_token_hash = hash_token(refresh_token_value)
-        refresh_token = RefreshToken(
-            user_id=user.id,
-            token_hash=refresh_token_hash,
-            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-        )
-        db.add(refresh_token)
-        
-        user.last_login = datetime.utcnow()
-        await db.commit()
-        await db.refresh(user)
-        
-        pii_encryption = PIIEncryption()
-        try:
-            decrypted_full_name = pii_encryption.decrypt(user.full_name)
-        except Exception:
-            decrypted_full_name = user.full_name if user.full_name else "Unknown User"
-            
-        name_parts = decrypted_full_name.split(" ", 1)
-        
-        return LoginResponse(
-            success=True,
-            token=access_token,
-            access_token=access_token,
-            refresh_token=refresh_token_value,
-            token_type="bearer",
-            user=UserResponse(
-                id=user.id,
-                name=decrypted_full_name,
-                email=user.email,
-                first_name=name_parts[0],
-                last_name=name_parts[1] if len(name_parts) > 1 else "",
-                phone_number=pii_encryption.decrypt(user.phone_number) if user.phone_number else None,
-                role=user.role,
-                organization_id=user.organization_id,
-                organization_name=getattr(user.organization, "name", "Default Org"),
-                email_verified=user.email_verified,
-                mfa_enabled=user.mfa_enabled,
-                created_at=user.created_at,
-                updated_at=user.updated_at
-            )
-        )
-        
-    else:
-        # Create a unique organization for this new user
-        organization = Organization(name=f"Pending Org ({email.split('@')[0]})")
-        db.add(organization)
-        await db.flush()
-            
-        pii_encryption = PIIEncryption()
-        encrypted_full_name = pii_encryption.encrypt(name)
-        
-        user = User(
-            email=email.lower(),
-            password_hash=None,
-            full_name=encrypted_full_name,
-            role="doctor",
-            organization_id=organization.id,
-            email_verified=True,
-            mfa_enabled=False,
-            auth_provider="apple",
-            apple_id=apple_user_id,
-            account_status="pending_onboarding"
-        )
-        
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        
-        temp_token = create_access_token(
-            data={"sub": str(user.id), "role": "doctor"},
-            token_type="onboarding"
-        )
-        
-        return {
-            "role_selection_required": True,
-            "temp_token": temp_token
-        }
+    # This duplicate set of Apple routes is deprecated in favor of /apple/login and /apple/callback below.
+    # It hardcoded the 'doctor' role which caused onboarding issues for hospitals.
 
 @router.post("/apple/select-role")
 async def apple_select_role(
@@ -2161,73 +2038,168 @@ async def apple_callback(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Handle Google Login Callback"""
+    """Process Apple SSO callback mirroring Google's logic"""
+    from fastapi.responses import RedirectResponse
+    import urllib.parse
+    import json
+    import base64
+    
+    frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+    frontend_callback = f"{frontend_url}/auth/apple/callback"
+    
+    # 1. Parse Data from Apple
     try:
-        user_info = await google_sso.verify_and_process(request)
+        if request.method == "POST":
+            # Apple usually sends POST for form_post
+            form_data = await request.form()
+            id_token = form_data.get("id_token")
+            user_str = form_data.get("user") # Provided only on first auth
+            state_param = form_data.get("state")
+        else:
+            id_token = request.query_params.get("id_token")
+            user_str = request.query_params.get("user")
+            state_param = request.query_params.get("state")
+            
+        if not id_token:
+            raise HTTPException(status_code=400, detail="No ID token provided by Apple")
+            
+        user_info = await AppleSignInHelper.verify_id_token(id_token)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Google Auth Failed: {str(e)}")
-
-    if not user_info or not user_info.email:
-        raise HTTPException(status_code=400, detail="No email provided by Google")
-
-    # Find user by email
-    result = await db.execute(select(User).where(User.email == user_info.email.lower()))
+        error_msg = urllib.parse.quote(f"Apple Auth Failed: {str(e)}")
+        return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        
+    email = user_info.get("email")
+    apple_user_id = user_info.get("sub")
+    
+    if not email:
+        error_msg = urllib.parse.quote("No email provided by Apple")
+        return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
+        
+    # 2. Reconstruct Name and State
+    name = "Unknown User"
+    if user_str:
+        try:
+            user_json = json.loads(user_str)
+            name_dict = user_json.get("name", {})
+            first_name = name_dict.get("firstName", "")
+            last_name = name_dict.get("lastName", "")
+            name = f"{first_name} {last_name}".strip() or name
+        except Exception:
+            pass
+            
+    # Read intended signup role from state
+    oauth_role = "doctor" # Default
+    if state_param:
+        try:
+            state_data = json.loads(base64.urlsafe_b64decode(state_param).decode())
+            oauth_role = state_data.get("role", "doctor")
+        except Exception:
+            pass
+            
+    # 3. Handle User Record
+    result = await db.execute(select(User).where(User.email == email.lower(), User.deleted_at.is_(None)))
     user = result.scalar_one_or_none()
-
-    if not user:
-        # STRICT SECURITY: Do not auto-register.
-        # Patients must be added by doctors first.
-        # Doctors must register via the specific doctor flow.
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account not found. Please register or ask your provider to onboard you first."
+    
+    encoded_access = ""
+    encoded_refresh = ""
+    encoded_user = ""
+    
+    if user:
+        # User exists, link apple_id if not present
+        if not user.apple_id:
+            user.apple_id = apple_user_id
+            await db.commit()
+            
+        # Standard Login flow
+        access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+        refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+        
+        refresh_token_hash = hash_token(refresh_token_value)
+        refresh_token = RefreshToken(
+            user_id=user.id,
+            token_hash=refresh_token_hash,
+            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         )
-
-    # Link Google ID if not linked
-    if not user.google_id:
-        user.google_id = user_info.id
-        user.email_verified = True # Trust Google verification
+        db.add(refresh_token)
+        
+        user.last_login = datetime.utcnow()
         await db.commit()
         await db.refresh(user)
-
-    # Generate Tokens (reuse existing logic)
-    access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-    refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-    
-    refresh_token_hash = hash_token(refresh_token_value)
-    refresh_token = RefreshToken(
-        user_id=user.id,
-        token_hash=refresh_token_hash,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    )
-    db.add(refresh_token)
-    user.last_login = datetime.utcnow()
-    await db.commit()
-
-    # Prepare response
-    pii_encryption = PIIEncryption()
-    decrypted_full_name = pii_encryption.decrypt(user.full_name)
-    name_parts = decrypted_full_name.split(" ", 1)
-
-    return LoginResponse(
-        success=True,
-        access_token=access_token,
-        refresh_token=refresh_token_value,
-        token_type="bearer",
-        user=UserResponse(
-            id=user.id,
-            name=decrypted_full_name,
-            email=user.email,
-            first_name=name_parts[0],
-            last_name=name_parts[1] if len(name_parts) > 1 else "",
-            role=user.role,
-            organization_id=user.organization_id,
-            email_verified=user.email_verified,
-            mfa_enabled=user.mfa_enabled,
-            created_at=user.created_at,
-            updated_at=user.updated_at
+        
+        pii_encryption = PIIEncryption()
+        try:
+            decrypted_full_name = pii_encryption.decrypt(user.full_name)
+        except Exception:
+            decrypted_full_name = user.full_name if user.full_name else name
+            
+        name_parts = decrypted_full_name.split(" ", 1)
+        
+        user_data = {
+            "id": str(user.id),
+            "name": decrypted_full_name,
+            "email": user.email,
+            "first_name": name_parts[0],
+            "last_name": name_parts[1] if len(name_parts) > 1 else "",
+            "role": str(user.role).split(".")[-1],
+            "organization_id": str(user.organization_id) if user.organization_id else None,
+            "email_verified": user.email_verified,
+            "onboarding_complete": user.account_status == "active"
+        }
+        
+    else:
+        # New Registration
+        organization = Organization(name=f"Pending Org ({email.split('@')[0]})")
+        db.add(organization)
+        await db.flush()
+            
+        pii_encryption = PIIEncryption()
+        encrypted_full_name = pii_encryption.encrypt(name)
+        
+        # Decide the role
+        assigned_role = oauth_role if oauth_role in ["doctor", "hospital", "patient"] else "doctor"
+        
+        user = User(
+            email=email.lower(),
+            password_hash=None, 
+            full_name=encrypted_full_name,
+            role=assigned_role,
+            organization_id=organization.id,
+            email_verified=True, 
+            mfa_enabled=False,
+            auth_provider="apple",
+            apple_id=apple_user_id,
+            account_status="pending_onboarding"
         )
+        
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+        access_token = create_access_token(
+            data={"sub": str(user.id), "role": assigned_role},
+            token_type="onboarding"
+        )
+        refresh_token_value = ""
+        
+        user_data = {
+            "id": str(user.id),
+            "name": name,
+            "email": email,
+            "role": assigned_role,
+            "onboarding_complete": False
+        }
+        
+    encoded_user = urllib.parse.quote(json.dumps(user_data))
+    encoded_access = urllib.parse.quote(access_token)
+    encoded_refresh = urllib.parse.quote(refresh_token_value)
+
+    redirect_url = (
+        f"{frontend_callback}"
+        f"?access_token={encoded_access}"
+        f"&refresh_token={encoded_refresh}"
+        f"&user={encoded_user}"
     )
+    return RedirectResponse(url=redirect_url)
 
 
 # @router.get("/apple/login")
