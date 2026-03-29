@@ -28,17 +28,23 @@ if [ $attempt -eq $max_attempts ]; then
     echo "⚠️ Database not responding - trying to continue anyway..."
 fi
 
-# Run Alembic migrations - try 'head' first, then 'heads' for multiple branch situation
+# Run Alembic migrations
 echo "🔄 Running Alembic migrations..."
 cd /app
 
 if alembic upgrade head 2>/dev/null; then
-    echo "✅ Migrations completed successfully!"
+    echo "✅ Alembic migrations completed successfully!"
 elif alembic upgrade heads 2>&1; then
-    echo "✅ Migrations completed (multiple heads resolved)!"
+    echo "✅ Alembic migrations completed (multiple heads handled)!"
 else
-    echo "⚠️ Migrations may already be up to date or had non-critical errors - continuing startup..."
+    echo "⚠️ Alembic failed - checking common history mismatch..."
+    # Attempt to fix the most common EC2 history mismatch
+    alembic stamp 70e05e24e9bb && alembic upgrade head || echo "❌ Migration repair failed"
 fi
+
+# Step 3: Direct Schema Check (ensure missing tables like notifications exist)
+echo "🚀 Running direct schema check..."
+python scripts/ensure_db_schema.py
 
 # Check current migration version
 echo "📊 Current migration version:"
