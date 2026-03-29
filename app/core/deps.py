@@ -119,12 +119,15 @@ async def get_current_active_user(
     Raises:
         HTTPException: If email is not verified
     """
-    if not current_user.email_verified:
+    from app.config import settings
+    # Bypass email verification in development
+    if not current_user.email_verified and settings.APP_ENV != "development":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email not verified. Please verify your email first.",
         )
     return current_user
+
 
 from fastapi import Request
 

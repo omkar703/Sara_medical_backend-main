@@ -178,8 +178,12 @@ def generate_soap_note(self, consultation_id: str) -> dict:
             db.commit()
             return {"status": "failed", "reason": str(e)}
 
-        finally:
-            db.close()
+    except Exception as e:
+        print(f"[generate_soap_note] ❌ Global Error: {e}")
+        return {"status": "failed", "reason": str(e)}
+    finally:
+        db.close()
+
 
 
 # ─────────────────────────────────────────────────────────

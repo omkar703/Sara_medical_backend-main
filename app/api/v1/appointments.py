@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -413,8 +413,8 @@ async def _do_update_appointment_status(
         appointment.reschedule_note = status_update.reschedule_note
     appointment.updated_at = datetime.utcnow()
     
-    # Special handling for when an appointment becomes 'accepted'
-    if appointment.status == "accepted":
+    # Special handling for when an appointment becomes 'accepted' OR 'completed'
+    if appointment.status in ["accepted", "completed"]:
         # Generate Google Meet link if not exists
         if not appointment.meet_link:
             from app.services.google_meet_service import google_meet_service
@@ -454,6 +454,43 @@ async def _do_update_appointment_status(
             except Exception as e:
                 print(f"Failed to create Google Meet: {e}")
 
+        # ── ENSURE A CONSULTATION RECORD EXISTS ───────────────────────────────
+        # This makes it appear in 'Visit History' and enables SOAP reports.
+        try:
+            from app.models.consultation import Consultation
+            # Check if one already exists for this slot + doctor + patient
+            c_check = await db.execute(
+                select(Consultation).where(
+                    and_(
+                        Consultation.doctor_id == appointment.doctor_id,
+                        Consultation.patient_id == appointment.patient_id,
+                        Consultation.scheduled_at == appointment.requested_date
+                    )
+                )
+            )
+            if not c_check.scalars().first():
+                # Use hospital_id if available, fallback to doctor's org
+                org_id = appointment.hospital_id or appointment.doctor.organization_id
+                
+                linked_consultation = Consultation(
+                    doctor_id=appointment.doctor_id,
+                    patient_id=appointment.patient_id,
+                    organization_id=org_id,
+                    scheduled_at=appointment.requested_date,
+                    duration_minutes=30,
+                    status="completed" if appointment.status == "completed" else "scheduled",
+                    google_event_id=appointment.google_event_id,
+                    meet_link=appointment.meet_link,
+                    notes=appointment.doctor_notes,
+                    chief_complaint=appointment.reason,
+                    visit_state="completed" if appointment.status == "completed" else "scheduled"
+                )
+                db.add(linked_consultation)
+                print(f"[Appointments] ✅ Automatically created linked consultation for appointment {appointment.id}")
+        except Exception as e:
+            print(f"[Appointments] ⚠ Could not auto-create linked consultation: {e}")
+        # ─────────────────────────────────────────────────────────────────────
+
     # Sync appointment status to calendar
     from app.services.calendar_service import CalendarService
     calendar_service = CalendarService(db)
@@ -462,8 +499,7 @@ async def _do_update_appointment_status(
     if status_update.status in ["declined", "cancelled", "rejected"]:
         await calendar_service.sync_appointment_to_calendar(appointment, "cancel")
     else:
-        # If it was pending and now accepted, 'update' in calendar_service 
-        # will handle creation if events don't exist yet (thanks to our recent change)
+        # If it was pending and now accepted/completed, 'update' in calendar_service 
         await calendar_service.sync_appointment_to_calendar(appointment, "update")
     
     await db.commit()
@@ -471,32 +507,42 @@ async def _do_update_appointment_status(
     
     notification_service = NotificationService(db)
     
-    # Patient accepted/rejected a doctor-created appointment → notify doctor
-    if is_patient and appointment.created_by == "doctor":
-        if status_update.status == "accepted":
-            await notification_service.create_notification(
-                user_id=appointment.doctor_id,
-                type="appointment_accepted",
-                title="Appointment Accepted",
-                message=f"A patient has accepted your appointment request for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
-                action_url=f"/appointments/{appointment.id}"
-            )
-        elif status_update.status in ["rejected", "declined"]:
-            await notification_service.create_notification(
-                user_id=appointment.doctor_id,
-                type="appointment_rejected",
-                title="Appointment Declined",
-                message=f"A patient has declined your appointment request for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.",
-                action_url=f"/appointments/{appointment.id}"
-            )
+    # Notification handling
+    target_user_id = None
+    notif_type = None
+    notif_title = None
+    notif_message = None
     
-    # Doctor declined/cancelled a patient-created appointment → notify patient
-    elif is_doctor and status_update.status in ["declined", "cancelled"]:
+    from app.core.security import pii_encryption
+    actor_name = "The other party"
+    if is_patient:
+        actor_name = pii_encryption.decrypt(appointment.patient.full_name) if appointment.patient else "The patient"
+        target_user_id = appointment.doctor_id
+    else:
+        actor_name = pii_encryption.decrypt(appointment.doctor.full_name) if appointment.doctor else "The doctor"
+        actor_name = f"Dr. {actor_name}"
+        target_user_id = appointment.patient_id
+        
+    status_display = appointment.status.replace('_', ' ')
+    note = appointment.reschedule_note or appointment.doctor_notes or ""
+    print(f"DEBUG: Constructing notification for apt {appointment.id}. Note: {note}")
+    note_text = f" Reason: \"{note}\"" if (note and len(note.strip()) > 0) else ""
+    
+    if appointment.status == "accepted":
+        notif_type = "appointment_accepted"
+        notif_title = "Appointment Accepted"
+        notif_message = f"{actor_name} has accepted the appointment for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}."
+    elif appointment.status in ["rejected", "declined", "cancelled"]:
+        notif_type = f"appointment_{appointment.status}"
+        notif_title = f"Appointment {appointment.status.capitalize()}"
+        notif_message = f"{actor_name} has {appointment.status} the appointment for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')}.{note_text}"
+    
+    if target_user_id and notif_type:
         await notification_service.create_notification(
-            user_id=appointment.patient_id,
-            type=f"appointment_{status_update.status}",
-            title=f"Appointment {status_update.status.capitalize()}",
-            message=f"Your appointment scheduled for {appointment.requested_date.strftime('%Y-%m-%d %H:%M')} has been {status_update.status}.",
+            user_id=target_user_id,
+            type=notif_type,
+            title=notif_title,
+            message=notif_message,
             action_url=f"/appointments/{appointment.id}"
         )
     

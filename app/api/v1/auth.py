@@ -114,13 +114,10 @@ async def onboarding_signup(
     
     # Organization handling (minimal default for onboarding phase)
     # The existing generic organization can be used or we can create one
-    org_result = await db.execute(select(Organization).where(Organization.name == "Pending Onboarding Org"))
-    organization = org_result.scalar_one_or_none()
-    
-    if not organization:
-        organization = Organization(name="Pending Onboarding Org")
-        db.add(organization)
-        await db.flush()
+    # Create a unique organization specifically for this signup to maintain isolation
+    organization = Organization(name=f"Pending Org ({request.email.split('@')[0]})")
+    db.add(organization)
+    await db.flush()
         
     # Generate verification token
     verification_token = generate_verification_token()
@@ -465,13 +462,10 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
         
     else:
         # Create user with pending_onboarding status
-        org_result = await db.execute(select(Organization).where(Organization.name == "Pending Onboarding Org"))
-        organization = org_result.scalar_one_or_none()
-        
-        if not organization:
-            organization = Organization(name="Pending Onboarding Org")
-            db.add(organization)
-            await db.flush()
+        # Create a unique organization specifically for this signup to maintain isolation
+        organization = Organization(name=f"Pending Org ({email.split('@')[0]})")
+        db.add(organization)
+        await db.flush()
             
         pii_encryption = PIIEncryption()
         encrypted_full_name = pii_encryption.encrypt(name)
@@ -714,13 +708,10 @@ async def apple_oauth_callback(request: Request, db: AsyncSession = Depends(get_
         )
         
     else:
-        org_result = await db.execute(select(Organization).where(Organization.name == "Pending Onboarding Org"))
-        organization = org_result.scalar_one_or_none()
-        
-        if not organization:
-            organization = Organization(name="Pending Onboarding Org")
-            db.add(organization)
-            await db.flush()
+        # Create a unique organization for this new user
+        organization = Organization(name=f"Pending Org ({email.split('@')[0]})")
+        db.add(organization)
+        await db.flush()
             
         pii_encryption = PIIEncryption()
         encrypted_full_name = pii_encryption.encrypt(name)
@@ -2405,16 +2396,13 @@ async def update_onboarding(
         current_user.full_name = pii_encryption.encrypt(f"{update_data.first_name} {update_data.last_name}")
         
     if update_data.organization_name:
-        # Get or create organization
+        # Update the name of the organization the user is currently assigned to
         org_result = await db.execute(
-            select(Organization).where(Organization.name == update_data.organization_name)
+            select(Organization).where(Organization.id == current_user.organization_id)
         )
         organization = org_result.scalar_one_or_none()
-        if not organization:
-            organization = Organization(name=update_data.organization_name)
-            db.add(organization)
-            await db.flush()
-        current_user.organization_id = organization.id
+        if organization:
+            organization.name = update_data.organization_name
 
     # For patient model updates if needed, though they don't do this directly.
     # We mainly update the User model.

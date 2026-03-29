@@ -1,0 +1,260 @@
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
+/* [project]/Frontend/saramedico-deploy-main/app/globals.css [app-client] (css) */
+* {
+  box-sizing: border-box;
+  font-family: Inter, sans-serif;
+}
+
+body {
+  color: #111;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background: #f8fafc;
+  margin: 0;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+section[id] {
+  scroll-margin-top: 100px;
+}
+
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+}
+
+.auth-left {
+  background: #fff;
+  flex-direction: column;
+  justify-content: center;
+  width: 38%;
+  padding: 64px 56px;
+  display: flex;
+}
+
+.auth-right {
+  color: #fff;
+  background: linear-gradient(#f5f5f5, #e5ecfa);
+  justify-content: center;
+  align-items: center;
+  width: 62%;
+  display: flex;
+}
+
+.logo-placeholder {
+  color: #4cc9f0;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  display: flex;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 26px;
+}
+
+.subtext {
+  color: #666;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  display: block;
+}
+
+input {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  outline: none;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+input:focus {
+  border-color: #4cc9f0;
+}
+
+.primary-btn {
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(90deg, #4cc9f0, #4361ee);
+  border: none;
+  border-radius: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px;
+  font-size: 14px;
+}
+
+.divider {
+  text-align: center;
+  color: #aaa;
+  margin: 16px 0;
+  font-size: 12px;
+}
+
+.social-btn {
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px;
+  font-size: 13px;
+}
+
+.bottom-text {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.bottom-text a {
+  color: #4361ee;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.forgot {
+  color: #4361ee;
+  float: right;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.social-btn {
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  display: flex;
+}
+
+.social-btn img {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.auth-2fa-container {
+  background: #f1f5f9;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  display: flex;
+}
+
+.auth-2fa-card {
+  text-align: center;
+  background: #fff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 420px;
+  padding: 32px 28px;
+  box-shadow: 0 10px 30px #00000014;
+}
+
+.lock-icon-container {
+  color: #6b7280;
+  background: #e5e7eb;
+  border-radius: 50%;
+  justify-content: center;
+  align-items: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  font-size: 20px;
+  display: flex;
+}
+
+.otp-input-container {
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  display: flex;
+}
+
+.otp-input {
+  text-align: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  outline: none;
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
+
+.verify-btn {
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border: none;
+  border-radius: 999px;
+  width: 100%;
+  height: 42px;
+  font-size: 14px;
+}
+
+@media (max-width: 1024px) {
+  .auth-left {
+    width: 50%;
+    padding: 40px;
+  }
+
+  .auth-right {
+    width: 50%;
+  }
+}
+
+@media (max-width: 768px) {
+  .auth-container {
+    flex-direction: column;
+  }
+
+  .auth-left {
+    width: 100%;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  .auth-right {
+    display: none;
+  }
+
+  .auth-2fa-card {
+    box-shadow: none;
+    background: #fff;
+    padding: 24px 20px;
+  }
+
+  .otp-input {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+/*# sourceMappingURL=%5Bproject%5D_Frontend_saramedico-deploy-main_app_globals_90208c7f.css.map*/

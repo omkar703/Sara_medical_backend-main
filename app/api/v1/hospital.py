@@ -59,8 +59,9 @@ async def get_hospital_overview(
         )
 
     service = HospitalService(db)
+    print(f"DEBUG: dashboard overview for org {organization_id} (user {current_user.email})")
     data = await service.get_dashboard_overview(organization_id)
-    
+    print(f"DEBUG: found {data.get('metrics', {}).get('totalDoctors')} doctors for org {organization_id}")
     return data
 
 @router.get("/appointments", response_model=list)
@@ -116,7 +117,9 @@ async def get_hospital_directory(
         )
 
     service = HospitalService(db)
+    print(f"DEBUG: hospital directory for org {organization_id} (user {current_user.email})")
     data = await service.get_hospital_directory(organization_id)
+    print(f"DEBUG: directory returned {len(data.get('doctors', []))} doctors and {len(data.get('patients', []))} patients")
     
     return data
 
@@ -336,6 +339,15 @@ async def update_doctor_account(
         doctor.specialty = request.specialty
     if request.license_number is not None:
         doctor.license_number = pii_encryption.encrypt(request.license_number)
+
+    if request.status is not None:
+        status_check = await db.execute(select(DoctorStatus).where(DoctorStatus.doctor_id == doctor_id))
+        doc_status = status_check.scalar_one_or_none()
+        if doc_status:
+            doc_status.status = request.status
+        else:
+            new_status = DoctorStatus(doctor_id=doctor_id, status=request.status)
+            db.add(new_status)
 
     # 5. Save changes
     await db.commit()
