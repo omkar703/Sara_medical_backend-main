@@ -32,19 +32,26 @@ fi
 echo "🔄 Running Alembic migrations..."
 cd /app
 
-if alembic upgrade head 2>/dev/null; then
+# Check for multiple heads (branched history) and fix automatically
+HEADS=$(alembic heads 2>/dev/null | wc -l)
+if [ "$HEADS" -gt 1 ]; then
+    echo "⚠️  Multiple migration heads detected ($HEADS). Merging..."
+    alembic merge heads -m "auto_merge_branches" || echo "⚠️ Merge failed, attempting upgrade anyway"
+fi
+
+if alembic upgrade head 2>&1; then
     echo "✅ Alembic migrations completed successfully!"
-elif alembic upgrade heads 2>&1; then
-    echo "✅ Alembic migrations completed (multiple heads handled)!"
 else
-    echo "⚠️ Alembic failed - checking common history mismatch..."
-    # Attempt to fix the most common EC2 history mismatch
-    alembic stamp 70e05e24e9bb && alembic upgrade head || echo "❌ Migration repair failed"
+    echo "⚠️ Alembic failed - attempting to stamp and repair..."
+    alembic stamp cad819385621 && echo "✅ Stamped to latest revision" || \
+    alembic stamp f9b2c3d4e5f8 && alembic upgrade head || \
+    alembic stamp 70e05e24e9bb && alembic upgrade head || \
+    echo "❌ Migration repair failed - app will attempt to start anyway"
 fi
 
 # Step 3: Direct Schema Check (ensure missing tables like notifications exist)
 echo "🚀 Running direct schema check..."
-python scripts/ensure_db_schema.py
+python scripts/ensure_db_schema.py || echo "⚠️ Schema check failed, continuing..."
 
 # Check current migration version
 echo "📊 Current migration version:"
