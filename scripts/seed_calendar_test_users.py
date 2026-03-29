@@ -76,6 +76,22 @@ async def seed_data():
             )
             session.add(patient)
             await session.commit()
+            
+            # create patient record
+            from app.models.patient import Patient
+            patient_record = Patient(
+                id=patient.id,  # Match user ID for 1to1
+                organization_id=org.id,
+                full_name=patient.full_name,
+                email=patient.email,
+                phone_number=patient.phone_number,
+                gender="male",
+                date_of_birth=pii_encryption.encrypt("1990-01-01"),
+                mrn="MRN-TEST-001",
+                medical_history=pii_encryption.encrypt("No known issues")
+            )
+            session.add(patient_record)
+            await session.commit()
             print("Patient created")
         else:
             print("Patient exists")

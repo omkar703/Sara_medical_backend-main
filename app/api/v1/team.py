@@ -137,7 +137,6 @@ async def list_department_staff(
             email=u.email,
             # Fallback to system role if specific department_role is empty
             role=getattr(u, 'department_role', None) or u.role.capitalize(),
-            system_role=u.role, # Base role for reliable filtering (e.g., 'doctor')
             specialty=getattr(u, 'specialty', None),
             last_accessed=u.last_login,
             # Fallback to 'Active' if staff_status is empty

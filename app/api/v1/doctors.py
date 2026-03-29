@@ -95,20 +95,38 @@ async def search_global_doctor_directory(
     Patient-facing Directory Search.
     Allows searching for ANY doctor in the system (unlike /search which is restricted).
     """
-    # Patient can see all doctors in their same organization
-    organization_id_filter = None
+    # Patients from hospitals should only see their assigned doctor OR fellow organization doctors
+    organization_id_filter = current_user.organization_id
+    assigned_doctor_id = None
+    
     if current_user.role == "patient":
         from app.models.patient import Patient
         p_stmt = select(Patient).where(Patient.id == current_user.id)
         p_result = await db.execute(p_stmt)
         patient_record = p_result.scalar_one_or_none()
         if patient_record:
-            organization_id_filter = patient_record.organization_id
+            assigned_doctor_id = patient_record.primary_doctor_id or patient_record.created_by
+            if patient_record.organization_id:
+                organization_id_filter = patient_record.organization_id
 
-    # 1. Fetch active doctors
+    # Base query for all active doctors
     stmt = select(User).where(User.role == "doctor", User.deleted_at.is_(None))
     
-    if organization_id_filter:
+    # 1. If assigned doctor is requested specifically, filter strictly
+    if assigned_doctor_id:
+        # Check if this doctor exists and is active
+        exists_stmt = select(User.id).where(User.id == assigned_doctor_id, User.deleted_at.is_(None))
+        exists_res = await db.execute(exists_stmt)
+        if exists_res.scalar_one_or_none():
+            stmt = stmt.where(User.id == assigned_doctor_id)
+        else:
+            # Fallback to organization if assigned doctor is missing
+            if organization_id_filter:
+                stmt = stmt.where(User.organization_id == organization_id_filter)
+    # 2. Otherwise filter by organization
+    elif organization_id_filter:
+        # If it's the "default" public organization, maybe don't filter so strictly?
+        # But for hospital flow, organization is key.
         stmt = stmt.where(User.organization_id == organization_id_filter)
         
     # Filter by Specialty (Database side)

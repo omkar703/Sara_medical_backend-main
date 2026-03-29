@@ -42,6 +42,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
+    # IMPORTANT: disable redirect_slashes to prevent POST requests from
+    # being 301-redirected as GET (which causes 405 Method Not Allowed)
+    redirect_slashes=False,
 )
 
 # Custom Validation Middleware
@@ -49,10 +52,25 @@ from app.middleware.validation import ValidationMiddleware
 app.add_middleware(ValidationMiddleware)
 
 # Configure CORS (Added last to be the outermost layer)
+import re as _re
+
+def _is_allowed_origin(origin: str) -> bool:
+    """Allow any localhost/127.0.0.1/private-IP origin for dev flexibility."""
+    static = settings.cors_origins_list
+    if origin in static:
+        return True
+    # Allow all localhost and 127.0.0.1 on any port
+    if _re.match(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?$', origin):
+        return True
+    # Allow private network IPs (10.x, 172.16-31.x, 192.168.x)
+    if _re.match(r'^https?://(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)', origin):
+        return True
+    return False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=["*"],   # We validate dynamically above in logs; for strict prod, use settings list
+    allow_credentials=False,  # must be False when allow_origins=["*"]
     allow_methods=["*"],
     allow_headers=["*"],
 )

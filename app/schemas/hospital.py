@@ -5,6 +5,8 @@ from pydantic import BaseModel, EmailStr
 class DashboardMetrics(BaseModel):
     totalDoctors: int
     todayAppointments: int
+    clearedToday: int = 0
+    avgWaitTime: str = "0m"
 
 class RecentActivity(BaseModel):
     activityId: str
