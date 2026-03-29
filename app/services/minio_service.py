@@ -24,30 +24,45 @@ class MinIOService:
             secure=False
         )
         
-        # IMPORTANT: presign_client uses the EXTERNAL endpoint (localhost:9010).
-        # Presigned URL signatures include the 'host' header, so the client used
-        # to sign must match the host the browser will use to fetch the file.
-        # If we sign with 'minio:9000' but serve 'localhost:9010', MinIO returns
-        # SignatureDoesNotMatch.
-        external_endpoint = settings.minio_presigned_endpoint
-        self.presign_client = Minio(
-            external_endpoint,
-            access_key=settings.MINIO_ROOT_USER,
-            secret_key=settings.MINIO_ROOT_PASSWORD,
-            secure=settings.MINIO_USE_SSL
-        )
+        # Determine if MINIO_EXTERNAL_ENDPOINT is a plain host (host:port)
+        # or contains a path prefix (e.g. saramedico.com/s3).
+        # MinIO SDK only accepts host:port — no paths allowed.
+        # If a path-based endpoint is configured, we generate URLs internally
+        # and rewrite them to the external URL manually.
+        external = settings.MINIO_EXTERNAL_ENDPOINT or ""
         
-        # Bucket management MUST use internal client (self.client) 
-        # because the backend container can't reach 'localhost:9010' from inside Docker.
+        if external and "/" in external.lstrip("https://").lstrip("http://"):
+            # Path-based endpoint (e.g. "saramedico.com/s3"): use internal client for signing
+            self._external_url_prefix = external.rstrip("/")
+            self.presign_client = self.client  # sign with internal, rewrite later
+            self._rewrite_presigned_urls = True
+        elif external:
+            # Plain host/port external endpoint (e.g. "saramedico.com" or "100.x.x.x:9010")
+            use_ssl = settings.MINIO_USE_SSL
+            clean_external = external.replace("https://", "").replace("http://", "").rstrip("/")
+            self.presign_client = Minio(
+                clean_external,
+                access_key=settings.MINIO_ROOT_USER,
+                secret_key=settings.MINIO_ROOT_PASSWORD,
+                secure=use_ssl
+            )
+            self._external_url_prefix = None
+            self._rewrite_presigned_urls = False
+        else:
+            # No external endpoint: sign with internal client
+            self.presign_client = self.client
+            self._external_url_prefix = None
+            self._rewrite_presigned_urls = False
+        
+        # Bucket management MUST use internal client (self.client)
         self._ensure_buckets()
 
         # Pre-populate region map on BOTH clients to avoid network region-discovery pings.
-        # Without this, the library tries to connect to the server to find the region,
-        # which crashes when presign_client tries to connect to localhost:9010 from inside Docker.
         for bucket in [settings.MINIO_BUCKET_UPLOADS, settings.MINIO_BUCKET_DOCUMENTS,
                        settings.MINIO_BUCKET_AUDIO, settings.MINIO_BUCKET_AVATARS]:
             self.client._region_map[bucket] = "us-east-1"
-            self.presign_client._region_map[bucket] = "us-east-1"
+            if self.presign_client is not self.client:
+                self.presign_client._region_map[bucket] = "us-east-1"
     
     def _ensure_buckets(self):
         """Ensure all required buckets exist"""
@@ -112,13 +127,25 @@ class MinIOService:
             print(f"generate_presigned_url: skipping, object_name is empty")
             return None
         try:
-            # Use presign_client (configured with the external endpoint) to generate the URL.
             url = self.presign_client.presigned_get_object(
                 bucket_name,
                 object_name.strip(),
                 expires=timedelta(seconds=expiry_seconds),
                 response_headers=response_headers
             )
+            
+            # If we are using a path-based external URL (e.g. saramedico.com/s3),
+            # rewrite the internal minio:9000 host to the external path.
+            if self._rewrite_presigned_urls and self._external_url_prefix:
+                from urllib.parse import urlparse, urlunparse
+                parsed = urlparse(url)
+                # Rebuild with external prefix: scheme + netloc become the prefix
+                # e.g. http://minio:9000/bucket/obj?... -> https://saramedico.com/s3/bucket/obj?...
+                new_url = f"https://{self._external_url_prefix}{parsed.path}"
+                if parsed.query:
+                    new_url += f"?{parsed.query}"
+                return new_url
+            
             return url
         except S3Error as e:
             print(f"Failed to generate presigned URL: {e}")
