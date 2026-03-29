@@ -109,12 +109,14 @@ async def get_dashboard_overview(
             status=log.status or "completed"
         ))
 
-    # 2. Storage Stats (Real from MinIO)
+    # 2. Storage Stats (Real from MinIO + Real disk capacity)
     try:
+        import shutil
+        disk = shutil.disk_usage("/")
+        total_gb = round(disk.total / (1024**3), 2)
         stats = minio_service.get_storage_stats()
         used_gb = round(stats["used_bytes"] / (1024**3), 2)
-        total_gb = 512.0  # Valid storage capacity for this system
-        percentage = round((used_gb / total_gb) * 100, 2)
+        percentage = round((used_gb / total_gb) * 100, 2) if total_gb > 0 else 0.0
         
         storage_stats = StorageStats(
             used_gb=used_gb,
@@ -124,7 +126,9 @@ async def get_dashboard_overview(
         )
     except Exception as e:
         print(f"Failed to get real storage stats: {e}")
-        storage_stats = StorageStats(used_gb=0.0, total_gb=512.0, percentage=0.0, files_count=0)
+        import shutil
+        disk = shutil.disk_usage("/")
+        storage_stats = StorageStats(used_gb=0.0, total_gb=round(disk.total / (1024**3), 2), percentage=0.0, files_count=0)
     
     # 3. Handle System Alerts (On-the-fly and Persistent)
     alerts = []
