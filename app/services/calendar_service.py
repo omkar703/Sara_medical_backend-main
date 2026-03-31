@@ -548,11 +548,14 @@ class CalendarService:
         """
         from sqlalchemy.orm import selectinload
         
-        query = select(CalendarEvent).where(
+        from app.models.user import User
+        
+        query = select(CalendarEvent).join(User, CalendarEvent.user_id == User.id).where(
             and_(
                 CalendarEvent.organization_id == organization_id,
                 CalendarEvent.start_time >= start_date,
-                CalendarEvent.start_time <= end_date
+                CalendarEvent.start_time <= end_date,
+                User.role != "patient"
             )
         ).options(
             selectinload(CalendarEvent.user),

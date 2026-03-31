@@ -117,7 +117,8 @@ async def list_department_staff(
     # Fetch users in this organization
     query = select(User).where(
         User.organization_id == organization_id, 
-        User.deleted_at.is_(None)
+        User.deleted_at.is_(None),
+        User.role != "patient"
     ).order_by(User.full_name.asc())
     
     result = await db.execute(query)
