@@ -104,6 +104,9 @@ class User(Base):
     # Avatar
     avatar_url = Column(String(500), nullable=True)
     
+    # AI Processing Consent (for Claude/Anthropic processing of PHI)
+    ai_processing_consented = Column(Boolean, default=False, nullable=False)
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -235,16 +235,18 @@ async def send_invitation_email(email: str, token: str, role: str, org_name: str
 async def send_doctor_credentials_email(
     to_email: str, 
     name: str, 
-    password: str, 
+    setup_token: str,
     department: str, 
     role: str, 
     org_name: str
 ) -> bool:
     """
-    Send an email containing login credentials to a doctor 
+    Send an email containing a secure one-time setup link to a doctor 
     created directly by a hospital administrator.
+    
+    SECURITY: Uses one-time token instead of plain-text password.
     """
-    login_url = f"{settings.FRONTEND_URL}/auth/login"
+    setup_url = f"{settings.FRONTEND_URL}/auth/setup?token={setup_token}"
     
     html_template = f"""
     <!DOCTYPE html>
@@ -256,7 +258,7 @@ async def send_doctor_credentials_email(
             .header {{ background-color: #2563EB; color: white; padding: 20px; text-align: center; }}
             .content {{ padding: 20px; background-color: #f9fafb; }}
             .button {{ display: inline-block; padding: 12px 24px; background-color: #2563EB; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
-            .credentials {{ background-color: #E5E7EB; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 16px; }}
+            .warning {{ background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; border-radius: 5px; margin: 15px 0; }}
         </style>
     </head>
     <body>
@@ -267,15 +269,17 @@ async def send_doctor_credentials_email(
             <div class="content">
                 <h2>Hello Dr. {name},</h2>
                 <p>An account has been created for you at <strong>{org_name}</strong> under the <strong>{department}</strong> department as <strong>{role}</strong>.</p>
-                <p>You can access the Saramedico platform using the following credentials:</p>
                 
-                <div class="credentials">
-                    <p style="margin: 0;"><strong>Email:</strong> {to_email}</p>
-                    <p style="margin: 0;"><strong>Password:</strong> {password}</p>
+                <div class="warning">
+                    <strong>⚠️ Important:</strong> Click the button below to set up your password securely. This link expires in 24 hours.
                 </div>
                 
-                <p><em>For your security, we strongly advise you to change your password immediately after logging in.</em></p>
-                <p><a href="{login_url}" class="button">Log In to Your Account</a></p>
+                <p><a href="{setup_url}" class="button">Complete Account Setup</a></p>
+                
+                <p>Or paste this link in your browser:</p>
+                <p style="word-break: break-all; background-color: #E5E7EB; padding: 10px; border-radius: 5px;"><code>{setup_url}</code></p>
+                
+                <p><em>For your security, never share this link with anyone. The link will expire after one use or after 24 hours.</em></p>
             </div>
         </div>
     </body>
@@ -284,9 +288,9 @@ async def send_doctor_credentials_email(
     
     return await send_email(
         to_email=to_email,
-        subject=f"Your Saramedico Account Credentials for {org_name}",
+        subject=f"Complete Your Saramedico Account Setup for {org_name}",
         html_content=html_template,
-        text_content=f"Your account was created. Email: {to_email}, Password: {password}. Please login at {login_url}"
+        text_content=f"Your account has been created. Please complete setup using this link: {setup_url}"
     )
 
 

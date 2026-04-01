@@ -55,10 +55,15 @@ class UserCreate(BaseModel):
 
     @validator('password')
     def password_strength(cls, v):
-        """Validate password strength"""
+        """Validate password strength - minimum 8 characters with complexity"""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters')
-        # Relaxed constraints for demo purposes if needed, otherwise keep strict
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[^a-zA-Z0-9]', v):
+            raise ValueError('Password must contain at least one special character')
         return v
 
 
@@ -167,6 +172,19 @@ class ResetPasswordRequest(BaseModel):
     def passwords_match(cls, v, values):
         if 'new_password' in values and v != values['new_password']:
             raise ValueError('Passwords do not match')
+        return v
+    
+    @validator('new_password')
+    def password_strength(cls, v):
+        """Validate password strength - minimum 8 characters with complexity"""
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[^a-zA-Z0-9]', v):
+            raise ValueError('Password must contain at least one special character')
         return v
 
 

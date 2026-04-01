@@ -66,6 +66,20 @@ import httpx
 from jose import jwt as jose_jwt, JWTError
 from fastapi import HTTPException
 
+# Rate limiting
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    limiter = Limiter(key_func=get_remote_address)
+except ImportError:
+    # Fallback: no-op limiter if slowapi not installed
+    class NoOpLimiter:
+        def limit(self, rate_limit):
+            def decorator(func):
+                return func
+            return decorator
+    limiter = NoOpLimiter()
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 google_sso = GoogleSSO(
@@ -663,7 +677,9 @@ async def apple_select_role(
     return {"token": access_token}
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def register(
+    request: Request,
     user_data: UserCreate,
     db: AsyncSession = Depends(get_db)
 ):
@@ -889,7 +905,9 @@ async def verify_email(
 
 
 @router.post("/login", response_model=LoginResponse | MFARequiredResponse)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     credentials: LoginRequest,
     db: AsyncSession = Depends(get_db)
 ):
@@ -1282,15 +1300,17 @@ async def refresh_access_token(
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
+@limiter.limit("5/minute")
 async def forgot_password(
-    request: ForgotPasswordRequest,
+    request: Request,
+    req: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """Send password reset email"""
     # Find user
     result = await db.execute(
         select(User).where(
-            User.email == request.email.lower(),
+            User.email == req.email.lower(),
             User.deleted_at.is_(None)
         )
     )
@@ -1505,11 +1525,24 @@ async def delete_my_account(
     # 2.8 Documents Uploaded by User (Crucial for doctors/admins)
     try:
         from app.models.document import Document
-        # First find all documents uploaded by this user to handle MinIO cleanup if needed later
-        # (For now we just delete the metadata to prevent FK violations)
+        # Fetch all documents uploaded by this user to handle MinIO cleanup
         async with db.begin_nested():
+            docs_result = await db.execute(
+                select(Document).where(Document.uploaded_by == user_id)
+            )
+            documents_to_delete = docs_result.scalars().all()
+            
+            # Delete documents from MinIO storage
+            for doc in documents_to_delete:
+                if doc.file_key:
+                    try:
+                        minio_service.delete_object(settings.MINIO_BUCKET_DOCUMENTS, doc.file_key)
+                    except Exception as minio_err:
+                        print(f"[DeleteAccount] MinIO delete failed for document {doc.id}: {minio_err}")
+            
+            # Then delete the metadata from database
             await db.execute(sql_delete(Document).where(Document.uploaded_by == user_id))
-    except Exception as e: print(f"[DeleteAccount] Documents uploaded by user cleanup skipped: {e}")
+    except Exception as e: print(f"[DeleteAccount] Documents cleanup skipped: {e}")
 
     # ── 3. Role-specific data cleanup ───────────────────────────────────────
     if role_str == "patient":
@@ -1539,6 +1572,21 @@ async def delete_my_account(
         try:
             from app.models.document import Document
             async with db.begin_nested():
+                # Fetch all documents for this patient
+                docs_result = await db.execute(
+                    select(Document).where(Document.patient_id == user_id)
+                )
+                documents_to_delete = docs_result.scalars().all()
+                
+                # Delete documents from MinIO storage
+                for doc in documents_to_delete:
+                    if doc.file_key:
+                        try:
+                            minio_service.delete_object(settings.MINIO_BUCKET_DOCUMENTS, doc.file_key)
+                        except Exception as minio_err:
+                            print(f"[DeleteAccount] MinIO delete failed for patient document {doc.id}: {minio_err}")
+                
+                # Then delete the metadata from database
                 await db.execute(sql_delete(Document).where(Document.patient_id == user_id))
         except Exception as e: print(f"[DeleteAccount] Document cleanup skipped: {e}")
 

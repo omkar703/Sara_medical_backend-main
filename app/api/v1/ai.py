@@ -3,6 +3,7 @@
 import json as _json
 from typing import Optional, List
 from uuid import UUID
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
@@ -89,6 +90,32 @@ class RenameSessionRequest(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# AI Consent Management Schemas
+# ══════════════════════════════════════════════════════════════════════════════
+
+class AIConsentRequest(BaseModel):
+    """Request to grant/revoke AI processing consent"""
+    consented: bool = Field(
+        ..., 
+        description="True to consent to AI processing of PHI via Claude (Anthropic), False to revoke"
+    )
+    acknowledged_provider: str = Field(
+        "anthropic",
+        description="AI provider name (e.g., 'anthropic' for Claude)"
+    )
+
+
+class AIConsentResponse(BaseModel):
+    """Current AI consent status"""
+    patient_id: UUID
+    consented: bool
+    ai_provider: str = "Claude (Anthropic via AWS Bedrock)"
+    privacy_notice: str = "PHI may be processed by Claude for document analysis and medical insights"
+    consented_at: Optional[str] = None
+    revoked_at: Optional[str] = None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Document Processing (existing, unchanged)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -109,6 +136,19 @@ async def process_document(
     )
     if not has_permission:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to patient data not granted.")
+    
+    # Check if patient has consented to AI processing
+    patient_result = await db.execute(select(User).where(User.id == request.patient_id))
+    patient = patient_result.scalar_one_or_none()
+    
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    
+    if not getattr(patient, 'ai_processing_consented', False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Patient has not consented to AI processing. Please obtain consent before processing documents with Claude."
+        )
 
     queue_entry = AIProcessingQueue(
         patient_id=request.patient_id,
@@ -447,6 +487,65 @@ async def send_chat_message(
             await session_svc.set_title(request.session_id, title)
 
     return StreamingResponse(_stream_and_persist(), media_type="text/event-stream")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AI Consent Management Endpoints
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/consent", response_model=AIConsentResponse, status_code=status.HTTP_201_CREATED)
+async def set_ai_consent(
+    request: AIConsentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Grant or revoke consent for AI processing of PHI.
+    
+    **AI Provider**: Claude (Anthropic via AWS Bedrock)
+    **Privacy Notice**: When you consent, patient medical documents may be processed by Claude
+    for analysis, insights, and document processing. Ensure this aligns with your privacy policy.
+    """
+    if current_user.role != "patient":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Only patients can manage their AI consent"
+        )
+    
+    # For now, we store this as a user preference/field
+    # In production, create an AIConsent model to track consent history
+    current_user.ai_processing_consented = request.consented
+    await db.commit()
+    
+    return AIConsentResponse(
+        patient_id=current_user.id,
+        consented=request.consented,
+        ai_provider="Claude (Anthropic via AWS Bedrock)",
+        privacy_notice="PHI may be processed by Claude for document analysis and medical insights",
+        consented_at=datetime.utcnow().isoformat() if request.consented else None,
+    )
+
+
+@router.get("/consent", response_model=AIConsentResponse)
+async def get_ai_consent(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retrieve current AI processing consent status.
+    """
+    if current_user.role != "patient":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Only patients can view their AI consent"
+        )
+    
+    return AIConsentResponse(
+        patient_id=current_user.id,
+        consented=getattr(current_user, 'ai_processing_consented', False),
+        ai_provider="Claude (Anthropic via AWS Bedrock)",
+        privacy_notice="PHI may be processed by Claude for document analysis and medical insights",
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

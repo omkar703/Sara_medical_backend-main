@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # Security
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 15 minutes for security
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     ENCRYPTION_KEY: str  # Fernet key for PII encryption
@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     TRIAL_STORAGE_LIMIT_MB: int = 500
     
     # Logging
-    LOG_LEVEL: str = "DEBUG"
+    LOG_LEVEL: str = "WARNING"  # Changed from DEBUG to WARNING for security in production
     LOG_FORMAT: str = "json"
     LOG_FILE_PATH: str = "logs/saramedico.log"
     
