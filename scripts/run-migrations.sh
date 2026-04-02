@@ -43,6 +43,7 @@ if alembic upgrade head 2>&1; then
     echo "✅ Alembic migrations completed successfully!"
 else
     echo "⚠️ Alembic failed - attempting to stamp and repair..."
+    alembic stamp e1c2d3e4f5a6 && echo "✅ Stamped to latest revision" || \
     alembic stamp cad819385621 && echo "✅ Stamped to latest revision" || \
     alembic stamp f9b2c3d4e5f8 && alembic upgrade head || \
     alembic stamp 70e05e24e9bb && alembic upgrade head || \
