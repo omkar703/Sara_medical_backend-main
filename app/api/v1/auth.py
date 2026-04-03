@@ -461,17 +461,24 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user.email_verified = True
             await db.commit()
             
-        # Standard Login flow
-        access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-        refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-        
-        refresh_token_hash = hash_token(refresh_token_value)
-        refresh_token = RefreshToken(
-            user_id=user.id,
-            token_hash=refresh_token_hash,
-            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-        )
-        db.add(refresh_token)
+        if user.account_status == "pending_onboarding":
+            access_token = create_access_token(
+                data={"sub": str(user.id), "role": user.role},
+                token_type="onboarding"
+            )
+            refresh_token_value = ""
+        else:
+            # Standard Login flow
+            access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+            refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+            
+            refresh_token_hash = hash_token(refresh_token_value)
+            refresh_token = RefreshToken(
+                user_id=user.id,
+                token_hash=refresh_token_hash,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+            db.add(refresh_token)
         
         user.last_login = datetime.utcnow()
         await db.commit()
@@ -2161,17 +2168,24 @@ async def apple_callback(
             user.apple_id = apple_user_id
             await db.commit()
             
-        # Standard Login flow
-        access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
-        refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
-        
-        refresh_token_hash = hash_token(refresh_token_value)
-        refresh_token = RefreshToken(
-            user_id=user.id,
-            token_hash=refresh_token_hash,
-            expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-        )
-        db.add(refresh_token)
+        if user.account_status == "pending_onboarding":
+            access_token = create_access_token(
+                data={"sub": str(user.id), "role": user.role},
+                token_type="onboarding"
+            )
+            refresh_token_value = ""
+        else:
+            # Standard Login flow
+            access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+            refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+            
+            refresh_token_hash = hash_token(refresh_token_value)
+            refresh_token = RefreshToken(
+                user_id=user.id,
+                token_hash=refresh_token_hash,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+            db.add(refresh_token)
         
         user.last_login = datetime.utcnow()
         await db.commit()
