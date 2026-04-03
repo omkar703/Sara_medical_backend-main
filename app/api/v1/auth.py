@@ -60,11 +60,14 @@ from app.schemas.auth import (
     HospitalOnboardingRequest,
     SelectRoleRequest,
     OnboardingUpdateRequest,
+    MobileSocialLoginRequest,
 )
 from app.services.email import send_password_reset_email, send_verification_email
 import httpx
 from jose import jwt as jose_jwt, JWTError
 from fastapi import HTTPException
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 # Rate limiting
 try:
@@ -2318,6 +2321,268 @@ async def apple_callback(
             f"&user={encoded_user}"
         )
         return RedirectResponse(url=redirect_url)
+
+
+@router.post("/google/mobile-login", response_model=LoginResponse)
+async def google_mobile_login(
+    payload: MobileSocialLoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Process Google authentication directly from mobile app's native SDK"""
+    try:
+        # Verify the token
+        google_client_id = settings.GOOGLE_CLIENT_ID
+        id_info = google_id_token.verify_oauth2_token(
+            payload.id_token, google_requests.Request(), google_client_id
+        )
+        if id_info['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+            raise ValueError('Wrong issuer.')
+            
+        email = id_info.get("email")
+        name = id_info.get("name", "Unknown User")
+        google_id = id_info.get("sub")
+        avatar_url = id_info.get("picture")
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google ID token: {str(e)}"
+        )
+        
+    if not email:
+        raise HTTPException(status_code=400, detail="No email provided by Google")
+        
+    oauth_role = payload.role or "doctor"
+
+    result = await db.execute(select(User).where(User.email == email.lower(), User.deleted_at.is_(None)))
+    user = result.scalar_one_or_none()
+    
+    encoded_access = ""
+    encoded_refresh = ""
+    
+    if user:
+        if not user.google_id:
+            user.google_id = google_id
+            if not user.avatar_url:
+                user.avatar_url = avatar_url
+            user.email_verified = True
+            await db.commit()
+            
+        if user.account_status == "pending_onboarding":
+            access_token = create_access_token(
+                data={"sub": str(user.id), "role": user.role},
+                token_type="onboarding"
+            )
+            refresh_token_value = ""
+        else:
+            access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+            refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+            
+            refresh_token_hash = hash_token(refresh_token_value)
+            ref_token = RefreshToken(
+                user_id=user.id,
+                token_hash=refresh_token_hash,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+            db.add(ref_token)
+            
+        user.last_login = datetime.utcnow()
+        await db.commit()
+        await db.refresh(user)
+    else:
+        organization = Organization(name=f"Pending Org ({email.split('@')[0]})")
+        db.add(organization)
+        await db.flush()
+        
+        pii_encryption = PIIEncryption()
+        encrypted_full_name = pii_encryption.encrypt(name)
+        assigned_role = oauth_role if oauth_role in ["doctor", "hospital", "patient"] else "doctor"
+        
+        user = User(
+            email=email.lower(),
+            password_hash=None,
+            full_name=encrypted_full_name,
+            role=assigned_role,
+            organization_id=organization.id,
+            email_verified=True,
+            mfa_enabled=False,
+            auth_provider="google",
+            google_id=google_id,
+            avatar_url=avatar_url,
+            account_status="pending_onboarding"
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+        access_token = create_access_token(
+            data={"sub": str(user.id), "role": assigned_role},
+            token_type="onboarding"
+        )
+        refresh_token_value = ""
+
+    pii_encryption = PIIEncryption()
+    try:
+        decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    except Exception:
+        decrypted_full_name = user.full_name if user.full_name else name
+        
+    name_parts = decrypted_full_name.split(" ", 1)
+    
+    return LoginResponse(
+        success=True,
+        access_token=access_token,
+        refresh_token=refresh_token_value,
+        token_type="bearer",
+        user=UserResponse(
+            id=user.id,
+            name=decrypted_full_name,
+            email=user.email,
+            first_name=name_parts[0],
+            last_name=name_parts[1] if len(name_parts) > 1 else "",
+            role=user.role,
+            organization_id=user.organization_id,
+            organization_name="Pending Org" if user.account_status == "pending_onboarding" else getattr(user.organization, "name", "Default Org"),
+            mfa_enabled=user.mfa_enabled,
+            email_verified=user.email_verified,
+            avatar_url=user.avatar_url,
+            created_at=user.created_at,
+            updated_at=user.updated_at
+        )
+    )
+
+@router.post("/apple/mobile-login", response_model=LoginResponse)
+async def apple_mobile_login(
+    payload: MobileSocialLoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Process Apple authentication directly from mobile app's native SDK"""
+    try:
+        user_info = await AppleSignInHelper.verify_id_token(payload.id_token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Apple ID token: {str(e)}"
+        )
+        
+    email = user_info.get("email")
+    apple_user_id = user_info.get("sub")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="No email provided by Apple")
+        
+    name = "Unknown User"
+    if payload.user_info:
+        try:
+            import json
+            user_json = json.loads(payload.user_info)
+            name_dict = user_json.get("name", {})
+            first_name = name_dict.get("firstName", "")
+            last_name = name_dict.get("lastName", "")
+            if first_name or last_name:
+                name = f"{first_name} {last_name}".strip()
+        except Exception:
+            pass
+            
+    oauth_role = payload.role or "doctor"
+
+    result = await db.execute(select(User).where(User.email == email.lower(), User.deleted_at.is_(None)))
+    user = result.scalar_one_or_none()
+    
+    encoded_access = ""
+    encoded_refresh = ""
+    
+    if user:
+        needs_commit = False
+        if not user.apple_id:
+            user.apple_id = apple_user_id
+            needs_commit = True
+            
+        if needs_commit:
+            await db.commit()
+            
+        if user.account_status == "pending_onboarding":
+            access_token = create_access_token(
+                data={"sub": str(user.id), "role": user.role},
+                token_type="onboarding"
+            )
+            refresh_token_value = ""
+        else:
+            access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+            refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+            
+            refresh_token_hash = hash_token(refresh_token_value)
+            ref_token = RefreshToken(
+                user_id=user.id,
+                token_hash=refresh_token_hash,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+            db.add(ref_token)
+            
+        user.last_login = datetime.utcnow()
+        await db.commit()
+        await db.refresh(user)
+    else:
+        organization = Organization(name=f"Pending Org ({email.split('@')[0]})")
+        db.add(organization)
+        await db.flush()
+        
+        pii_encryption = PIIEncryption()
+        encrypted_full_name = pii_encryption.encrypt(name)
+        assigned_role = oauth_role if oauth_role in ["doctor", "hospital", "patient"] else "doctor"
+        
+        user = User(
+            email=email.lower(),
+            password_hash=None,
+            full_name=encrypted_full_name,
+            role=assigned_role,
+            organization_id=organization.id,
+            email_verified=True,
+            mfa_enabled=False,
+            auth_provider="apple",
+            apple_id=apple_user_id,
+            account_status="pending_onboarding"
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+        access_token = create_access_token(
+            data={"sub": str(user.id), "role": assigned_role},
+            token_type="onboarding"
+        )
+        refresh_token_value = ""
+
+    pii_encryption = PIIEncryption()
+    try:
+        decrypted_full_name = pii_encryption.decrypt(user.full_name)
+    except Exception:
+        decrypted_full_name = user.full_name if user.full_name else name
+        
+    name_parts = decrypted_full_name.split(" ", 1)
+    
+    return LoginResponse(
+        success=True,
+        access_token=access_token,
+        refresh_token=refresh_token_value,
+        token_type="bearer",
+        user=UserResponse(
+            id=user.id,
+            name=decrypted_full_name,
+            email=user.email,
+            first_name=name_parts[0],
+            last_name=name_parts[1] if len(name_parts) > 1 else "",
+            role=user.role,
+            organization_id=user.organization_id,
+            organization_name="Pending Org" if user.account_status == "pending_onboarding" else getattr(user.organization, "name", "Default Org"),
+            mfa_enabled=user.mfa_enabled,
+            email_verified=user.email_verified,
+            avatar_url=user.avatar_url,
+            created_at=user.created_at,
+            updated_at=user.updated_at
+        )
+    )
+
 
 
 # @router.get("/apple/login")

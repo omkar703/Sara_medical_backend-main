@@ -283,3 +283,9 @@ class OnboardingUpdateRequest(BaseModel):
     organization_name: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+
+class MobileSocialLoginRequest(BaseModel):
+    """Schema for native mobile social login with token verify"""
+    id_token: str = Field(..., description="The ID token obtained from Google/Apple on the mobile device")
+    role: Optional[str] = Field("doctor", pattern="^(doctor|hospital|patient)$", description="Role to select if creating a new user")
+    user_info: Optional[str] = Field(None, description="Optional JSON string of user data (e.g. from Apple first sign in)")
