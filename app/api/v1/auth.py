@@ -551,7 +551,8 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
         encoded_refresh = ""
 
     # Redirect Resolution 
-    if app_redirect_uri and app_redirect_uri.startswith("saramedico://"):
+    # Support production app scheme and Expo development schemes
+    if app_redirect_uri and app_redirect_uri.startswith(("saramedico://", "exp://", "exps://")):
         final_qs = (
             f"access_token={encoded_access}"
             f"&refresh_token={encoded_refresh}"
@@ -2087,7 +2088,7 @@ async def apple_callback(
     db: AsyncSession = Depends(get_db)
 ):
     """Process Apple SSO callback mirroring Google's logic"""
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import RedirectResponse, HTMLResponse
     import urllib.parse
     import json
     import base64
@@ -2137,10 +2138,12 @@ async def apple_callback(
             
     # Read intended signup role from state
     oauth_role = "doctor" # Default
+    app_redirect_uri = None
     if state_param:
         try:
             state_data = json.loads(base64.urlsafe_b64decode(state_param).decode())
             oauth_role = state_data.get("role", "doctor")
+            app_redirect_uri = state_data.get("redirect_uri")
         except Exception:
             pass
             
@@ -2241,13 +2244,36 @@ async def apple_callback(
     encoded_access = urllib.parse.quote(access_token)
     encoded_refresh = urllib.parse.quote(refresh_token_value)
 
-    redirect_url = (
-        f"{frontend_callback}"
-        f"?access_token={encoded_access}"
-        f"&refresh_token={encoded_refresh}"
-        f"&user={encoded_user}"
-    )
-    return RedirectResponse(url=redirect_url)
+    if app_redirect_uri and app_redirect_uri.startswith(("saramedico://", "exp://", "exps://")):
+        final_qs = (
+            f"access_token={encoded_access}"
+            f"&refresh_token={encoded_refresh}"
+            f"&user={encoded_user}"
+        )
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirecting to App...</title>
+            <script>
+                window.location.href = "{app_redirect_uri}?{final_qs}";
+            </script>
+        </head>
+        <body>
+            Redirecting to app...
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
+    else:
+        redirect_url = (
+            f"{frontend_callback}"
+            f"?access_token={encoded_access}"
+            f"&refresh_token={encoded_refresh}"
+            f"&user={encoded_user}"
+        )
+        return RedirectResponse(url=redirect_url)
 
 
 # @router.get("/apple/login")
