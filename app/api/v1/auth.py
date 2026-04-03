@@ -2104,6 +2104,8 @@ async def apple_callback(
     frontend_callback = f"{frontend_url}/auth/apple/callback"
     
     # 1. Parse Data from Apple
+    auth_code = None
+    apple_refresh_token = None
     try:
         if request.method == "POST":
             # Apple usually sends POST for form_post
@@ -2111,15 +2113,35 @@ async def apple_callback(
             id_token = form_data.get("id_token")
             user_str = form_data.get("user") # Provided only on first auth
             state_param = form_data.get("state")
+            auth_code = form_data.get("code")
         else:
             id_token = request.query_params.get("id_token")
             user_str = request.query_params.get("user")
             state_param = request.query_params.get("state")
+            auth_code = request.query_params.get("code")
             
         if not id_token:
             raise HTTPException(status_code=400, detail="No ID token provided by Apple")
             
         user_info = await AppleSignInHelper.verify_id_token(id_token)
+        
+        if auth_code:
+            import httpx
+            client_secret = AppleSignInHelper.generate_client_secret()
+            async with httpx.AsyncClient() as client:
+                token_res = await client.post(
+                    "https://appleid.apple.com/auth/token",
+                    data={
+                        "client_id": settings.APPLE_CLIENT_ID,
+                        "client_secret": client_secret,
+                        "code": auth_code,
+                        "grant_type": "authorization_code",
+                        "redirect_uri": settings.APPLE_REDIRECT_URI or str(request.url_for("apple_callback"))
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                if token_res.status_code == 200:
+                    apple_refresh_token = token_res.json().get("refresh_token")
     except Exception as e:
         error_msg = urllib.parse.quote(f"Apple Auth Failed: {str(e)}")
         return RedirectResponse(url=f"{frontend_callback}?error={error_msg}")
@@ -2163,9 +2185,16 @@ async def apple_callback(
     encoded_user = ""
     
     if user:
+        needs_commit = False
         # User exists, link apple_id if not present
         if not user.apple_id:
             user.apple_id = apple_user_id
+            needs_commit = True
+        if apple_refresh_token and user.apple_refresh_token != apple_refresh_token:
+            user.apple_refresh_token = apple_refresh_token
+            needs_commit = True
+            
+        if needs_commit:
             await db.commit()
             
         if user.account_status == "pending_onboarding":
@@ -2233,6 +2262,7 @@ async def apple_callback(
             mfa_enabled=False,
             auth_provider="apple",
             apple_id=apple_user_id,
+            apple_refresh_token=apple_refresh_token,
             account_status="pending_onboarding"
         )
         
