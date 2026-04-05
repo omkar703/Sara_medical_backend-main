@@ -151,8 +151,8 @@ async def upload_document(
     
     await db.commit()
     
-    # 5. Trigger Processing
-    from app.workers.tasks import process_document_task
+    # 5. Trigger Processing (sync - no Celery worker needed)
+    from app.workers.mock_tasks import process_document_task
     process_document_task.delay(str(new_doc.id))
 
     # Audit log
@@ -317,8 +317,8 @@ async def confirm_upload(
     )
     await db.commit()
     
-    # Trigger Processing
-    from app.workers.tasks import process_document_task
+    # Trigger Processing (sync - no Celery worker needed)
+    from app.workers.mock_tasks import process_document_task
     process_document_task.delay(str(document_id))
     # from app.workers.tasks import scan_document_for_viruses
     # scan_document_for_viruses.delay(str(document_id))
