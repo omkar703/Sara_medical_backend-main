@@ -2354,7 +2354,12 @@ async def google_mobile_login(
         
     oauth_role = payload.role or "doctor"
 
-    result = await db.execute(select(User).where(User.email == email.lower(), User.deleted_at.is_(None)))
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.organization))
+        .where(User.email == email.lower(), User.deleted_at.is_(None))
+    )
     user = result.scalar_one_or_none()
     
     encoded_access = ""
@@ -2369,11 +2374,45 @@ async def google_mobile_login(
             await db.commit()
             
         if user.account_status == "pending_onboarding":
-            access_token = create_access_token(
-                data={"sub": str(user.id), "role": user.role},
-                token_type="onboarding"
-            )
-            refresh_token_value = ""
+            # Rescue stranded patient accounts (patients have no onboarding form)
+            user_role_str = str(user.role).split(".")[-1]
+            if user_role_str == "patient":
+                user.account_status = "active"
+                await db.commit()
+
+                # Create Patient profile if missing
+                from app.models.patient import Patient as _Patient
+                patient_check = await db.execute(select(_Patient).where(_Patient.id == user.id))
+                if not patient_check.scalar_one_or_none():
+                    from app.services.patient_service import PatientService
+                    ps = PatientService(db)
+                    pii_enc = PIIEncryption()
+                    raw_name = pii_enc.decrypt(user.full_name) if user.full_name else name
+                    await ps.create_patient(
+                        patient_data={"full_name": raw_name, "email": user.email, "phone_number": "",
+                                      "date_of_birth": None, "address": {}, "emergency_contact": {},
+                                      "medical_history": "", "allergies": [], "medications": []},
+                        organization_id=user.organization_id,
+                        created_by=user.id,
+                        patient_id=user.id
+                    )
+                    await db.commit()
+
+                access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
+                refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+                ref_token = RefreshToken(
+                    user_id=user.id,
+                    token_hash=hash_token(refresh_token_value),
+                    expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+                )
+                db.add(ref_token)
+            else:
+                # Doctor/hospital: redirect to onboarding form
+                access_token = create_access_token(
+                    data={"sub": str(user.id), "role": user.role},
+                    token_type="onboarding"
+                )
+                refresh_token_value = ""
         else:
             access_token = create_access_token(data={"sub": str(user.id), "role": user.role})
             refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
@@ -2397,6 +2436,7 @@ async def google_mobile_login(
         pii_encryption = PIIEncryption()
         encrypted_full_name = pii_encryption.encrypt(name)
         assigned_role = oauth_role if oauth_role in ["doctor", "hospital", "patient"] else "doctor"
+        is_patient = (assigned_role == "patient")
         
         user = User(
             email=email.lower(),
@@ -2409,17 +2449,53 @@ async def google_mobile_login(
             auth_provider="google",
             google_id=google_id,
             avatar_url=avatar_url,
-            account_status="pending_onboarding"
+            # Patients are immediately active (no onboarding form needed);
+            # doctors/hospitals must complete their onboarding form.
+            account_status="active" if is_patient else "pending_onboarding"
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
         
-        access_token = create_access_token(
-            data={"sub": str(user.id), "role": assigned_role},
-            token_type="onboarding"
-        )
-        refresh_token_value = ""
+        if is_patient:
+            # Create Patient profile so /auth/me and PatientFlow work immediately
+            from app.services.patient_service import PatientService
+            patient_service = PatientService(db)
+            p_data = {
+                "full_name": name,
+                "email": email.lower(),
+                "phone_number": "",
+                "date_of_birth": None,
+                "address": {},
+                "emergency_contact": {},
+                "medical_history": "",
+                "allergies": [],
+                "medications": []
+            }
+            await patient_service.create_patient(
+                patient_data=p_data,
+                organization_id=organization.id,
+                created_by=user.id,
+                patient_id=user.id
+            )
+            # Issue real tokens for instant login
+            access_token = create_access_token(data={"sub": str(user.id), "role": assigned_role})
+            refresh_token_value = create_refresh_token(data={"sub": str(user.id)})
+            refresh_token_hash = hash_token(refresh_token_value)
+            ref_token = RefreshToken(
+                user_id=user.id,
+                token_hash=refresh_token_hash,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+            db.add(ref_token)
+            await db.commit()
+        else:
+            # Doctor/hospital: send to onboarding form
+            access_token = create_access_token(
+                data={"sub": str(user.id), "role": assigned_role},
+                token_type="onboarding"
+            )
+            refresh_token_value = ""
 
     pii_encryption = PIIEncryption()
     try:
